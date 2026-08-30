@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * .6);
+  --radius-md: calc(var(--radius) * .8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root { color-scheme: dark; --background: oklch(.13 .025 255); --foreground: oklch(.96 .02 230); --card: oklch(.17 .03 255); --card-foreground: oklch(.96 .02 230); --popover: oklch(.15 .03 255); --popover-foreground: oklch(.96 .02 230); --primary: oklch(.82 .16 195); --primary-foreground: oklch(.13 .025 255); --secondary: oklch(.23 .035 255); --secondary-foreground: oklch(.92 .02 230); --muted: oklch(.21 .03 255); --muted-foreground: oklch(.66 .04 235); --accent: oklch(.22 .045 220); --accent-foreground: oklch(.93 .04 220); --destructive: oklch(.67 .19 25); --border: oklch(.75 .04 240 / 12%); --input: oklch(.75 .04 240 / 15%); --ring: oklch(.78 .13 195); --sidebar: oklch(.115 .025 255); --sidebar-foreground: oklch(.93 .02 230); --chart-1: oklch(.78 .16 195); --chart-2: oklch(.72 .16 155); --chart-3: oklch(.7 .15 55); --chart-4: oklch(.67 .17 280); --chart-5: oklch(.68 .16 25); --radius: .7rem; }
+.light { color-scheme: light; --background: oklch(.97 .015 235); --foreground: oklch(.18 .03 255); --card: oklch(1 0 0); --card-foreground: oklch(.18 .03 255); --popover: oklch(1 0 0); --popover-foreground: oklch(.18 .03 255); --primary: oklch(.58 .14 205); --primary-foreground: oklch(1 0 0); --secondary: oklch(.92 .025 235); --secondary-foreground: oklch(.2 .03 255); --muted: oklch(.93 .02 235); --muted-foreground: oklch(.48 .04 245); --border: oklch(.3 .04 245 / 14%); --input: oklch(.3 .04 245 / 16%); --sidebar: oklch(.94 .02 235); --sidebar-foreground: oklch(.18 .03 255); }
+
+@layer base { * { @apply border-border outline-ring/50; } body { @apply bg-background text-foreground; font-family: Arial, sans-serif; } button, input, select { font: inherit; } }
+
+html { background: var(--background); }
+* { scrollbar-width: thin; scrollbar-color: oklch(.45 .04 240) transparent; }
+.recharts-tooltip-wrapper { outline: none; }
