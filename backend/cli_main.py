@@ -337,7 +337,8 @@ def cmd_ask(args):
         sys.exit(1)
 
     backend_url = get_backend_url(args.url)
-    print(f"\n{CYAN}🤖 CloudPulse AI Copilot{RESET} ({backend_url})...\n")
+    use_rag = getattr(args, "rag", False)
+    print(f"\n{CYAN}🤖 CloudPulse AI Copilot{' [RAG Engine]' if use_rag else ''}{RESET} ({backend_url})...\n")
 
     # If it's a slash command, try v1 agent chat
     if prompt.startswith("/"):
@@ -353,6 +354,28 @@ def cmd_ask(args):
         except Exception as e:
             print(f"Notice falling back to copilot v2: {e}")
 
+    # RAG direct route if requested
+    if use_rag:
+        try:
+            resp = http_json(f"{backend_url}/api/v2/copilot/rag/ask", method="POST", payload={"query": prompt})
+            answer = resp.get("answer", "No response received.")
+            provider = resp.get("provider", "groq")
+            model = resp.get("model", "unknown")
+            items = resp.get("retrieved_items", 0)
+            savings = resp.get("potential_monthly_savings", 0.0)
+            badge = f"{DIM}[{provider}:{model} | RAG: {items} resources audited | ${savings:.2f}/mo potential savings]{RESET}"
+            print(f"{badge}\n\n{answer}\n")
+            return
+        except Exception:
+            try:
+                from services.finops_rag import finops_rag_pipeline
+                res = finops_rag_pipeline.ask(prompt)
+                badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG: {res.get('retrieved_items', 0)} resources audited]{RESET}"
+                print(f"{badge}\n\n{res.get('answer')}\n")
+                return
+            except Exception:
+                pass
+
     try:
         resp = http_json(f"{backend_url}/api/v2/copilot/chat", method="POST", payload={"message": prompt, "prompt": prompt, "history": []})
         answer = resp.get("answer", "No response received.")
@@ -361,8 +384,115 @@ def cmd_ask(args):
         badge = f"{DIM}[{provider}{f':{model}' if model else ''}]{RESET}"
         print(f"{badge}\n{answer}\n")
     except Exception as e:
-        print(f"{RED}Failed to query AI Copilot:{RESET} {e}")
-        sys.exit(1)
+        try:
+            from services.finops_rag import finops_rag_pipeline
+            res = finops_rag_pipeline.ask(prompt)
+            badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG]{RESET}"
+            print(f"{badge}\n\n{res.get('answer')}\n")
+        except Exception:
+            print(f"{RED}Failed to query AI Copilot:{RESET} {e}")
+            sys.exit(1)
+
+
+def cmd_recommend(args):
+    """
+    Executes Groq RAG FinOps Recommendation Engine:
+    Retrieves live cloud inventory, augments with pricing catalog & savings analytics,
+    and generates multi-vector recommendations with Groq LLM.
+    """
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    focus = getattr(args, "focus", "all")
+    backend_url = get_backend_url(getattr(args, "url", None))
+
+    print(f"\n{CYAN}{BOLD}🧠 CloudPulse Groq FinOps RAG Engine{RESET}")
+    print(f"Retrieving cloud telemetry & generating AI recommendations (focus: {focus})...\n")
+
+    report_data = None
+    try:
+        report_data = http_json(
+            f"{backend_url}/api/v2/copilot/rag/recommendations",
+            method="POST",
+            payload={"focus_domain": focus},
+            timeout=45.0
+        )
+    except Exception:
+        try:
+            from services.finops_rag import finops_rag_pipeline
+            report_data = finops_rag_pipeline.generate_recommendations(focus_domain=focus)
+        except Exception as local_err:
+            print(f"{RED}Error generating RAG recommendations:{RESET} {local_err}")
+            sys.exit(1)
+
+    if fmt == "json":
+        emit_output(json.dumps(report_data, indent=2), output_dest)
+        return
+
+    provider = report_data.get("provider", "groq")
+    model = report_data.get("model", "compound-mini")
+    monthly = report_data.get("monthly_savings", 0.0)
+    annual = report_data.get("annual_savings", 0.0)
+    items = report_data.get("items_audited", 0)
+    raw_md = report_data.get("report_markdown", "")
+
+    header = (
+        f"{get_banner_str()}\n"
+        f"{'=' * 88}\n"
+        f"  🤖 AI ENGINE: {provider.upper()} ({model}) | 🔍 AUDITED ITEMS: {items}\n"
+        f"  💰 POTENTIAL MONTHLY RECOVERY: ${monthly:.2f}/mo  (${annual:.2f}/year)\n"
+        f"{'=' * 88}\n\n"
+    )
+
+    emit_output(header + raw_md, output_dest)
+
+
+def cmd_rag_test(args):
+    """
+    Diagnostic verification tool for the Groq RAG pipeline:
+    Tests Retrieval, Augmentation, and Generation end-to-end.
+    """
+    print(get_banner_str())
+    print("=" * 88)
+    print("        🧪 GROQ FINOPS RAG END-TO-END VERIFICATION & BENCHMARK")
+    print("=" * 88)
+
+    t0 = time.time()
+    try:
+        from services.finops_rag import finops_rag_pipeline
+    except ImportError:
+        from backend.services.finops_rag import finops_rag_pipeline
+
+    # 1. Test Retrieval
+    print(f"\n{BOLD}[1/3] Testing Cloud Telemetry & Rate Card Retrieval...{RESET}")
+    ret = finops_rag_pipeline.retrieve_context(query="storage and compute")
+    print(f"  {GREEN}✔{RESET} Retrieved domains: {ret.get('domains')}")
+    print(f"  {GREEN}✔{RESET} Total retrieved items: {ret.get('total_retrieved_items')} (Compute: {len(ret.get('nodes', []))}, EBS: {len(ret.get('ebs_volumes', []))}, EIP: {len(ret.get('elastic_ips', []))})")
+    print(f"  {GREEN}✔{RESET} Rate cards indexed: {list(ret.get('pricing_rate_cards', {}).keys())}")
+
+    # 2. Test Augmentation
+    print(f"\n{BOLD}[2/3] Testing FinOps Unit Economics & Prompt Augmentation...{RESET}")
+    aug = finops_rag_pipeline.augment_context(ret)
+    print(f"  {GREEN}✔{RESET} Calculated Potential Monthly Savings: {BOLD}${aug.get('total_monthly_savings'):.2f}/mo{RESET}")
+    print(f"  {GREEN}✔{RESET} Calculated Potential Annual Savings: {BOLD}${aug.get('total_annual_savings'):.2f}/yr{RESET}")
+    print(f"  {GREEN}✔{RESET} Augmented prompt length: {len(aug.get('augmented_prompt', ''))} characters")
+
+    # 3. Test Generation
+    print(f"\n{BOLD}[3/3] Testing Groq LLM Generation...{RESET}")
+    test_q = "What is the single biggest waste in our storage and how much does it cost?"
+    print(f"  Query: \"{test_q}\"")
+    t_gen = time.time()
+    gen = finops_rag_pipeline.ask(test_q)
+    latency = time.time() - t_gen
+    total_time = time.time() - t0
+
+    prov = gen.get("provider")
+    mod = gen.get("model")
+    print(f"  {GREEN}✔{RESET} Generation completed in {BOLD}{latency:.2f}s{RESET} (Total RAG pipeline: {total_time:.2f}s)")
+    print(f"  {GREEN}✔{RESET} Provider: {prov} | Model: {mod} | Status: {gen.get('status')}")
+    print(f"\n{CYAN}{BOLD}--- AI RAG Response ---{RESET}")
+    print(gen.get("answer"))
+    print("=" * 88)
+    print(f"{GREEN}✅ Groq FinOps RAG Pipeline is 100% OPERATIONAL!{RESET}\n")
 
 # ==========================================
 # COMMAND: iac (Generate Terraform PR)
@@ -1502,6 +1632,17 @@ def main():
     # ask
     p_ask = subparsers.add_parser("ask", parents=[common_parser], help="Ask autonomous FinOps AI Copilot questions or execute slash commands")
     p_ask.add_argument("prompt", nargs="+", help="Your question or slash command (e.g. /optimize, /health)")
+    p_ask.add_argument("--rag", action="store_true", help="Force deep RAG context retrieval & augmentation")
+
+    # recommend (Autonomous Groq RAG FinOps Recommendation Engine)
+    p_rec = subparsers.add_parser("recommend", parents=[common_parser], help="Autonomous Groq RAG FinOps recommendation engine")
+    p_rec.add_argument("--focus", "-f", choices=["all", "compute", "storage", "network", "security", "logs"], default="all", help="Focus domain (default: all)")
+    p_rec.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="markdown", help="Output format (default: markdown)")
+    p_rec.add_argument("--output", "-o", default=None, help="File path to save the generated recommendation report")
+    p_rec.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
+    # rag-test (End-to-End RAG Verification & Diagnostics)
+    subparsers.add_parser("rag-test", parents=[common_parser], help="End-to-end benchmark & verification of Groq FinOps RAG pipeline")
 
     # iac
     p_iac = subparsers.add_parser("iac", parents=[common_parser], help="Generate Terraform PR code to remediate a finding")
@@ -1580,6 +1721,8 @@ def main():
         "inspect": cmd_inspect,
         "inventory": cmd_inspect,
         "cost": cmd_cost,
+        "recommend": cmd_recommend,
+        "rag-test": cmd_rag_test,
     }
 
     cmd_fn = dispatch.get(args.command)

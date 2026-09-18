@@ -65,6 +65,7 @@ try:
     from copilot.agent import FinOpsAutonomousCopilot
     from copilot.tools.pricing_rag_tool import lookup_aws_pricing
     from agent.installer import generate_linux_install_script, generate_windows_install_script
+    from services.finops_rag import finops_rag_pipeline
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -76,6 +77,7 @@ except ImportError:
     from backend.copilot.agent import FinOpsAutonomousCopilot
     from backend.copilot.tools.pricing_rag_tool import lookup_aws_pricing
     from backend.agent.installer import generate_linux_install_script, generate_windows_install_script
+    from backend.services.finops_rag import finops_rag_pipeline
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1377,6 +1379,64 @@ async def get_pricing_rate_card(resource_type: str = "m5.2xlarge", region: str =
     return pricing
 
 
+@app.post("/api/v2/copilot/rag/ask")
+async def copilot_rag_ask(payload: dict):
+    """
+    Direct endpoint for FinOps RAG (Retrieval-Augmented Generation) queries:
+    Retrieves live cloud telemetry, augments with unit economics and AWS rate cards,
+    and generates grounded answers via Groq LLM.
+    """
+    query = payload.get("query") or payload.get("message") or payload.get("prompt") or ""
+    custom_inv = payload.get("inventory")
+    response = finops_rag_pipeline.ask(query=query, inventory=custom_inv)
+    return response
+
+
+@app.post("/api/v2/copilot/rag/recommendations")
+async def copilot_rag_recommendations(payload: Optional[dict] = None):
+    """
+    Executes complete FinOps RAG recommendation synthesis across live cloud inventory:
+    Returns Executive Briefing, Quick Wins, Graviton Rightsizing, and Security Findings.
+    """
+    payload = payload or {}
+    custom_inv = payload.get("inventory")
+    focus_domain = payload.get("focus_domain") or payload.get("focus") or payload.get("domain")
+    response = finops_rag_pipeline.generate_recommendations(inventory=custom_inv, focus_domain=focus_domain)
+    return response
+
+
+@app.get("/api/v2/copilot/rag/status")
+async def get_copilot_rag_status():
+    """
+    Returns live Groq RAG pipeline status, active model, and inventory telemetry counts.
+    """
+    engine_ready = finops_rag_pipeline.engine and finops_rag_pipeline.engine.is_available()
+    active_model = getattr(finops_rag_pipeline.engine, "active_model", None) if finops_rag_pipeline.engine else None
+    inv = finops_rag_pipeline._get_inventory()
+    nodes = inv.get("compute", {}).get("nodes") or inv.get("nodes", [])
+    vols = inv.get("ec2_other_resources", {}).get("ebs_volumes") or inv.get("ebs_volumes", [])
+    eips = inv.get("ec2_other_resources", {}).get("elastic_ips") or inv.get("elastic_ips", [])
+    sgs = inv.get("ec2_other_resources", {}).get("security_groups") or inv.get("security_groups", [])
+    logs = inv.get("ec2_other_resources", {}).get("cloudwatch_log_groups") or inv.get("cloudwatch_log_groups", [])
+
+    return {
+        "status": "ready" if engine_ready else "fallback_ready",
+        "pipeline": "FinOpsRAGPipeline",
+        "provider": "groq" if engine_ready else "deterministic_engine",
+        "active_model": active_model,
+        "groq_configured": bool(os.getenv("GROQ_API_KEY") or getattr(finops_rag_pipeline.engine, "api_key", None)),
+        "retrieval_sources": {
+            "compute_nodes": len(nodes),
+            "ebs_volumes": len(vols),
+            "elastic_ips": len(eips),
+            "security_groups": len(sgs),
+            "cloudwatch_log_groups": len(logs),
+            "aws_rate_card": "active (us-east-1)"
+        },
+        "supported_domains": ["all", "compute", "storage", "network", "security", "logs"]
+    }
+
+
 @app.get("/api/v2/copilot/status")
 @app.get("/api/v1/copilot/status")
 async def get_copilot_status():
@@ -1389,10 +1449,13 @@ async def get_copilot_status():
         "status": "ready" if engine_ready else "heuristic_fallback",
         "provider": copilot_agent.provider,
         "active_model": active_model,
-        "tools_enabled": ["sql_analytics", "pricing_rag", "cloudtrail_forensics", "terraform_pr"],
+        "tools_enabled": ["sql_analytics", "pricing_rag", "cloudtrail_forensics", "terraform_pr", "finops_rag"],
         "groq_configured": bool(copilot_agent.groq_api_key),
         "api_endpoints": [
             "/api/v2/copilot/chat",
+            "/api/v2/copilot/rag/ask",
+            "/api/v2/copilot/rag/recommendations",
+            "/api/v2/copilot/rag/status",
             "/api/v2/copilot/diagnose-spike",
             "/api/v2/copilot/generate-iac-pr",
             "/api/v2/copilot/pricing",

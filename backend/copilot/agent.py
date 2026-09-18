@@ -17,8 +17,10 @@ except ImportError:
 
 try:
     from services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
+    from services.finops_rag import finops_rag_pipeline
 except ImportError:
     from backend.services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
+    from backend.services.finops_rag import finops_rag_pipeline
 
 logger = logging.getLogger("cloudpulse.copilot.agent")
 
@@ -271,18 +273,22 @@ class FinOpsAutonomousCopilot:
                 "model": active_model
             }
 
-        # Route 5: Autonomous Natural Language Query via Groq LLM
-        if self.engine and self.engine.is_available():
-            context = self._get_cloud_context()
-            llm_res = self.engine.ask_finops(query=user_message, context=context)
-            if llm_res.get("status") == "success":
-                return {
-                    "answer": llm_res.get("response"),
-                    "tool_called": "autonomous_llm",
-                    "tool_result": {"status": "success", "context_used": True},
-                    "provider": "groq",
-                    "model": active_model
-                }
+        # Route 5: Autonomous Natural Language Query via Groq FinOps RAG Pipeline
+        rag_res = finops_rag_pipeline.ask(query=user_message)
+        if rag_res and rag_res.get("answer"):
+            return {
+                "answer": rag_res.get("answer"),
+                "tool_called": "finops_rag_pipeline",
+                "tool_result": {
+                    "status": rag_res.get("status"),
+                    "domains": rag_res.get("retrieved_domains"),
+                    "items": rag_res.get("retrieved_items"),
+                    "potential_monthly_savings": rag_res.get("potential_monthly_savings"),
+                },
+                "provider": rag_res.get("provider", self.provider),
+                "model": rag_res.get("model", active_model),
+                "pipeline": "RAG"
+            }
 
         # Route 6: Fallback summary
         sql = generate_finops_sql_template("total_potential_savings")
