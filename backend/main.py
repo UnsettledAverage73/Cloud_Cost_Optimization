@@ -211,11 +211,11 @@ def _save_active_credentials(credentials: CloudConnectRequest):
             idx
             for idx, item in enumerate(connected_accounts)
             if (
-                item.get("provider", "").lower(),
-                item.get("account_name", "").strip().lower(),
-                item.get("region", "").strip().lower(),
-                item.get("role_arn", "").strip().lower(),
-                item.get("access_key_last4", ""),
+                (item.get("provider") or "").lower(),
+                (item.get("account_name") or "").strip().lower(),
+                (item.get("region") or "").strip().lower(),
+                (item.get("role_arn") or "").strip().lower(),
+                (item.get("access_key_last4") or "").strip(),
             ) == profile_key
         ),
         None,
@@ -995,6 +995,11 @@ async def connect_cloud_account(credentials: CloudConnectRequest):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail=f"AWS Authentication Failed: {message}"
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to connect AWS account: {e}"
                 )
 
     _save_active_credentials(credentials)

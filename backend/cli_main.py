@@ -437,9 +437,88 @@ def cmd_config(args):
     elif args.show:
         print(f"{BOLD}CloudPulse CLI Configuration ({CONFIG_FILE}):{RESET}")
         print(json.dumps(conf, indent=2))
-    else:
-        print(f"Current Backend URL: {conf.get('backend_url', DEFAULT_BACKEND_URL)}")
-        print("Use `cloudpulse config --set-url <url>` to change.")
+# ==========================================
+# COMMAND: connect (AWS / Learner Lab / Cloud)
+# ==========================================
+def cmd_connect(args):
+    print_banner()
+    backend_url = get_backend_url(args.url)
+    print(f"🔗 Connecting Cloud Account to {BOLD}{backend_url}{RESET}...\n")
+
+    access_key = args.access_key
+    secret_key = args.secret_key
+    session_token = args.session_token
+    region = args.region or "us-east-1"
+    account_name = args.account_name or "AWS Learner Lab"
+
+    # Support reading from credentials block file if provided
+    if args.credentials_file:
+        try:
+            with open(args.credentials_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("aws_access_key_id"):
+                    access_key = line.split("=", 1)[1].strip()
+                elif line.startswith("aws_secret_access_key"):
+                    secret_key = line.split("=", 1)[1].strip()
+                elif line.startswith("aws_session_token"):
+                    session_token = line.split("=", 1)[1].strip()
+        except Exception as e:
+            print(f"{RED}Error reading credentials file:{RESET} {e}")
+            sys.exit(1)
+
+    # Interactive prompt if keys not provided via args or file
+    if not (access_key and secret_key):
+        print(f"{CYAN}Please enter your AWS credentials (e.g., from AWS Learner Lab or IAM):{RESET}")
+        try:
+            access_key = input("  AWS Access Key ID: ").strip()
+            secret_key = input("  AWS Secret Access Key: ").strip()
+            session_token = input("  AWS Session Token (leave blank for IAM user): ").strip() or None
+            region_in = input(f"  AWS Region [{region}]: ").strip()
+            if region_in:
+                region = region_in
+            name_in = input(f"  Account Name [{account_name}]: ").strip()
+            if name_in:
+                account_name = name_in
+        except (KeyboardInterrupt, EOFError):
+            print("\nAborted.")
+            sys.exit(0)
+
+    auth_method = "learner_lab" if session_token else "keys"
+
+    payload = {
+        "provider": "AWS",
+        "account_name": account_name,
+        "auth_method": auth_method,
+        "access_key": access_key,
+        "secret_key": secret_key,
+        "session_token": session_token,
+        "region": region
+    }
+
+    print(f"Authenticating with AWS ({auth_method}) in region {region}...")
+    try:
+        res = http_json(f"{backend_url}/api/v1/connect-cloud", method="POST", payload=payload, timeout=30.0)
+        print(f"\n{GREEN}✅ Successfully Connected to AWS!{RESET}")
+        print(f"  • Account ID   : {BOLD}{res.get('account_id')}{RESET}")
+        print(f"  • Caller ARN   : {res.get('arn')}")
+        print(f"  • Access Mode  : {res.get('access_mode')}")
+        if res.get('warning'):
+            print(f"  • Warning      : {YELLOW}{res.get('warning')}{RESET}")
+
+        # Fetch discovered nodes
+        nodes = http_json(f"{backend_url}/api/nodes")
+        print(f"\n{BOLD}📦 Discovered Live Compute Nodes ({len(nodes)}):{RESET}")
+        print(f"  {'INSTANCE ID':<22} {'NAME':<16} {'TYPE':<12} {'STATE':<10} {'PUBLIC IP':<16} {'COST/MO'}")
+        print("  " + "-" * 88)
+        for n in nodes:
+            state_color = GREEN if n.get('state') == 'running' else YELLOW
+            print(f"  {n.get('instance_id'):<22} {n.get('name', 'unnamed'):<16} {n.get('type', ''):<12} {state_color}{n.get('state', ''):<10}{RESET} {n.get('public_ip') or 'None':<16} ${n.get('cost', 0):.2f}/mo")
+        print()
+    except Exception as e:
+        print(f"{RED}✖ Failed to connect AWS account:{RESET} {e}")
+        sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -484,6 +563,15 @@ def main():
     p_onboard.add_argument("--remediation", action="store_true", help="Allow automated remediation actions")
     p_onboard.add_argument("--save-yaml", default=None, help="Save template to a YAML file")
 
+    # connect (AWS / Learner Lab / Cloud)
+    p_connect = subparsers.add_parser("connect", help="Connect an AWS / Learner Lab account using access keys & session token")
+    p_connect.add_argument("--access-key", "-k", default=None, help="AWS Access Key ID")
+    p_connect.add_argument("--secret-key", "-s", default=None, help="AWS Secret Access Key")
+    p_connect.add_argument("--session-token", "-t", default=None, help="AWS Session Token (for Learner Lab / STS)")
+    p_connect.add_argument("--region", "-r", default="us-east-1", help="AWS Region (default: us-east-1)")
+    p_connect.add_argument("--account-name", "-n", default="AWS Learner Lab", help="Display name for this account")
+    p_connect.add_argument("--credentials-file", "-f", default=None, help="Path to credentials file (e.g. ~/.aws/credentials)")
+
     # push
     subparsers.add_parser("push", help="Push current host metrics to backend")
 
@@ -511,6 +599,7 @@ def main():
         "ask": cmd_ask,
         "iac": cmd_iac,
         "onboard": cmd_onboard,
+        "connect": cmd_connect,
         "push": cmd_push,
         "daemon": cmd_daemon,
         "config": cmd_config,
