@@ -20,6 +20,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
+// Base URL for CloudPulse Backend (Render Web Service or local)
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
+const apiUrl = (path: string) => path.startsWith('http') ? path : `${API_BASE}${path}`
+
 // Navigation configuration
 const nav = [
   { id: 'overview', label: 'Executive Overview', icon: LayoutDashboard },
@@ -312,7 +316,7 @@ export default function Page() {
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const res = await fetch(url, { signal: controller.signal });
+          const res = await fetch(apiUrl(url), { signal: controller.signal });
           const responseBody = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(responseBody?.detail || `Live data request failed (${res.status})`);
           return responseBody;
@@ -444,7 +448,7 @@ export default function Page() {
     setSyncing(true);
     setDataError('');
     try {
-      const res = await fetch('/api/v1/connect-cloud/switch', {
+      const res = await fetch(apiUrl('/api/v1/connect-cloud/switch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -513,7 +517,7 @@ export default function Page() {
 
     const syncConnectionState = async () => {
       try {
-        const res = await fetch('/api/v1/connect-cloud/state');
+        const res = await fetch(apiUrl('/api/v1/connect-cloud/state'));
         const data = await res.json();
         const connection = data?.connection || data
         const accounts = Array.isArray(data?.connected_accounts)
@@ -645,8 +649,8 @@ export default function Page() {
       setSelectedNodeLoading(true);
       try {
         const [detailRes, telemetryRes] = await Promise.all([
-          fetch(`/api/v1/resources/nodes/${selectedNode.instance_id}`).then(res => res.json()),
-          fetch(`/api/v1/telemetry/${selectedNode.instance_id}`).then(res => res.json()),
+          fetch(apiUrl(`/api/v1/resources/nodes/${selectedNode.instance_id}`)).then(res => res.json()),
+          fetch(apiUrl(`/api/v1/telemetry/${selectedNode.instance_id}`)).then(res => res.json()),
         ]);
 
         if (cancelled) return;
@@ -1275,7 +1279,7 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
   const orphanedEbsVolumes = audit?.orphaned_ebs_volumes || [];
 
   const handleRevoke = async (groupId: string) => {
-    await fetch(`/api/security/revoke`, {
+    await fetch(apiUrl(`/api/security/revoke`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ groupId })
@@ -1409,7 +1413,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
   const toggleOptimization = async (id: string) => {
     const isApplied = applied.includes(id);
     const newApplied = isApplied ? applied.filter((x: string) => x !== id) : [...applied, id];
-    const res = await fetch('/api/optimizations/apply', {
+    const res = await fetch(apiUrl('/api/optimizations/apply'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, action: isApplied ? 'revert' : 'apply' })
@@ -1433,7 +1437,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
         action={
           <Button
             onClick={async () => {
-              await Promise.all(items.map((i: any) => fetch('/api/optimizations/apply', {
+              await Promise.all(items.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: i.id, action: 'apply' })
@@ -1492,7 +1496,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
 
     const loadSettings = async () => {
       try {
-        const res = await fetch('/api/settings');
+        const res = await fetch(apiUrl('/api/settings'));
         const data = await res.json();
         if (!cancelled) {
           setOrgName(data?.organization || '');
@@ -1516,7 +1520,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch('/api/settings', {
+      await fetch(apiUrl('/api/settings'), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orgName })
@@ -1665,7 +1669,7 @@ function ConnectModal({ open, onOpenChange, onSuccess, initialProfile }: any) {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('/api/v1/connect-cloud', {
+      const res = await fetch(apiUrl('/api/v1/connect-cloud'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
