@@ -18,8 +18,16 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "cloudpulse_db")
 DEFAULT_SYNC_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 DEFAULT_ASYNC_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SYNC_URL)
-ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", DEFAULT_ASYNC_URL)
+raw_db_url = os.getenv("DATABASE_URL", DEFAULT_SYNC_URL)
+if raw_db_url.startswith("postgres://"):
+    raw_db_url = raw_db_url.replace("postgres://", "postgresql://", 1)
+
+DATABASE_URL = raw_db_url
+
+if os.getenv("ASYNC_DATABASE_URL"):
+    ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL")
+else:
+    ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Base class for declarative SQLAlchemy models
 class Base(DeclarativeBase):

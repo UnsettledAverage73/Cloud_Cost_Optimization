@@ -25,35 +25,43 @@ def initialize_database():
 
     with sync_engine.connect() as conn:
         # Check TimescaleDB extension
-        ext_check = conn.execute(
-            text("SELECT extversion FROM pg_extension WHERE extname='timescaledb';")
-        ).scalar()
-        if not ext_check:
-            logger.info("Enabling TimescaleDB extension...")
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"))
-            conn.commit()
-
-        # Convert resource_telemetry to hypertable
+        has_timescale = False
         try:
-            conn.execute(text(
-                "SELECT create_hypertable('resource_telemetry', 'time', "
-                "chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);"
-            ))
-            conn.commit()
-            logger.info("Configured 'resource_telemetry' as TimescaleDB hypertable.")
+            ext_check = conn.execute(
+                text("SELECT extversion FROM pg_extension WHERE extname='timescaledb';")
+            ).scalar()
+            if not ext_check:
+                logger.info("Attempting to enable TimescaleDB extension...")
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"))
+                conn.commit()
+            has_timescale = True
         except Exception as e:
-            logger.warning(f"Note on resource_telemetry hypertable: {e}")
+            logger.warning(f"TimescaleDB extension not installed on this PostgreSQL instance (running in standard PostgreSQL mode): {e}")
 
-        # Convert daily_spend_records to hypertable
-        try:
-            conn.execute(text(
-                "SELECT create_hypertable('daily_spend_records', 'time', "
-                "chunk_time_interval => INTERVAL '30 days', if_not_exists => TRUE);"
-            ))
-            conn.commit()
-            logger.info("Configured 'daily_spend_records' as TimescaleDB hypertable.")
-        except Exception as e:
-            logger.warning(f"Note on daily_spend_records hypertable: {e}")
+        if has_timescale:
+            # Convert resource_telemetry to hypertable
+            try:
+                conn.execute(text(
+                    "SELECT create_hypertable('resource_telemetry', 'time', "
+                    "chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);"
+                ))
+                conn.commit()
+                logger.info("Configured 'resource_telemetry' as TimescaleDB hypertable.")
+            except Exception as e:
+                logger.warning(f"Note on resource_telemetry hypertable: {e}")
+
+            # Convert daily_spend_records to hypertable
+            try:
+                conn.execute(text(
+                    "SELECT create_hypertable('daily_spend_records', 'time', "
+                    "chunk_time_interval => INTERVAL '30 days', if_not_exists => TRUE);"
+                ))
+                conn.commit()
+                logger.info("Configured 'daily_spend_records' as TimescaleDB hypertable.")
+            except Exception as e:
+                logger.warning(f"Note on daily_spend_records hypertable: {e}")
+        else:
+            logger.info("Standard PostgreSQL tables created with composite indexes.")
 
     logger.info("Database schema & hypertables successfully initialized.")
 
