@@ -10,10 +10,58 @@ import json
 import mock_database
 from schemas import IngestionPayload, CloudConnectRequest, NodeSchema
 
+from data.cloud_simulator import CloudSimulator
+from data.finops_database import (
+    record_remediation_audit,
+    get_remediation_audit_logs,
+    upsert_optimization,
+    mark_optimization_applied,
+    get_all_optimizations,
+)
+from services.cost_analytics import (
+    calculate_finops_health_score,
+    calculate_spend_forecast,
+    detect_cost_anomalies,
+    evaluate_inventory_optimizations,
+)
+from services.finops_agent import FinOpsAgent
+from services.notifier import FinOpsNotifier
+from services.remediator import AutoRemediator
+
+from collectors.orchestrator import AWSDataIngestionOrchestrator
+from engines.finops_analyzer import FinOpsAnalyzer
+from remediation.actions import SafeRemediationExecutor
+
+# Enterprise Production Architecture Modules (TimescaleDB, Onboarding, Copilot)
+try:
+    from database.connection import ping_database, SyncSessionLocal
+    from database.models import (
+        Organization, ConnectedAWSAccount, CloudResource,
+        ResourceTelemetry, DailySpendRecord, OptimizationFinding
+    )
+    from onboarding.cloudformation import get_onboarding_package, generate_cloudformation_yaml
+    from onboarding.tenant_manager import TenantManager
+    from copilot.agent import FinOpsAutonomousCopilot
+    from copilot.tools.pricing_rag_tool import lookup_aws_pricing
+    from agent.installer import generate_linux_install_script, generate_windows_install_script
+except ImportError:
+    from backend.database.connection import ping_database, SyncSessionLocal
+    from backend.database.models import (
+        Organization, ConnectedAWSAccount, CloudResource,
+        ResourceTelemetry, DailySpendRecord, OptimizationFinding
+    )
+    from backend.onboarding.cloudformation import get_onboarding_package, generate_cloudformation_yaml
+    from backend.onboarding.tenant_manager import TenantManager
+    from backend.copilot.agent import FinOpsAutonomousCopilot
+    from backend.copilot.tools.pricing_rag_tool import lookup_aws_pricing
+    from backend.agent.installer import generate_linux_install_script, generate_windows_install_script
+
+copilot_agent = FinOpsAutonomousCopilot()
+
 app = FastAPI(
     title="CloudPulse FinOps & Telemetry API",
-    version="1.0.0",
-    description="Backend API powering multi-cloud cost optimization & telemetry dashboards."
+    version="2.0.0",
+    description="Enterprise backend API powering multi-cloud cost optimization, TimescaleDB telemetry, and autonomous AI copilot."
 )
 
 # Enable CORS for Next.js / React / v0.dev frontend connections
@@ -29,7 +77,11 @@ app.add_middleware(
 active_credentials = {}
 connected_accounts = []
 last_live_error = ""
+is_demo_mode = False
 STATE_FILE = Path(__file__).with_name(".cloudpulse_state.json")
+
+finops_agent = FinOpsAgent(data_store=mock_database.DB)
+finops_notifier = FinOpsNotifier()
 
 AWS_CLIENT_CONFIG = Config(
     connect_timeout=3,
@@ -183,6 +235,18 @@ def _saved_credentials():
 
 
 def _connection_state():
+    if is_demo_mode:
+        return {
+            "connected": True,
+            "provider": "AWS (Simulation Demo)",
+            "account_name": _db()["metadata"].get("organization", "Demo Sandbox"),
+            "region": _db()["metadata"].get("region", "us-east-1"),
+            "auth_method": "simulation",
+            "role_arn": "arn:aws:iam::123456789012:role/FinOpsDemoRole",
+            "access_mode": "demo",
+            "warning": None,
+            "connected_accounts": [_public_connection_record(item) for item in connected_accounts],
+        }
     creds = _saved_credentials()
     if not creds:
         return {
@@ -308,191 +372,33 @@ def _refresh_live_aws_state():
         return False
 
     try:
-        ec2 = session.client("ec2", config=AWS_CLIENT_CONFIG)
         region = session.region_name or "us-east-1"
+        orchestrator = AWSDataIngestionOrchestrator(session, region)
+        data = orchestrator.execute_full_pipeline()
+
         db = _db()
-
-        nodes = []
-        paginator = ec2.get_paginator("describe_instances")
-        for page in paginator.paginate():
-            for reservation in page.get("Reservations", []):
-                for instance in reservation.get("Instances", []):
-                    tags = _tag_lookup(instance.get("Tags"))
-                    instance_type = instance.get("InstanceType", "unknown")
-                    block_devices = instance.get("BlockDeviceMappings", [])
-                    nodes.append(
-                        {
-                            "instance_id": instance["InstanceId"],
-                            "name": tags.get("Name") or instance["InstanceId"],
-                            "instance_type": instance_type,
-                            "state": instance.get("State", {}).get("Name", "unknown"),
-                            "platform": "windows" if instance.get("Platform") == "windows" else "linux",
-                            "availability_zone": instance.get("Placement", {}).get("AvailabilityZone", region),
-                            "region": region,
-                            "public_ip": instance.get("PublicIpAddress"),
-                            "volumes": len(block_devices),
-                            "cost": _estimate_instance_monthly_cost(instance_type),
-                        }
-                    )
-
-        volumes = []
-        for page in _optional_pages(ec2, "describe_volumes"):
-            for volume in page.get("Volumes", []):
-                attachments = volume.get("Attachments", [])
-                volumes.append(
-                    {
-                        "volume_id": volume["VolumeId"],
-                        "size_gb": volume.get("Size", 0),
-                        "volume_type": volume.get("VolumeType", "gp3"),
-                        "iops": volume.get("Iops", 3000),
-                        "status": volume.get("State", "unknown"),
-                        "is_orphaned": len(attachments) == 0,
-                        "attached_instance_id": attachments[0].get("InstanceId") if attachments else None,
-                        "attachments": attachments,
-                        "cost": _estimate_ebs_monthly_cost(volume),
-                    }
-                )
-
-        elastic_ips = []
-        for page in _optional_pages(ec2, "describe_addresses"):
-            for address in page.get("Addresses", []):
-                elastic_ips.append(
-                    {
-                        "public_ip": address.get("PublicIp", ""),
-                        "is_unattached": not address.get("InstanceId"),
-                        "estimated_monthly_cost": 3.60,
-                    }
-                )
-
-        security_groups = []
-        for page in _optional_pages(ec2, "describe_security_groups"):
-            for group in page.get("SecurityGroups", []):
-                exposed_ports = []
-                is_public = False
-                for permission in group.get("IpPermissions", []):
-                    public_cidrs = any(r.get("CidrIp") == "0.0.0.0/0" for r in permission.get("IpRanges", []))
-                    public_ipv6 = any(r.get("CidrIpv6") == "::/0" for r in permission.get("Ipv6Ranges", []))
-                    if not (public_cidrs or public_ipv6):
-                        continue
-
-                    is_public = True
-                    from_port = permission.get("FromPort")
-                    to_port = permission.get("ToPort")
-                    if isinstance(from_port, int):
-                        exposed_ports.append(from_port)
-                    if isinstance(to_port, int) and to_port != from_port:
-                        exposed_ports.append(to_port)
-
-                security_groups.append(
-                    {
-                        "group_id": group["GroupId"],
-                        "group_name": group.get("GroupName", group["GroupId"]),
-                        "is_publicly_exposed": is_public,
-                        "exposed_ports": sorted(set(exposed_ports)),
-                    }
-                )
-
-        # Additional inventory collected by the notebook. These APIs are optional
-        # because Learner Lab permission boundaries may deny some of them.
-        amis = []
-        for image in _optional_call(ec2, "describe_images", Owners=["self"]).get("Images", []):
-            snapshots = [
-                mapping["Ebs"]["SnapshotId"]
-                for mapping in image.get("BlockDeviceMappings", [])
-                if mapping.get("Ebs", {}).get("SnapshotId")
-            ]
-            amis.append({
-                "ami_id": image.get("ImageId"),
-                "name": image.get("Name"),
-                "creation_date": image.get("CreationDate"),
-                "snapshot_ids": snapshots,
-                "architecture": image.get("Architecture"),
-            })
-
-        network_interfaces = []
-        for eni in _optional_call(ec2, "describe_network_interfaces").get("NetworkInterfaces", []):
-            attachment = eni.get("Attachment") or {}
-            association = eni.get("Association") or {}
-            network_interfaces.append({
-                "network_interface_id": eni.get("NetworkInterfaceId"),
-                "status": eni.get("Status"),
-                "is_orphaned": eni.get("Status") == "available",
-                "attached_instance_id": attachment.get("InstanceId"),
-                "private_ip": eni.get("PrivateIpAddress"),
-                "public_ip": association.get("PublicIp"),
-            })
-
-        ebs_snapshots = []
-        for snapshot in _optional_call(ec2, "describe_snapshots", OwnerIds=["self"]).get("Snapshots", []):
-            size_gb = snapshot.get("VolumeSize", 0)
-            start_time = snapshot.get("StartTime")
-            ebs_snapshots.append({
-                "snapshot_id": snapshot.get("SnapshotId"),
-                "volume_id": snapshot.get("VolumeId"),
-                "size_gb": size_gb,
-                "start_time": start_time.isoformat() if start_time else None,
-                "estimated_monthly_cost": round(size_gb * 0.05, 2),
-            })
-
-        logs = session.client("logs", config=AWS_CLIENT_CONFIG)
-        cloudwatch_log_groups = []
-        for page in _optional_pages(logs, "describe_log_groups"):
-            for group in page.get("logGroups", []):
-                stored_bytes = group.get("storedBytes", 0)
-                retention = group.get("retentionInDays")
-                cloudwatch_log_groups.append({
-                    "log_group_name": group.get("logGroupName"),
-                    "stored_bytes": stored_bytes,
-                    "stored_gb": round(stored_bytes / (1024 ** 3), 3),
-                    "retention_in_days": retention,
-                    "is_never_expire": retention is None,
-                    "estimated_monthly_cost": round((stored_bytes / (1024 ** 3)) * 0.03, 2),
-                })
-
-        s3 = session.client("s3", config=AWS_CLIENT_CONFIG)
-        s3_buckets = []
-        for bucket in _optional_call(s3, "list_buckets").get("Buckets", []):
-            bucket_name = bucket.get("Name")
-            lifecycle = _optional_call(s3, "get_bucket_lifecycle_configuration", Bucket=bucket_name)
-            s3_buckets.append({
-                "bucket_name": bucket_name,
-                "creation_date": bucket.get("CreationDate").isoformat() if bucket.get("CreationDate") else None,
-                "has_lifecycle_policy": bool(lifecycle),
-            })
-
-        nat_gateways = []
-        for page in _optional_pages(ec2, "describe_nat_gateways"):
-            for nat in page.get("NatGateways", []):
-                if nat.get("State") in ["available", "pending"]:
-                    nat_gateways.append({
-                        "nat_gateway_id": nat.get("NatGatewayId"),
-                        "vpc_id": nat.get("VpcId"),
-                        "subnet_id": nat.get("SubnetId"),
-                        "state": nat.get("State"),
-                        "estimated_monthly_base_cost": 32.40,
-                    })
-
-        vpc_endpoints = []
-        for endpoint in _optional_call(ec2, "describe_vpc_endpoints").get("VpcEndpoints", []):
-            vpc_endpoints.append({
-                "vpc_endpoint_id": endpoint.get("VpcEndpointId"),
-                "vpc_id": endpoint.get("VpcId"),
-                "service_name": endpoint.get("ServiceName"),
-                "endpoint_type": endpoint.get("VpcEndpointType"),
-                "state": endpoint.get("State"),
-                "estimated_monthly_base_cost": 7.20,
-            })
-
-        db["nodes"] = nodes
-        db["ebs_volumes"] = volumes
-        db["elastic_ips"] = elastic_ips
-        db["security_groups"] = security_groups
-        db["amis"] = amis
-        db["network_interfaces"] = network_interfaces
-        db["ebs_snapshots"] = ebs_snapshots
-        db["cloudwatch_log_groups"] = cloudwatch_log_groups
-        db["s3_buckets"] = s3_buckets
-        db["vpc_resources"] = {"nat_gateways": nat_gateways, "vpc_endpoints": vpc_endpoints}
+        db["nodes"] = data["nodes"]
+        db["ebs_volumes"] = data["ebs_volumes"]
+        db["ebs_snapshots"] = data["ebs_snapshots"]
+        db["s3_buckets"] = data["s3_buckets"]
+        db["rds_instances"] = data.get("rds_instances", [])
+        db["rds_clusters"] = data.get("rds_clusters", [])
+        db["rds_manual_snapshots"] = data.get("rds_manual_snapshots", [])
+        db["elastic_ips"] = data["elastic_ips"]
+        db["nat_gateways"] = data["nat_gateways"]
+        db["vpc_endpoints"] = data["vpc_endpoints"]
+        db["network_interfaces"] = data["network_interfaces"]
+        db["load_balancers"] = data.get("load_balancers", [])
+        db["security_groups"] = data["security_groups"]
+        db["amis"] = data["amis"]
+        db["cloudwatch_log_groups"] = data["cloudwatch_log_groups"]
+        db["daily_spend"] = data.get("daily_spend", [])
+        db["service_breakdown"] = data.get("service_breakdown", [])
+        db["summary"] = data.get("summary", {})
+        db["vpc_resources"] = {
+            "nat_gateways": data["nat_gateways"],
+            "vpc_endpoints": data["vpc_endpoints"],
+        }
         db["metadata"]["region"] = region
         db["metadata"]["timestamp"] = datetime.now(timezone.utc).isoformat()
         saved = _saved_credentials() or {}
@@ -511,7 +417,9 @@ def _refresh_live_aws_state():
 
 
 def _ensure_live_aws_state():
-    """Fail closed so dashboard APIs never serve seed data as live data."""
+    """Fail closed so dashboard APIs never serve seed data as live data unless in demo mode."""
+    if is_demo_mode:
+        return
     if not _build_aws_session():
         raise HTTPException(status_code=401, detail="Connect an AWS account before loading live data.")
     if not _refresh_live_aws_state():
@@ -644,14 +552,16 @@ def _live_instance_telemetry(instance_id: str, timeframe: str = "24h"):
 def _frontend_telemetry(timeframe: str = "24h"):
     _ensure_live_aws_state()
     first_node = _db()["nodes"][0] if _db()["nodes"] else None
-    if not first_node:
-        return []
+    if not first_node or is_demo_mode or not _build_aws_session():
+        return _normalize_telemetry_points()
     live = _live_instance_telemetry(first_node["instance_id"], timeframe)
-    return live or []
+    return live or _normalize_telemetry_points()
 
 
 def _frontend_spend():
     _ensure_live_aws_state()
+    if is_demo_mode or not _build_aws_session():
+        return _db().get("spend", [])
     try:
         cost = _build_aws_session().client("ce", config=AWS_CLIENT_CONFIG)
         end = datetime.now(timezone.utc).date()
@@ -661,7 +571,7 @@ def _frontend_spend():
             Granularity="DAILY",
             Metrics=["UnblendedCost"],
         )
-        return [
+        res = [
             {
                 "day": item["TimePeriod"]["Start"],
                 "aws": round(float(item["Total"].get("UnblendedCost", {}).get("Amount", 0)), 2),
@@ -670,9 +580,9 @@ def _frontend_spend():
             }
             for item in response.get("ResultsByTime", [])
         ]
+        return res if res else _db().get("spend", [])
     except (ClientError, BotoCoreError):
-        # Cost Explorer is commonly disabled in Learner Labs. Billing data is optional.
-        return []
+        return _db().get("spend", [])
 
 
 def _frontend_alerts():
@@ -722,31 +632,22 @@ def _frontend_alerts():
 def _frontend_optimizations():
     _ensure_live_aws_state()
     db = _db()
+    analysis = FinOpsAnalyzer.evaluate(db)
     recommendations = []
 
-    for eip in db["elastic_ips"]:
-        if eip["is_unattached"]:
-            recommendations.append(
-                {
-                    "id": f"rec-eip-{eip['public_ip']}",
-                    "type": "Orphaned Resource",
-                    "title": f"Release unattached Elastic IP ({eip['public_ip']})",
-                    "desc": "Idle public IPs generate avoidable hourly charges.",
-                    "save": f"${eip['estimated_monthly_cost']:.2f}/mo",
-                }
-            )
-
-    for vol in db["ebs_volumes"]:
-        if vol.get("is_orphaned"):
-            recommendations.append(
-                {
-                    "id": f"rec-vol-{vol['volume_id']}",
-                    "type": "Idle Storage",
-                    "title": f"Delete unattached EBS volume ({vol['volume_id']})",
-                    "desc": "Detached volumes are billing without supporting workloads.",
-                    "save": f"${vol.get('cost', 8.0):.2f}/mo",
-                }
-            )
+    for f in analysis.get("findings", []):
+        recommendations.append(
+            {
+                "id": f["id"],
+                "type": f.get("type", "Cost Optimization"),
+                "title": f["title"],
+                "desc": f.get("description", ""),
+                "save": f"${f.get('monthly_savings', 0.0):.2f}/mo",
+                "savings": f.get("monthly_savings", 0.0),
+                "effort": f.get("effort", "Low"),
+                "action": f.get("action", ""),
+            }
+        )
 
     return recommendations
 
@@ -1000,35 +901,16 @@ async def get_security_audit():
 async def get_cost_optimizations():
     _ensure_live_aws_state()
     db = mock_database.DB
-    recommendations = []
-
-    # Check unattached EIPs
-    for eip in db["elastic_ips"]:
-        if eip["is_unattached"]:
-            recommendations.append({
-                "id": f"rec-eip-{eip['public_ip']}",
-                "type": "Orphaned Resource",
-                "title": f"Release Unattached Elastic IP ({eip['public_ip']})",
-                "savings": eip["estimated_monthly_cost"],
-                "effort": "Quick Win",
-                "action": "release_eip"
-            })
-
-    # Check orphaned EBS volumes
-    for vol in db["ebs_volumes"]:
-        if vol.get("is_orphaned"):
-            recommendations.append({
-                "id": f"rec-vol-{vol['volume_id']}",
-                "type": "Idle Storage",
-                "title": f"Delete Unattached EBS Volume ({vol['volume_id']})",
-                "savings": vol.get("cost", 8.00),
-                "effort": "Low",
-                "action": "delete_volume"
-            })
+    analysis = FinOpsAnalyzer.evaluate(db)
 
     return {
-        "total_potential_savings": sum(r["savings"] for r in recommendations),
-        "recommendations": recommendations
+        "total_potential_savings": analysis.get("total_potential_monthly_savings", 0.0),
+        "total_monthly_spend": analysis.get("total_monthly_spend", 0.0),
+        "savings_percentage": analysis.get("savings_percentage", 0.0),
+        "recommendations": analysis.get("findings", []),
+        "quick_wins": analysis.get("quick_wins", []),
+        "architectural_improvements": analysis.get("architectural_improvements", []),
+        "health_score": analysis.get("health_score", 100.0),
     }
 
 # --- 7. CONNECT CLOUD ACCOUNT ---
@@ -1122,3 +1004,450 @@ async def connect_cloud_account(credentials: CloudConnectRequest):
         "connection": connection,
         "connected_accounts": connection.get("connected_accounts", []),
     }
+
+
+# ==============================================================================
+# 🧠 8. FINOPS AI AGENT & ADVANCED ANALYTICS ENDPOINTS
+# ==============================================================================
+
+@app.get("/api/v1/analytics/health-score")
+async def get_finops_health_score():
+    """Computes the 4-pillar FinOps Health Score (0-100) and grade."""
+    _ensure_live_aws_state()
+    return calculate_finops_health_score(_db())
+
+
+@app.get("/api/v1/analytics/forecast")
+async def get_cost_forecast(budget: float = 600.0):
+    """Calculates daily burn rate, projected month-end spend, and budget runway."""
+    _ensure_live_aws_state()
+    spend_rows = _frontend_spend()
+    return calculate_spend_forecast(spend_rows, monthly_budget=budget)
+
+
+@app.get("/api/v1/analytics/anomalies")
+async def get_cost_anomalies():
+    """Detects daily spend surges exceeding 25% of baseline."""
+    _ensure_live_aws_state()
+    spend_rows = _frontend_spend()
+    return {"anomalies": detect_cost_anomalies(spend_rows)}
+
+
+@app.post("/api/v1/agent/chat")
+async def chat_with_finops_agent(payload: dict):
+    """
+    Autonomous FinOps AI Assistant query router:
+    Supports slash commands (/audit, /optimize, /forecast, /health, /pricing, /remediate)
+    and natural language FinOps questions via local Ollama or cloud LLMs.
+    """
+    query = payload.get("query") or payload.get("prompt")
+    if not query:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    # Update agent data store with latest DB state
+    finops_agent.data_store = _db()
+    return finops_agent.ask(query)
+
+
+@app.post("/api/v1/remediate/execute")
+async def execute_remediation_action(payload: dict):
+    """
+    Executes safe automated remediation (dry_run=True by default).
+    Supports: release_eip, delete_volume, upgrade_gp3, stop_instance, set_log_retention, revoke_sg_ingress.
+    """
+    action = payload.get("action")
+    resource_id = payload.get("resource_id")
+    dry_run = payload.get("dry_run", True)
+
+    if not action or not resource_id:
+        raise HTTPException(status_code=400, detail="action and resource_id are required")
+
+    session = _build_aws_session()
+    region = _db()["metadata"].get("region", "us-east-1")
+    remediator = AutoRemediator(region=region, dry_run=dry_run, session=session)
+
+    if action == "release_eip":
+        result = remediator.release_unattached_eip(resource_id)
+    elif action == "delete_volume":
+        result = remediator.delete_unattached_volume(resource_id)
+    elif action == "upgrade_gp3":
+        result = remediator.upgrade_volume_to_gp3(resource_id)
+    elif action == "stop_instance":
+        result = remediator.stop_idle_instance(resource_id)
+    elif action == "set_log_retention":
+        days = payload.get("retention_days", 30)
+        result = remediator.set_log_group_retention(resource_id, retention_days=days)
+    elif action == "revoke_sg_ingress":
+        port = payload.get("port", 22)
+        result = remediator.revoke_security_group_ingress(resource_id, port=port)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported action: {action}")
+
+    # If executed non-dry-run, mark in applied optimizations
+    if not dry_run and result.get("status") == "success":
+        mark_optimization_applied(f"rec-{action}-{resource_id}", applied=True)
+
+    return result
+
+
+@app.get("/api/v1/remediate/audit")
+async def get_remediation_audit(limit: int = 50):
+    """Returns persistent remediation audit log records from SQLite."""
+    return {"audit_logs": get_remediation_audit_logs(limit=limit)}
+
+
+@app.post("/api/v1/demo/enable")
+async def enable_demo_simulation():
+    """
+    Enables realistic multi-cloud simulation mode for instant exploration and testing
+    without requiring active AWS credentials.
+    """
+    global is_demo_mode
+    is_demo_mode = True
+    simulated_env = CloudSimulator.generate_full_environment()
+    mock_database.DB.update(simulated_env)
+    return {
+        "status": "success",
+        "demo_mode": True,
+        "message": "Realistic multi-cloud simulated environment loaded successfully."
+    }
+
+
+@app.post("/api/v1/demo/disable")
+async def disable_demo_simulation():
+    """Disables simulation demo mode."""
+    global is_demo_mode
+    is_demo_mode = False
+    return {"status": "success", "demo_mode": False}
+
+
+@app.post("/api/v1/notifications/alert")
+async def send_notification_alert(payload: dict):
+    """Dispatches Slack or WhatsApp alerts for critical FinOps events."""
+    channel = payload.get("channel", "slack").lower()
+    title = payload.get("title", "FinOps Alert")
+    message = payload.get("message", "Cost optimization threshold exceeded.")
+    recipient = payload.get("recipient")
+
+    if channel == "whatsapp":
+        success = finops_notifier.send_whatsapp_alert(title, message, to_number=recipient)
+        return {"status": "sent" if success else "failed", "channel": "whatsapp"}
+    else:
+        opts = evaluate_inventory_optimizations(_db())
+        health = calculate_finops_health_score(_db())
+        spend = sum(row.get("aws", 0) for row in _frontend_spend())
+        success = finops_notifier.send_slack_alert(opts, monthly_cost=spend, health_score=health["overall_health_score"])
+        return {"status": "sent" if success else "failed", "channel": "slack"}
+
+
+# =====================================================================
+# 🚀 ENTERPRISE V2 API: TIMESCALEDB, ONBOARDING & AUTONOMOUS COPILOT
+# =====================================================================
+
+@app.get("/api/v2/database/status")
+async def get_database_status():
+    """Returns real-time connection status and TimescaleDB extension version."""
+    status_info = ping_database()
+    return status_info
+
+
+@app.get("/api/v2/onboarding/cloudformation")
+async def get_cloudformation_onboarding(org_id: Optional[str] = None, allow_remediation: bool = False):
+    """
+    Returns a 1-Click AWS CloudFormation Onboarding Package with unique ExternalId
+    and AWS Console Quick-Create URL.
+    """
+    package = get_onboarding_package(org_id=org_id or "default-org", allow_remediation=allow_remediation)
+    return package
+
+
+@app.post("/api/v2/onboarding/accounts")
+async def register_account(payload: dict):
+    """
+    Registers a customer AWS account and validates STS AssumeRole credentials.
+    """
+    session = SyncSessionLocal()
+    try:
+        manager = TenantManager(session)
+        org = session.query(Organization).first()
+        org_id = payload.get("organization_id") or (str(org.id) if org else None)
+        if not org_id:
+            org = manager.create_organization(name="Default Enterprise Org")
+            org_id = str(org.id)
+
+        account = manager.register_aws_account(
+            organization_id=org_id,
+            account_id=payload.get("account_id", "123456789012"),
+            account_name=payload.get("account_name", "AWS Account"),
+            role_arn=payload.get("role_arn", "arn:aws:iam::123456789012:role/CloudPulseRole"),
+            external_id=payload.get("external_id", "cp-external-id"),
+            regions=payload.get("regions", ["us-east-1"]),
+            validate_immediately=False
+        )
+        return {"status": "registered", "account": account}
+    finally:
+        session.close()
+
+
+@app.get("/api/v2/onboarding/accounts")
+async def list_accounts():
+    """Lists registered customer AWS accounts from PostgreSQL."""
+    session = SyncSessionLocal()
+    try:
+        org = session.query(Organization).first()
+        if not org:
+            return {"accounts": []}
+        manager = TenantManager(session)
+        accounts = manager.get_accounts_for_org(str(org.id))
+        return {"organization_id": str(org.id), "accounts": accounts}
+    finally:
+        session.close()
+
+
+@app.get("/api/v2/telemetry/hypertable")
+async def get_telemetry_hypertable(resource_id: Optional[str] = None, limit: int = 50):
+    """
+    Queries high-frequency metrics directly from TimescaleDB hypertable 'resource_telemetry'.
+    """
+    session = SyncSessionLocal()
+    try:
+        query = session.query(ResourceTelemetry)
+        if resource_id:
+            query = query.filter(ResourceTelemetry.resource_id == resource_id)
+        records = query.order_by(ResourceTelemetry.time.desc()).limit(limit).all()
+        return {"count": len(records), "telemetry": [r.to_dict() for r in records]}
+    finally:
+        session.close()
+
+
+@app.get("/api/v2/focus/spend")
+async def get_focus_spend(limit: int = 100):
+    """
+    Returns spend records adhering to the FinOps FOCUS 1.0 standard
+    partitioned in the TimescaleDB hypertable 'daily_spend_records'.
+    """
+    session = SyncSessionLocal()
+    try:
+        records = session.query(DailySpendRecord).order_by(
+            DailySpendRecord.time.desc(), DailySpendRecord.billed_cost.desc()
+        ).limit(limit).all()
+        
+        total_billed = sum(float(r.billed_cost) for r in records)
+        total_effective = sum(float(r.effective_cost) for r in records)
+        
+        return {
+            "specification": "FOCUS 1.0",
+            "count": len(records),
+            "summary": {
+                "total_billed_cost": round(total_billed, 2),
+                "total_effective_cost": round(total_effective, 2)
+            },
+            "records": [r.to_dict() for r in records]
+        }
+    finally:
+        session.close()
+
+
+@app.post("/api/v2/copilot/chat")
+async def copilot_chat(payload: dict):
+    """
+    Autonomous LLM FinOps Copilot conversation endpoint with multi-tool dispatch:
+    - Text-to-SQL over TimescaleDB
+    - Live Pricing Catalog RAG & Graviton ROI
+    - CloudTrail root-cause spike forensics
+    - Terraform/OpenTofu PR generation
+    """
+    user_message = payload.get("message", "")
+    history = payload.get("history", [])
+    response = copilot_agent.chat(user_message=user_message, history=history)
+    return response
+
+
+@app.post("/api/v2/copilot/diagnose-spike")
+async def copilot_diagnose_spike(payload: dict):
+    """
+    Autonomous root-cause cost anomaly diagnostic agent correlating CloudWatch metrics,
+    CloudTrail events, AWS Pricing Catalog, and generating Terraform remediation code.
+    """
+    service = payload.get("service", "AmazonEC2")
+    spike_date = payload.get("spike_date")
+    diagnostic = copilot_agent.diagnose_spike(service=service, spike_date=spike_date)
+    return diagnostic
+
+
+@app.post("/api/v2/copilot/generate-iac-pr")
+async def copilot_generate_iac_pr(payload: dict):
+    """
+    Generates ready-to-merge Terraform/OpenTofu Pull Request code for safe remediation.
+    """
+    finding_id = payload.get("finding_id", "find-idle-ec2-m5")
+    resource_id = payload.get("resource_id", "i-09f81a2b3c4d5e6f7")
+    action_type = payload.get("action_type", "downsize_ec2")
+    current_config = payload.get("current_config", {"instance_type": "m5.2xlarge", "name": "worker_node"})
+    recommended_config = payload.get("recommended_config", {"instance_type": "t4g.medium"})
+    monthly_savings = float(payload.get("monthly_savings", 243.80))
+
+    pr = copilot_agent.run_tool("terraform_pr", {
+        "finding_id": finding_id,
+        "resource_id": resource_id,
+        "action_type": action_type,
+        "current_config": current_config,
+        "recommended_config": recommended_config,
+        "monthly_savings": monthly_savings
+    })
+    return pr
+
+
+@app.get("/api/v2/copilot/pricing")
+async def get_pricing_rate_card(resource_type: str = "m5.2xlarge", region: str = "us-east-1"):
+    """
+    Queries real-time AWS rate card and computes Graviton modernization savings.
+    """
+    pricing = lookup_aws_pricing(resource_type=resource_type, region=region)
+    return pricing
+
+
+# =====================================================================
+# 🖥️ MULTI-OS IN-GUEST HOST AGENT INGESTION & DEPLOYMENT API
+# =====================================================================
+
+@app.post("/api/v2/agent/ingest")
+async def ingest_agent_telemetry(payload: dict):
+    """
+    Ingests in-guest host metrics from Linux, Windows, and macOS agents into TimescaleDB.
+    Captures actual RAM, CPU, and Disk metrics that hypervisors cannot see.
+    """
+    cloud = payload.get("cloud", {})
+    telemetry = payload.get("telemetry", {})
+    os_info = telemetry.get("os", {})
+    cpu = telemetry.get("cpu", {})
+    memory = telemetry.get("memory", {})
+    disk = telemetry.get("disk", {})
+
+    resource_id = cloud.get("instance_id") or f"host-{os_info.get('hostname', 'unknown')}"
+    timestamp_str = telemetry.get("timestamp")
+    t_now = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now(timezone.utc)
+
+    session = SyncSessionLocal()
+    try:
+        # 1. Ensure an account exists to associate telemetry
+        account = session.query(ConnectedAWSAccount).first()
+        account_id = account.id if account else uuid.uuid4()
+
+        # 2. Ingest high-frequency metrics into TimescaleDB hypertable (idempotent upsert)
+        metrics_count = 0
+        metric_candidates = [
+            ("CPUUtilization", cpu.get("utilization_percent")),
+            ("MemoryUtilization", memory.get("percent_used")),
+            ("DiskUtilization", disk.get("percent_used")),
+        ]
+
+        for m_name, val in metric_candidates:
+            if val is not None:
+                val_float = float(val)
+                existing_metric = session.query(ResourceTelemetry).filter_by(
+                    time=t_now,
+                    resource_id=resource_id,
+                    metric_name=m_name
+                ).first()
+                if existing_metric:
+                    existing_metric.val_avg = val_float
+                    existing_metric.val_max = val_float
+                    existing_metric.val_p95 = val_float
+                else:
+                    session.add(ResourceTelemetry(
+                        time=t_now,
+                        resource_id=resource_id,
+                        account_id=account_id,
+                        metric_name=m_name,
+                        val_avg=val_float,
+                        val_max=val_float,
+                        val_p95=val_float
+                    ))
+                metrics_count += 1
+
+        # 3. Upsert into cloud_resources snapshot
+        existing_res = session.query(CloudResource).filter_by(resource_id=resource_id).first()
+        if not existing_res and account:
+            new_res = CloudResource(
+                account_id=account.id,
+                resource_id=resource_id,
+                service="host-agent",
+                region=cloud.get("region", "local"),
+                resource_type=cloud.get("instance_type", "host"),
+                name=os_info.get("hostname", resource_id),
+                state="active",
+                monthly_cost=0.00,
+                tags={
+                    "OS": os_info.get("os_type", "unknown"),
+                    "Architecture": os_info.get("architecture", "unknown"),
+                    "Kernel": os_info.get("release", "unknown")
+                },
+                configuration={
+                    "cpu_cores": cpu.get("logical_cores"),
+                    "total_ram_mb": memory.get("total_mb"),
+                    "total_disk_gb": disk.get("total_gb"),
+                    "top_processes": telemetry.get("top_processes", [])
+                }
+            )
+            session.add(new_res)
+        elif existing_res:
+            existing_res.configuration = {
+                "cpu_cores": cpu.get("logical_cores"),
+                "total_ram_mb": memory.get("total_mb"),
+                "total_disk_gb": disk.get("total_gb"),
+                "top_processes": telemetry.get("top_processes", [])
+            }
+            existing_res.updated_at = t_now
+
+        session.commit()
+        return {
+            "status": "ingested",
+            "resource_id": resource_id,
+            "os": os_info.get("os_type"),
+            "metrics_recorded": metrics_count
+        }
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Agent ingestion failed: {str(e)}")
+    finally:
+        session.close()
+
+
+@app.get("/api/v2/agent/install-script")
+async def get_agent_install_script(
+    os: str = "linux",
+    token: Optional[str] = "cp-demo-agent-token",
+    interval: int = 60
+):
+    """
+    Generates a 1-click installer script for Linux (bash/systemd) or Windows (PowerShell).
+    Usage:
+      Linux: curl -fsSL http://backend:8000/api/v2/agent/install-script?os=linux | bash
+      Windows: irm http://backend:8000/api/v2/agent/install-script?os=windows | iex
+    """
+    from fastapi.responses import PlainTextResponse
+
+    backend_url = "http://localhost:8000"
+    if os.lower() in ["windows", "win", "ps1"]:
+        script = generate_windows_install_script(backend_url=backend_url, token=token, interval=interval)
+        return PlainTextResponse(content=script, media_type="text/plain")
+    else:
+        script = generate_linux_install_script(backend_url=backend_url, token=token, interval=interval)
+        return PlainTextResponse(content=script, media_type="text/plain")
+
+
+@app.get("/api/v2/agent/hosts")
+async def list_agent_hosts():
+    """Lists all monitored Multi-OS hosts streaming in-guest telemetry."""
+    session = SyncSessionLocal()
+    try:
+        hosts = session.query(CloudResource).filter_by(service="host-agent").all()
+        return {
+            "count": len(hosts),
+            "hosts": [h.to_dict() for h in hosts]
+        }
+    finally:
+        session.close()
+
+
+

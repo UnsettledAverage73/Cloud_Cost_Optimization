@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: cloudpulse-timescaledb
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=cloudpulse_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgrespassword
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cloudpulse_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloudpulse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_HOST=timescaledb
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=cloudpulse_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgrespassword
+      - DATABASE_URL=postgresql://postgres:postgrespassword@timescaledb:5432/cloudpulse_db
+      - ASYNC_DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/cloudpulse_db
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_URL=http://ollama:11434/api
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM}
+      - WHATSAPP_ALERT_TO=${WHATSAPP_ALERT_TO}
+    volumes:
+      - ./backend/data:/app/backend/data
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ollama:
+        condition: service_started
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cloudpulse-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  timescaledb-data:
+  redis-data:
+  ollama-data:

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+const rawBackend = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+const backendUrl = rawBackend.startsWith('http://') || rawBackend.startsWith('https://')
+  ? rawBackend.replace(/\/$/, '')
+  : `https://${rawBackend.replace(/\/$/, '')}`
 
 function buildTarget(path: string[], search: string) {
   return `${backendUrl}/api/${path.join('/')}${search}`

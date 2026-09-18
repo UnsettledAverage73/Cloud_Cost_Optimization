@@ -1,0 +1,71 @@
+# =====================================================================
+# 🚀 Render.com Infrastructure Blueprint: CloudPulse Enterprise
+# Deploy: Connect your GitHub repository to Render -> 1-Click Blueprint
+# =====================================================================
+
+databases:
+  - name: cloudpulse-db
+    databaseName: cloudpulse_db
+    user: postgres
+    plan: free
+    region: oregon
+
+services:
+  # -------------------------------------------------------------------
+  # 1. CloudPulse Backend API (FastAPI + TimescaleDB/Postgres + Copilot)
+  # -------------------------------------------------------------------
+  - type: web
+    name: cloudpulse-backend
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: "./backend/render_build.sh"
+    startCommand: "cd backend && PYTHONPATH=. uvicorn main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: "/api/v2/database/status"
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cloudpulse-db
+          property: connectionString
+      - key: PYTHONPATH
+        value: "/opt/render/project/src/backend"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_SESSION_TOKEN
+        sync: false
+      - key: AWS_DEFAULT_REGION
+        value: us-east-1
+
+  # -------------------------------------------------------------------
+  # 2. CloudPulse Frontend Dashboard (Next.js 16 + React 19 + Tailwind)
+  # -------------------------------------------------------------------
+  - type: web
+    name: cloudpulse-frontend
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm run start -- -p $PORT"
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NEXT_TELEMETRY_DISABLED
+        value: 1
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: cloudpulse-backend
+          property: host

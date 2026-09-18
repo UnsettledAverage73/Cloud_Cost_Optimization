@@ -1,0 +1,124 @@
+# ☁️ CloudPulse: Autonomous FinOps & Multi-Cloud Cost Optimization Platform
+### *Autonomous Cloud Telemetry, Cost Anomaly Diagnostics & Automated FinOps Remediation*
+
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-High%20Performance-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-14%2B-black?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/Tests-10%20Passed-brightgreen)](backend/tests/)
+[![Standards](https://img.shields.io/badge/Compliance-AWS%20Well--Architected%20%7C%20FinOps%20Foundation-orange)](https://www.finops.org/)
+
+---
+
+## 📖 Overview
+
+**CloudPulse** is an enterprise-grade, autonomous cloud cost optimization and infrastructure security platform. Built on the architectural principles of high-reliability industrial monitoring (adapted directly from the **Sovereign Industrial Backbone** in `predictive_maintainance_system`), CloudPulse transforms raw multi-cloud telemetry (AWS CloudWatch, Azure Monitor, GCP Cloud Monitoring) into actionable FinOps savings and automated remediation.
+
+```mermaid
+graph TD
+    subgraph Level1_2 [Cloud Telemetry & Ingestion]
+        CloudInfra["Cloud Resources (EC2, RDS, EBS, S3, NAT, EIP)"] -->|Boto3 / CloudWatch API / Simulator| Ingest["Telemetry Ingestor & Simulation Engine"]
+        Ingest --> Analytics["FinOps Analytics Engine (Health Score, Rate-of-Spend, Spikes)"]
+    end
+
+    subgraph Level3_4 [Sovereign Brain & Knowledge Base]
+        Analytics --> FinOpsAI["FinOps Agent (Local Ollama / Groq / Mistral)"]
+        FinOpsAI <--> Pricing["Dynamic AWS Pricing Engine & Well-Architected Knowledge"]
+        FinOpsAI --> Remediate["Safe Automated Remediator (Dry-Run & Snapshots)"]
+    end
+
+    subgraph Level5_7 [Enterprise Command & Escalation]
+        Remediate --> NextJS["Next.js FinOps Control Dashboard"]
+        Remediate --> Ledger["SQLite Persistent Ledger & Audit Trail"]
+        Remediate --> Alerts["Slack Block Kit & Twilio WhatsApp Escalation"]
+    end
+```
+
+---
+
+## 🌟 Key Enterprise Capabilities
+
+- **⚡ FinOps 4-Pillar Health Score:** Instant 0–100 score across Compute Efficiency, Storage Optimization, Network Cleanliness, and Security Posture.
+- **📈 Rate-of-Spend Acceleration & Anomaly Detection:** Identifies spend surges (>25% spike over 7-day moving average) before invoices spike.
+- **🤖 Autonomous FinOps AI Agent:** Local-first inference via **Ollama (Qwen 2.5 / Mistral)** with resilient fallback to **Groq (Llama 3.1 8B)** and **Mistral AI**, featuring interactive slash commands (`/audit`, `/optimize`, `/forecast`, `/health`, `/pricing`, `/remediate`).
+- **🛡️ Safe Automated Remediation:** 1-click or automated policy fixes with dry-run protection, automatic EBS safety snapshotting before deletion, gp2 to gp3 migrations, and 0.0.0.0/0 port revocations.
+- **📚 Persistent Ledger & Audit Trail:** SQLite database storing infrastructure snapshots, remediation execution history, and optimization lifecycles.
+- **🔔 Multi-Channel Escalation:** Rich Slack Block Kit payloads and automated WhatsApp alerts for critical budget overruns and open security ports.
+- **🎮 Simulation & Demo Engine:** Full standalone offline testing and interactive demo mode without requiring live AWS credentials.
+
+---
+
+## 💬 Slash Commands
+
+Interact with the FinOps Agent via the `/api/v1/agent/chat` endpoint or web terminal:
+
+| Slash Command | Description |
+| :--- | :--- |
+| `/audit` | Runs a comprehensive FinOps and security audit, outputting overall health and potential savings. |
+| `/optimize` | Lists all prioritized savings recommendations categorized by Quick Wins and architectural changes. |
+| `/forecast` | Calculates daily burn rate, projected month-end bill, budget status, and runway days. |
+| `/health` | Breaks down the 4-pillar FinOps health score (Compute, Storage, Network, Security). |
+| `/pricing [type] [region]` | Looks up real-time hourly and monthly On-Demand pricing for any instance type and AWS region. |
+| `/remediate [id]` | Evaluates and tests safe automated remediations in dry-run mode. |
+| `/help` | Lists all available FinOps agent commands. |
+
+---
+
+## 📂 Repository File Structure
+
+```
+Cloud_Cost_Optimization/
+├── backend/
+│   ├── main.py                        # FastAPI Backend & Compatibility Endpoints
+│   ├── schemas.py                     # Pydantic Schemas for Ingestion & Connections
+│   ├── mock_database.py               # In-Memory Active State Cache
+│   ├── requirements.txt               # Backend Python Dependencies
+│   │
+│   ├── data/
+│   │   ├── finops_database.py         # SQLite Persistent Ledger & Audit Log
+│   │   └── cloud_simulator.py         # Diurnal Telemetry & Multi-Cloud Resource Simulator
+│   │
+│   ├── services/
+│   │   ├── finops_agent.py            # Hybrid AI Agent (Ollama, Groq, Mistral) & Slash Commands
+│   │   ├── cost_analytics.py          # 4-Pillar Health Score, Anomaly Detection & Forecasting
+│   │   ├── pricing_service.py         # Dynamic AWS Pricing API Client & Catalog
+│   │   ├── remediator.py              # Automated Safe Remediator with Safety Snapshots
+│   │   └── notifier.py                # Slack Block Kit & Twilio WhatsApp Alert Dispatcher
+│   │
+│   └── tests/
+│       └── test_finops_system.py      # Comprehensive Test Suite (10/10 Passing)
+│
+├── frontend/                          # Next.js Full-Stack Web Dashboard (React, Tailwind)
+│   ├── app/page.tsx                   # Enterprise Cloud Dashboard Tabs & Control Center
+│   └── package.json                   # Frontend Dependencies & Scripts
+│
+├── Cloud_Optimization(1).ipynb        # Original Research & Analysis Notebook
+├── Dockerfile                         # Production Backend Container
+└── docker-compose.yml                 # Multi-Service Orchestration (Backend + Ollama)
+```
+
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Local Testing & Pytest Suite
+
+Run the full automated test suite:
+
+```bash
+cd backend
+pytest tests/test_finops_system.py -v
+```
+
+### 2. Run Backend Server
+
+```bash
+cd backend
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 3. Launch with Docker Compose
+
+```bash
+docker-compose up --build
+```
