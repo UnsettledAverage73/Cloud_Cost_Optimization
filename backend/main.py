@@ -70,6 +70,8 @@ try:
     from engines.focus_spec import FOCUSNormalizer
     from services.vector_store import vector_knowledge_store
     from services.query_cache import query_cache
+    from services.gitops_engine import gitops_engine
+    from services.notification_engine import notification_engine
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -86,6 +88,8 @@ except ImportError:
     from backend.engines.focus_spec import FOCUSNormalizer
     from backend.services.vector_store import vector_knowledge_store
     from backend.services.query_cache import query_cache
+    from backend.services.gitops_engine import gitops_engine
+    from backend.services.notification_engine import notification_engine
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1517,9 +1521,100 @@ async def get_copilot_status():
             "/api/v2/fleet/accounts",
             "/api/v2/fleet/summary",
             "/api/v2/fleet/scan",
-            "/api/v2/fleet/focus-records"
+            "/api/v2/fleet/focus-records",
+            "/api/v2/gitops/pr",
+            "/api/v2/gitops/audit-log",
+            "/api/v2/notifications/slack",
+            "/api/v2/notifications/teams"
         ]
     }
+
+
+# =====================================================================
+# 🚀 GITOPS AUTONOMOUS REMEDIATION & NOTIFICATION APIS
+# =====================================================================
+
+@app.post("/api/v2/gitops/pr")
+async def create_gitops_remediation_pr(payload: dict):
+    """Creates a production-ready GitOps Pull Request package."""
+    resource_id = payload.get("resource_id")
+    if not resource_id:
+        raise HTTPException(status_code=400, detail="resource_id is required")
+    action = payload.get("action", "downsize")
+    from_type = payload.get("from_type")
+    to_type = payload.get("to_type")
+    environment = payload.get("environment", "production")
+    repo_name = payload.get("repo_name", "infrastructure/aws-workloads")
+    monthly_savings = float(payload.get("monthly_savings", 0.0))
+
+    pr_package = gitops_engine.create_remediation_pr(
+        resource_id=resource_id,
+        action=action,
+        from_type=from_type,
+        to_type=to_type,
+        environment=environment,
+        repo_name=repo_name,
+        monthly_savings=monthly_savings
+    )
+    return pr_package
+
+
+@app.get("/api/v2/gitops/audit-log")
+async def get_gitops_audit_log(limit: int = 50):
+    """Returns immutable audit trail of all GitOps PRs and remediations."""
+    return {"count": len(gitops_engine.audit_log), "audit_trail": gitops_engine.get_audit_trail(limit)}
+
+
+@app.post("/api/v2/notifications/slack")
+async def send_slack_finops_alert(payload: dict):
+    """Generates and optionally dispatches Slack Block Kit alert."""
+    resource_id = payload.get("resource_id", "unknown-resource")
+    finding_title = payload.get("finding_title", "Idle Cloud Resource Detected")
+    severity = payload.get("severity", "HIGH")
+    current_spend = float(payload.get("current_monthly_spend", 0.0))
+    savings = float(payload.get("potential_monthly_savings", 0.0))
+    action = payload.get("recommended_action", "Downsize or stop resource")
+    webhook_url = payload.get("webhook_url")
+
+    card = notification_engine.format_slack_alert(
+        resource_id=resource_id,
+        finding_title=finding_title,
+        severity=severity,
+        current_monthly_spend=current_spend,
+        potential_monthly_savings=savings,
+        recommended_action=action
+    )
+
+    dispatched = False
+    if webhook_url:
+        dispatched = notification_engine.dispatch_webhook(webhook_url, card)
+
+    return {"status": "success", "dispatched": dispatched, "payload": card}
+
+
+@app.post("/api/v2/notifications/teams")
+async def send_teams_finops_alert(payload: dict):
+    """Generates and optionally dispatches Microsoft Teams Adaptive Card."""
+    resource_id = payload.get("resource_id", "unknown-resource")
+    finding_title = payload.get("finding_title", "Idle Cloud Resource Detected")
+    severity = payload.get("severity", "HIGH")
+    savings = float(payload.get("potential_monthly_savings", 0.0))
+    action = payload.get("recommended_action", "Downsize or stop resource")
+    webhook_url = payload.get("webhook_url")
+
+    card = notification_engine.format_teams_adaptive_card(
+        resource_id=resource_id,
+        finding_title=finding_title,
+        severity=severity,
+        potential_monthly_savings=savings,
+        recommended_action=action
+    )
+
+    dispatched = False
+    if webhook_url:
+        dispatched = notification_engine.dispatch_webhook(webhook_url, card)
+
+    return {"status": "success", "dispatched": dispatched, "payload": card}
 
 
 # =====================================================================
