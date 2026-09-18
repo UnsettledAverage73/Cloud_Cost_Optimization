@@ -6,4 +6,6 @@ __pycache__/
 frontend/.next/
 frontend/out/
 *.db
-
+*.egg-info/
+test_report.html
+test_report.json

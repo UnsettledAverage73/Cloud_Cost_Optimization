@@ -99,22 +99,92 @@ Cloud_Cost_Optimization/
 
 ---
 
-## 🚀 Quick Start Guide
+## 🌐 Live Production Deployments (Render.com)
 
-### 1. Local Testing & Pytest Suite
+- **Frontend Dashboard (Static CDN):** [https://cloud-cost-optimization-frontend.onrender.com/](https://cloud-cost-optimization-frontend.onrender.com/)
+- **Backend Web Service (FastAPI):** [https://cloud-cost-optimization.onrender.com/](https://cloud-cost-optimization.onrender.com/)
+- **Database Engine:** Render Managed PostgreSQL 18.6 with TimescaleDB 2.23.0
 
-Run the full automated test suite:
+---
+
+## 🛠️ User & Developer CLI (`cloudpulse`)
+
+CloudPulse includes a unified CLI for FinOps practitioners, operators, and developers to audit costs, run in-guest telemetry scans, chat with the AI Copilot, and execute automated backend tests.
+
+### Installation
 
 ```bash
-cd backend
-pytest tests/test_finops_system.py -v
+# Install editable CLI globally or inside virtualenv
+pip install -e .
+
+# Or run directly from bin/
+./bin/cloudpulse --help
 ```
 
-### 2. Run Backend Server
+### Common Commands for Users
+
+```bash
+# 1. Inspect Backend Connection & Local Host Specs
+cloudpulse status
+
+# 2. Run Comprehensive Cloud Cost & Waste Audit
+cloudpulse audit
+
+# 3. Perform In-Guest Scan & Instant Rightsizing Assessment on Local Machine
+cloudpulse scan
+
+# 4. Ask the Autonomous FinOps AI Copilot
+cloudpulse ask "What are the top 3 ways to reduce our AWS compute bill?"
+cloudpulse ask "/optimize"
+cloudpulse ask "/health"
+
+# 5. Generate Terraform Pull Request for Rightsizing
+cloudpulse iac i-036358db85d245e3a --action rightsize --from-type m5.2xlarge --to-type m6g.xlarge
+
+# 6. Generate 1-Click AWS Account Onboarding CloudFormation Link
+cloudpulse onboard --org-id "my-company"
+
+# 7. Push In-Guest Telemetry to TimescaleDB
+cloudpulse push
+
+# 8. Run Continuous In-Guest Telemetry Daemon
+cloudpulse daemon --interval 30
+```
+
+---
+
+## 🧪 Complete Automated Backend Testing Tool
+
+CloudPulse comes with an automated synthetic health & regression testing runner (`cloudpulse-test`) that validates all 25+ production API endpoints, measures p50/p95 response latencies, and exports HTML/JSON reports.
+
+```bash
+# Run complete test suite against live Render production:
+cloudpulse test https://cloud-cost-optimization.onrender.com
+
+# Export interactive HTML dashboard & JSON reports:
+cloudpulse-test --html test_report.html --json test_report.json https://cloud-cost-optimization.onrender.com
+
+# Run full pytest test suite (44/44 tests passing):
+pytest backend/tests/ -v
+```
+
+---
+
+## 🚀 Local Development
+
+### 1. Run Backend Server
 
 ```bash
 cd backend
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 2. Run Frontend Dashboard
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
 ### 3. Launch with Docker Compose
@@ -122,3 +192,4 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 docker-compose up --build
 ```
+
