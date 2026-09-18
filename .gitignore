@@ -1,1 +1,9 @@
 backend/.cloudpulse_state.json
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+frontend/.next/
+frontend/out/
+*.db
+

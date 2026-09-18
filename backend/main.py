@@ -58,10 +58,28 @@ except ImportError:
 
 copilot_agent = FinOpsAutonomousCopilot()
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize database tables and seed demo data on startup if reachable
+    try:
+        try:
+            from database.init_db import initialize_database, seed_demo_data
+        except ImportError:
+            from backend.database.init_db import initialize_database, seed_demo_data
+        initialize_database()
+        seed_demo_data()
+        print("✅ Database schema and seed data initialized successfully.")
+    except Exception as e:
+        print(f"⚠️ Startup database initialization notice: {e}")
+    yield
+
 app = FastAPI(
     title="CloudPulse FinOps & Telemetry API",
     version="2.0.0",
-    description="Enterprise backend API powering multi-cloud cost optimization, TimescaleDB telemetry, and autonomous AI copilot."
+    description="Enterprise backend API powering multi-cloud cost optimization, TimescaleDB telemetry, and autonomous AI copilot.",
+    lifespan=lifespan,
 )
 
 # Enable CORS for Next.js / React / v0.dev frontend connections
