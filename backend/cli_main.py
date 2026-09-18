@@ -854,6 +854,165 @@ def cmd_apply(args):
     out.append("=" * 88)
     out.append(f"  ✨ Review the PR and merge to let Terraform Cloud/CI apply the infrastructure change.")
     out.append("=" * 88 + "\n")
+# ==========================================
+# COMMAND: anomalies (Real-Time Cost Anomaly Detection)
+# ==========================================
+def cmd_anomalies(args):
+    """
+    Scans and displays real-time cloud spend anomalies, runaway idle resources,
+    and unassociated infrastructure incurring waste.
+    """
+    severity = getattr(args, "severity", "all") or "all"
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    backend_url = get_backend_url(getattr(args, "url", None))
+
+    try:
+        url = f"{backend_url}/api/v2/analytics/anomalies"
+        if severity != "all":
+            url += f"?severity={severity}"
+        data = http_json(url, timeout=4.0)
+    except Exception:
+        try:
+            from services.anomaly_detector import anomaly_detector
+            from engines.focus_spec import FOCUSNormalizer
+            try:
+                from mock_database import DB
+            except ImportError:
+                from backend.mock_database import DB
+        except ImportError:
+            from backend.services.anomaly_detector import anomaly_detector
+            from backend.engines.focus_spec import FOCUSNormalizer
+            from backend.mock_database import DB
+
+        inv = DB
+        recs = FOCUSNormalizer.convert_inventory_to_focus(inv)
+        anomaly_detector.scan_inventory_and_focus(inv, recs)
+        anomalies = anomaly_detector.get_anomalies(severity)
+        data = {
+            "count": len(anomalies),
+            "severity_filter": severity,
+            "anomalies": anomalies
+        }
+
+    if fmt == "json":
+        emit_output(json.dumps(data, indent=2), output_dest)
+        return
+
+    anomalies = data.get("anomalies", [])
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 90)
+    out.append(f"     🚨 CLOUDPULSE FINOPS COST ANOMALY DETECTION ({len(anomalies)} Findings)")
+    out.append("=" * 90)
+    if not anomalies:
+        out.append(f"  {GREEN}✅ No cost anomalies detected exceeding current threshold ({severity.upper()}).{RESET}")
+        out.append("=" * 90 + "\n")
+        emit_output("\n".join(out), output_dest)
+        return
+
+    out.append(f"  {'SEVERITY':<10} {'RESOURCE ID':<22} {'TYPE':<22} {'MONTHLY IMPACT':<16} {'RCA SUMMARY'}")
+    out.append("  " + "-" * 88)
+    for a in anomalies:
+        sev = a.get("severity", "LOW").upper()
+        if sev == "CRITICAL":
+            sev_str = f"{RED}{BOLD}CRITICAL{RESET}"
+        elif sev == "HIGH":
+            sev_str = f"{YELLOW}{BOLD}HIGH{RESET}"
+        elif sev == "MEDIUM":
+            sev_str = f"{CYAN}MEDIUM{RESET}"
+        else:
+            sev_str = f"LOW"
+
+        rid = (a.get("resource_id") or "unknown")[:20]
+        atype = (a.get("anomaly_type") or "UNKNOWN")[:20]
+        impact = f"${a.get('financial_impact_monthly', 0.0):.2f}/mo"
+        rca = (a.get("root_cause") or "")[:45] + "..."
+        out.append(f"  {sev_str:<19} {rid:<22} {atype:<22} {impact:<16} {rca}")
+    out.append("=" * 90)
+    out.append("  💡 Remediate an anomaly safely with: cloudpulse apply <resource_id> --dry-run")
+    out.append("=" * 90 + "\n")
+    emit_output("\n".join(out), output_dest)
+
+
+# ==========================================
+# COMMAND: forecast (Spend & Run-Rate Forecaster)
+# ==========================================
+def cmd_forecast(args):
+    """
+    Projects future cloud spend using Holt-Winters linear trend exponential smoothing
+    and evaluates budget burn-rate and breach risks.
+    """
+    days = int(getattr(args, "days", 30) or 30)
+    budget = float(getattr(args, "budget", 100.0) or 100.0)
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    backend_url = get_backend_url(getattr(args, "url", None))
+
+    try:
+        url = f"{backend_url}/api/v2/analytics/forecast?days={days}&budget={budget}"
+        data = http_json(url, timeout=4.0)
+    except Exception:
+        try:
+            from services.spend_forecaster import spend_forecaster
+            try:
+                from mock_database import DB
+            except ImportError:
+                from backend.mock_database import DB
+        except ImportError:
+            from backend.services.spend_forecaster import spend_forecaster
+            from backend.mock_database import DB
+
+        inv = DB
+        data = spend_forecaster.forecast_from_inventory(inv, forecast_days=days, monthly_budget=budget)
+
+    if fmt == "json":
+        emit_output(json.dumps(data, indent=2), output_dest)
+        return
+
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 90)
+    out.append(f"     📈 CLOUDPULSE PREDICTIVE SPEND FORECAST ({days}-Day Horizon | Holt-Winters)")
+    out.append("=" * 90)
+    out.append(f"  • Daily Spend Run-Rate       : {BOLD}${data.get('current_daily_run_rate', 0.0):.2f} / day{RESET}")
+    out.append(f"  • Projected Month-End Spend  : {CYAN}{BOLD}${data.get('projected_monthly_spend', 0.0):.2f}{RESET}")
+    out.append(f"  • Monthly Budget Threshold   : ${data.get('monthly_budget', budget):.2f}")
+
+    util = data.get('budget_utilization_pct', 0.0)
+    if util > 100.0:
+        util_str = f"{RED}{BOLD}{util:.1f}% (OVER BUDGET){RESET}"
+    elif util > 80.0:
+        util_str = f"{YELLOW}{BOLD}{util:.1f}% (WARNING){RESET}"
+    else:
+        util_str = f"{GREEN}{BOLD}{util:.1f}% (HEALTHY){RESET}"
+
+    out.append(f"  • Budget Utilization         : {util_str}")
+
+    breached = data.get("budget_breach_predicted", False)
+    if breached:
+        breach_day = data.get("predicted_breach_day", "N/A")
+        out.append(f"  • Budget Breach Warning      : {RED}{BOLD}EXCEEDED AT DAY {breach_day}{RESET}")
+    else:
+        out.append(f"  • Budget Breach Status       : {GREEN}SAFE (Within Allocated Limits){RESET}")
+
+    out.append("-" * 90)
+    out.append(f"  {'DAY AHEAD':<12} {'PROJECTED DAILY':<18} {'CUMULATIVE RUN':<18} {'80% CONFIDENCE RANGE'}")
+    out.append("  " + "-" * 88)
+    traj = data.get("daily_trajectory", [])[:10]
+    for d in traj:
+        day_str = f"Day +{d.get('day_ahead')}"
+        daily_str = f"${d.get('projected_daily_spend', 0.0):.2f}"
+        cum_str = f"${d.get('cumulative_projected_spend', 0.0):.2f}"
+        range_str = f"${d.get('lower_bound_80', 0.0):.2f} - ${d.get('upper_bound_80', 0.0):.2f}"
+        out.append(f"  {day_str:<12} {daily_str:<18} {cum_str:<18} {range_str}")
+
+    if len(data.get("daily_trajectory", [])) > 10:
+        out.append(f"  ... [{len(data.get('daily_trajectory', [])) - 10} additional days omitted from table preview]")
+
+    out.append("=" * 90)
+    out.append("  💡 Tip: Query specific anomaly causes with: cloudpulse anomalies")
+    out.append("=" * 90 + "\n")
     emit_output("\n".join(out), output_dest)
 
 # ==========================================
@@ -2065,6 +2224,21 @@ def main():
     p_apply.add_argument("--output", "-o", default=None, help="File path to save the generated PR package or diff")
     p_apply.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
 
+    # anomalies (Real-Time Cost Anomaly Detection)
+    p_anom = subparsers.add_parser("anomalies", parents=[common_parser], help="Detect real-time spend spikes, runaway compute, and unattached resource waste")
+    p_anom.add_argument("--severity", "-s", choices=["all", "critical", "high", "medium", "low"], default="all", help="Severity filter (default: all)")
+    p_anom.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_anom.add_argument("--output", "-o", default=None, help="File path to save the generated report")
+    p_anom.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
+    # forecast (Predictive Spend Forecaster & Run-Rate)
+    p_fc = subparsers.add_parser("forecast", parents=[common_parser], help="Predictive cloud spend forecasting using Holt-Winters linear trend smoothing")
+    p_fc.add_argument("--days", "-d", type=int, default=30, help="Forecast projection horizon in days (default: 30)")
+    p_fc.add_argument("--budget", "-b", type=float, default=100.0, help="Monthly budget threshold in USD (default: 100.0)")
+    p_fc.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_fc.add_argument("--output", "-o", default=None, help="File path to save the generated report")
+    p_fc.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -2080,6 +2254,8 @@ def main():
         "ask": cmd_ask,
         "iac": cmd_iac,
         "apply": cmd_apply,
+        "anomalies": cmd_anomalies,
+        "forecast": cmd_forecast,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,

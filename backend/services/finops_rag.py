@@ -165,6 +165,29 @@ class FinOpsRAGPipeline:
             except Exception as e:
                 logger.debug(f"Vector search exception: {e}")
 
+        # Anomaly and Forecasting Signals
+        anomalies = []
+        forecast = None
+        if query_str and any(w in query_str for w in ["anomal", "spike", "surge", "idle", "waste"]):
+            try:
+                try:
+                    from services.anomaly_detector import anomaly_detector
+                except ImportError:
+                    from backend.services.anomaly_detector import anomaly_detector
+                anomalies = anomaly_detector.get_anomalies()
+            except Exception:
+                pass
+
+        if query_str and any(w in query_str for w in ["forecast", "budget", "burn", "trend", "project", "run rate", "run-rate"]):
+            try:
+                try:
+                    from services.spend_forecaster import spend_forecaster
+                except ImportError:
+                    from backend.services.spend_forecaster import spend_forecaster
+                forecast = spend_forecaster.forecast_from_inventory(inv, forecast_days=30)
+            except Exception:
+                pass
+
         return {
             "metadata": metadata,
             "domains": list(domain_matches) if domain_matches else ["all"],
@@ -178,6 +201,8 @@ class FinOpsRAGPipeline:
             "pricing_rate_cards": pricing_rate_cards,
             "fleet_summary": fleet_summary,
             "semantic_policies": semantic_policies,
+            "anomalies": anomalies,
+            "forecast": forecast,
             "total_retrieved_items": (
                 len(retrieved_nodes) + len(retrieved_vols) + len(retrieved_eips) +
                 len(retrieved_sgs) + len(retrieved_logs)
@@ -407,6 +432,27 @@ class FinOpsRAGPipeline:
                 knowledge_chunks.append(
                     f"- *{p['title']}* (Category: {p.get('category')}, Relevance: {p.get('similarity_score', 0):.2f}):\n  {p['content']}"
                 )
+
+        # Augment Real-Time Cost Anomalies
+        anomalies = retrieved.get("anomalies", [])
+        if anomalies:
+            knowledge_chunks.append("\n**Real-Time FinOps Cost Anomalies & Idle Spikes Detected:**")
+            for a in anomalies[:4]:
+                knowledge_chunks.append(
+                    f"- [{a.get('severity', 'HIGH')}] `{a.get('resource_id')}` ({a.get('anomaly_type')}): Monthly Waste ${a.get('financial_impact_monthly', 0.0):.2f}/mo. Root Cause: {a.get('root_cause')}"
+                )
+
+        # Augment Spend Forecast & Run-Rate
+        forecast = retrieved.get("forecast")
+        if forecast:
+            knowledge_chunks.append("\n**Predictive Spend Forecast & Budget Trajectory (Holt-Winters):**")
+            breach_str = f"EXCEEDED ON DAY {forecast.get('predicted_breach_day')}" if forecast.get("budget_breach_predicted") else "Within Allocated Limit"
+            knowledge_chunks.append(
+                f"- Daily Run-Rate: ${forecast.get('current_daily_run_rate', 0.0):.2f}/day | Projected Month Total: ${forecast.get('projected_monthly_spend', 0.0):.2f}"
+            )
+            knowledge_chunks.append(
+                f"- Budget: ${forecast.get('monthly_budget', 0.0):.2f} ({forecast.get('budget_utilization_pct', 0.0):.1f}% utilization) -> Risk Status: {breach_str}"
+            )
 
         knowledge_chunks.append(
             f"\n**AGGREGATE QUANTIFIED RECOVERABLE SAVINGS:**\n"

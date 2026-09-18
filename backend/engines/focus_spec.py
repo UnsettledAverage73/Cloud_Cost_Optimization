@@ -137,3 +137,6 @@ class FOCUSNormalizer:
         if "database" in s or "rds" in s or "aurora" in s:
             return "Database"
         return "Other"
+
+    # Convenient aliases
+    convert_inventory_to_focus = normalize_inventory
