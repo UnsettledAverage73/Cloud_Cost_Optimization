@@ -131,6 +131,18 @@ class FinOpsRAGPipeline:
             if itype not in pricing_rate_cards:
                 pricing_rate_cards[itype] = lookup_aws_pricing(itype)
 
+        # Check for fleet-wide information
+        fleet_summary = None
+        try:
+            from collectors.fleet_cache import fleet_cache
+            fleet_summary = fleet_cache.get("fleet_summary")
+        except Exception:
+            try:
+                from backend.collectors.fleet_cache import fleet_cache
+                fleet_summary = fleet_cache.get("fleet_summary")
+            except Exception:
+                pass
+
         return {
             "metadata": metadata,
             "domains": list(domain_matches) if domain_matches else ["all"],
@@ -142,6 +154,7 @@ class FinOpsRAGPipeline:
             "cloudwatch_logs": retrieved_logs,
             "nat_gateways": nat_gws,
             "pricing_rate_cards": pricing_rate_cards,
+            "fleet_summary": fleet_summary,
             "total_retrieved_items": (
                 len(retrieved_nodes) + len(retrieved_vols) + len(retrieved_eips) +
                 len(retrieved_sgs) + len(retrieved_logs)
@@ -340,6 +353,29 @@ class FinOpsRAGPipeline:
                 if sec["is_publicly_exposed"]:
                     knowledge_chunks.append(f"- 🚨 `{sec['group_id']}` ({sec['group_name']}): World-accessible ports: {sec['high_risk_ports']}")
 
+        # Augment Multi-Account Fleet and FOCUS 1.0 specifications
+        fleet_summary = retrieved.get("fleet_summary")
+        augmented_fleet = None
+        if fleet_summary and fleet_summary.get("total_accounts_registered", 0) > 0:
+            augmented_fleet = {
+                "total_accounts": fleet_summary.get("total_accounts_registered", 1),
+                "total_spend": fleet_summary.get("total_fleet_monthly_spend", 0.0),
+                "total_nodes": fleet_summary.get("total_fleet_nodes", 0),
+                "total_volumes": fleet_summary.get("total_fleet_volumes", 0),
+                "total_eips": fleet_summary.get("total_fleet_eips", 0),
+                "total_focus_records": fleet_summary.get("total_focus_records", 0)
+            }
+            knowledge_chunks.append("\n**Multi-Account Cloud Fleet & FOCUS 1.0 Specification:**")
+            knowledge_chunks.append(
+                f"- Accounts Monitored: {augmented_fleet['total_accounts']} | Gross Fleet Spend: ${augmented_fleet['total_spend']:.2f}/mo"
+            )
+            knowledge_chunks.append(
+                f"- Fleet Assets: {augmented_fleet['total_nodes']} Compute Nodes, {augmented_fleet['total_volumes']} Disks, {augmented_fleet['total_eips']} EIPs"
+            )
+            knowledge_chunks.append(
+                f"- FOCUS 1.0 Compliance: {augmented_fleet['total_focus_records']} normalized cost lines active"
+            )
+
         knowledge_chunks.append(
             f"\n**AGGREGATE QUANTIFIED RECOVERABLE SAVINGS:**\n"
             f"• Monthly Potential Savings: **${total_recoverable_monthly:.2f}/month**\n"
@@ -355,6 +391,7 @@ class FinOpsRAGPipeline:
             "network": augmented_network,
             "security": augmented_security,
             "logs": augmented_logs,
+            "fleet": augmented_fleet,
             "retrieved_item_count": retrieved.get("total_retrieved_items", 0)
         }
 
