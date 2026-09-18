@@ -1,3 +1,4 @@
+import os
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from botocore.config import Config
@@ -8,6 +9,21 @@ from pathlib import Path
 from typing import List, Optional
 import json
 import time
+
+# Auto-load local .env if present
+for cand in [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().parent.parent / ".env"]:
+    if cand.exists():
+        try:
+            with open(cand, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() not in os.environ:
+                            os.environ[k.strip()] = v.strip().strip("'\"")
+        except Exception:
+            pass
+
 import mock_database
 from schemas import IngestionPayload, CloudConnectRequest, NodeSchema
 
@@ -28,6 +44,10 @@ from services.cost_analytics import (
 from services.finops_agent import FinOpsAgent
 from services.notifier import FinOpsNotifier
 from services.remediator import AutoRemediator
+try:
+    from services.llm_engine import llm_engine
+except ImportError:
+    from backend.services.llm_engine import llm_engine
 
 from collectors.orchestrator import AWSDataIngestionOrchestrator
 from engines.finops_analyzer import FinOpsAnalyzer
@@ -663,6 +683,14 @@ def _frontend_optimizations():
     recommendations = []
 
     for f in analysis.get("findings", []):
+        ai_rationale = f.get("ai_rationale")
+        if not ai_rationale and len(recommendations) < 3 and llm_engine and llm_engine.is_available():
+            try:
+                ai_rationale = llm_engine.generate_recommendation_rationale(f)
+                f["ai_rationale"] = ai_rationale
+            except Exception:
+                ai_rationale = f.get("description", "")
+
         recommendations.append(
             {
                 "id": f["id"],
@@ -673,6 +701,7 @@ def _frontend_optimizations():
                 "savings": f.get("monthly_savings", 0.0),
                 "effort": f.get("effort", "Low"),
                 "action": f.get("action", ""),
+                "ai_rationale": ai_rationale or f.get("description", ""),
             }
         )
 
@@ -1059,10 +1088,20 @@ async def get_cost_forecast(budget: float = 600.0):
 
 @app.get("/api/v1/analytics/anomalies")
 async def get_cost_anomalies():
-    """Detects daily spend surges exceeding 25% of baseline."""
+    """Detects daily spend surges exceeding 25% of baseline with AI root-cause forensics."""
     _ensure_live_aws_state()
     spend_rows = _frontend_spend()
-    return {"anomalies": detect_cost_anomalies(spend_rows)}
+    anomalies = detect_cost_anomalies(spend_rows)
+    if anomalies and llm_engine and llm_engine.is_available():
+        for a in anomalies[:2]:
+            if "ai_explanation" not in a:
+                try:
+                    res = llm_engine.explain_anomaly(a)
+                    a["ai_explanation"] = res.get("explanation")
+                    a["ai_provider"] = res.get("provider")
+                except Exception:
+                    pass
+    return {"anomalies": anomalies}
 
 
 @app.post("/api/v1/agent/chat")
@@ -1288,7 +1327,7 @@ async def copilot_chat(payload: dict):
     - CloudTrail root-cause spike forensics
     - Terraform/OpenTofu PR generation
     """
-    user_message = payload.get("message", "")
+    user_message = payload.get("message") or payload.get("prompt") or payload.get("query") or ""
     history = payload.get("history", [])
     response = copilot_agent.chat(user_message=user_message, history=history)
     return response
@@ -1336,6 +1375,30 @@ async def get_pricing_rate_card(resource_type: str = "m5.2xlarge", region: str =
     """
     pricing = lookup_aws_pricing(resource_type=resource_type, region=region)
     return pricing
+
+
+@app.get("/api/v2/copilot/status")
+@app.get("/api/v1/copilot/status")
+async def get_copilot_status():
+    """
+    Returns active FinOps Copilot status, LLM model cascade, and operational tools.
+    """
+    engine_ready = copilot_agent.engine and copilot_agent.engine.is_available()
+    active_model = getattr(copilot_agent.engine, "active_model", "compound-mini") if copilot_agent.engine else None
+    return {
+        "status": "ready" if engine_ready else "heuristic_fallback",
+        "provider": copilot_agent.provider,
+        "active_model": active_model,
+        "tools_enabled": ["sql_analytics", "pricing_rag", "cloudtrail_forensics", "terraform_pr"],
+        "groq_configured": bool(copilot_agent.groq_api_key),
+        "api_endpoints": [
+            "/api/v2/copilot/chat",
+            "/api/v2/copilot/diagnose-spike",
+            "/api/v2/copilot/generate-iac-pr",
+            "/api/v2/copilot/pricing",
+            "/api/v1/agent/chat"
+        ]
+    }
 
 
 # =====================================================================

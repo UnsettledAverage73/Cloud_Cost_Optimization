@@ -26,10 +26,18 @@ from services.cost_analytics import (
 from services.pricing_service import AWSPricingClient
 from services.remediator import AutoRemediator
 
+try:
+    from services.llm_engine import llm_engine
+except ImportError:
+    try:
+        from backend.services.llm_engine import llm_engine
+    except ImportError:
+        llm_engine = None
+
 class FinOpsAgent:
     """
     Autonomous FinOps AI Agent:
-    - Multi-tier LLM router (Local Ollama -> Groq Llama-3.1 -> Mistral AI fallback)
+    - Multi-tier LLM router (Groq Cloud -> Local Ollama -> Mistral AI fallback)
     - FinOps slash command engine (/audit, /optimize, /forecast, /health, /pricing, /remediate)
     - AWS Well-Architected & FinOps Foundation grounded diagnostic intelligence
     """
@@ -45,13 +53,14 @@ When analyzing infrastructure:
     def __init__(self, data_store: Optional[Dict[str, Any]] = None):
         self.data_store = data_store
         self.pricing_client = AWSPricingClient()
+        self.engine = llm_engine
 
         # Local Sovereign Ollama
         self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434/api")
         self.local_model = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
 
         # Cloud Fallback 1: Groq
-        self.groq_key = os.getenv("GROQ_API_KEY")
+        self.groq_key = os.getenv("GROQ_API_KEY") or getattr(llm_engine, "api_key", None)
         self.groq_client = Groq(api_key=self.groq_key) if (self.groq_key and Groq) else None
 
         # Cloud Fallback 2: Mistral AI
@@ -212,7 +221,18 @@ When analyzing infrastructure:
 {chr(10).join([f"  * {o['title']} (Save ${o['monthly_savings']:.2f}/mo)" for o in opts[:3]])}
 """
 
-        # 1. Try Local Ollama first
+        # 1. Primary: Groq Cloud via LLMEngine
+        if self.engine and self.engine.is_available():
+            llm_res = self.engine.ask_finops(query=query, context=context, system_prompt=self.FINOPS_SYSTEM_PROMPT)
+            if llm_res.get("status") == "success":
+                return {
+                    "type": "ai_response",
+                    "source": "groq_cloud",
+                    "response": llm_res.get("response"),
+                    "model": llm_res.get("model")
+                }
+
+        # 2. Try Local Ollama fallback
         try:
             resp = requests.post(
                 f"{self.ollama_url}/generate",
@@ -229,23 +249,6 @@ When analyzing infrastructure:
                     return {"type": "ai_response", "source": "ollama_local", "response": answer}
         except Exception:
             pass
-
-        # 2. Try Groq (Llama 3.1)
-        if self.groq_client:
-            try:
-                chat_completion = self.groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": self.FINOPS_SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
-                    ],
-                    model="llama-3.1-8b-instant",
-                    temperature=0.3,
-                    max_tokens=500
-                )
-                answer = chat_completion.choices[0].message.content
-                return {"type": "ai_response", "source": "groq_cloud", "response": answer}
-            except Exception:
-                pass
 
         # 3. Try Mistral AI
         if self.mistral_client:

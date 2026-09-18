@@ -9,3 +9,6 @@ frontend/out/
 *.egg-info/
 test_report.html
 test_report.json
+.env
+.env.local
+.env.*.local

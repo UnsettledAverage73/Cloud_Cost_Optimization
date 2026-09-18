@@ -244,6 +244,15 @@ class CloudPulseTestRunner:
             # 5. Autonomous FinOps AI Copilot
             {
                 "category": "Autonomous AI Copilot",
+                "name": "FinOps Copilot LLM Status & Multi-Model Health",
+                "method": "GET",
+                "path": "/api/v2/copilot/status",
+                "body": None,
+                "expected_code": 200,
+                "validator": lambda d: "status" in d and "tools_enabled" in d and d.get("groq_configured") is not None
+            },
+            {
+                "category": "Autonomous AI Copilot",
                 "name": "AI Copilot Natural Language Advisory",
                 "method": "POST",
                 "path": "/api/v2/copilot/chat",

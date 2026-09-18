@@ -315,10 +315,12 @@ def cmd_ask(args):
             print(f"Notice falling back to copilot v2: {e}")
 
     try:
-        resp = http_json(f"{backend_url}/api/v2/copilot/chat", method="POST", payload={"prompt": prompt, "history": []})
+        resp = http_json(f"{backend_url}/api/v2/copilot/chat", method="POST", payload={"message": prompt, "prompt": prompt, "history": []})
         answer = resp.get("answer", "No response received.")
-        print(answer)
-        print()
+        provider = resp.get("provider", "local")
+        model = resp.get("model")
+        badge = f"{DIM}[{provider}{f':{model}' if model else ''}]{RESET}"
+        print(f"{badge}\n{answer}\n")
     except Exception as e:
         print(f"{RED}Failed to query AI Copilot:{RESET} {e}")
         sys.exit(1)
@@ -526,36 +528,39 @@ def cmd_connect(args):
         sys.exit(1)
 
 def main():
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument("--url", default=None, help="CloudPulse backend URL (defaults to configured URL)")
+
     parser = argparse.ArgumentParser(
         prog="cloudpulse",
-        description="CloudPulse FinOps Management, Multi-OS In-Guest Agent & Testing CLI"
+        description="CloudPulse FinOps Management, Multi-OS In-Guest Agent & Testing CLI",
+        parents=[common_parser]
     )
-    parser.add_argument("--url", default=None, help="CloudPulse backend URL (defaults to configured URL)")
     subparsers = parser.add_subparsers(dest="command", help="Available CloudPulse commands")
 
     # test
-    p_test = subparsers.add_parser("test", help="Run automated backend integration tests & health auditing")
+    p_test = subparsers.add_parser("test", parents=[common_parser], help="Run automated backend integration tests & health auditing")
     p_test.add_argument("--json", dest="json_file", default=None, help="Path to save JSON test report")
     p_test.add_argument("--html", dest="html_file", default=None, help="Path to save HTML dashboard report")
     p_test.add_argument("--timeout", type=float, default=20.0, help="Per-request timeout in seconds (default: 20)")
     p_test.add_argument("--verbose", action="store_true", help="Print verbose logs")
 
     # status
-    subparsers.add_parser("status", help="Check backend connection, database health, and host specs")
+    subparsers.add_parser("status", parents=[common_parser], help="Check backend connection, database health, and host specs")
 
     # audit
-    subparsers.add_parser("audit", help="Run comprehensive FinOps audit (spend, waste, health score, savings)")
+    subparsers.add_parser("audit", parents=[common_parser], help="Run comprehensive FinOps audit (spend, waste, health score, savings)")
 
     # scan
-    p_scan = subparsers.add_parser("scan", help="Scan local in-guest CPU, RAM, disk, processes, and cloud provider")
+    p_scan = subparsers.add_parser("scan", parents=[common_parser], help="Scan local in-guest CPU, RAM, disk, processes, and cloud provider")
     p_scan.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON payload only")
 
     # ask
-    p_ask = subparsers.add_parser("ask", help="Ask autonomous FinOps AI Copilot questions or execute slash commands")
+    p_ask = subparsers.add_parser("ask", parents=[common_parser], help="Ask autonomous FinOps AI Copilot questions or execute slash commands")
     p_ask.add_argument("prompt", nargs="+", help="Your question or slash command (e.g. /optimize, /health)")
 
     # iac
-    p_iac = subparsers.add_parser("iac", help="Generate Terraform PR code to remediate a finding")
+    p_iac = subparsers.add_parser("iac", parents=[common_parser], help="Generate Terraform PR code to remediate a finding")
     p_iac.add_argument("resource_id", help="Resource ID (e.g., i-036358db85d245e3a)")
     p_iac.add_argument("--action", default="rightsize", help="Action (rightsize, stop, terminate)")
     p_iac.add_argument("--from-type", default="m5.2xlarge", help="Current instance type")
@@ -563,13 +568,13 @@ def main():
     p_iac.add_argument("--output", "-o", default=None, help="File to write Terraform HCL to")
 
     # onboard
-    p_onboard = subparsers.add_parser("onboard", help="Generate 1-click AWS CloudFormation onboarding package")
+    p_onboard = subparsers.add_parser("onboard", parents=[common_parser], help="Generate 1-click AWS CloudFormation onboarding package")
     p_onboard.add_argument("--org-id", default="default-org", help="Organization ID")
     p_onboard.add_argument("--remediation", action="store_true", help="Allow automated remediation actions")
     p_onboard.add_argument("--save-yaml", default=None, help="Save template to a YAML file")
 
     # connect (AWS / Learner Lab / Cloud)
-    p_connect = subparsers.add_parser("connect", help="Connect an AWS / Learner Lab account using access keys & session token")
+    p_connect = subparsers.add_parser("connect", parents=[common_parser], help="Connect an AWS / Learner Lab account using access keys & session token")
     p_connect.add_argument("--access-key", "-k", default=None, help="AWS Access Key ID")
     p_connect.add_argument("--secret-key", "-s", default=None, help="AWS Secret Access Key")
     p_connect.add_argument("--session-token", "-t", default=None, help="AWS Session Token (for Learner Lab / STS)")
@@ -578,14 +583,14 @@ def main():
     p_connect.add_argument("--credentials-file", "-f", default=None, help="Path to credentials file (e.g. ~/.aws/credentials)")
 
     # push
-    subparsers.add_parser("push", help="Push current host metrics to backend")
+    subparsers.add_parser("push", parents=[common_parser], help="Push current host metrics to backend")
 
     # daemon
-    p_daemon = subparsers.add_parser("daemon", help="Run background in-guest telemetry streaming daemon")
+    p_daemon = subparsers.add_parser("daemon", parents=[common_parser], help="Run background in-guest telemetry streaming daemon")
     p_daemon.add_argument("--interval", type=int, default=30, help="Push interval in seconds (default: 30)")
 
     # config
-    p_config = subparsers.add_parser("config", help="Manage CLI settings and backend URL")
+    p_config = subparsers.add_parser("config", parents=[common_parser], help="Manage CLI settings and backend URL")
     p_config.add_argument("--set-url", default=None, help="Set default backend URL")
     p_config.add_argument("--show", action="store_true", help="Show current configuration")
 

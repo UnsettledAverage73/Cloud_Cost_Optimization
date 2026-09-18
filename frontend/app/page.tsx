@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
-  Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Check,
+  Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Cpu, Database,
   ExternalLink, HardDrive, KeyRound, LayoutDashboard, Menu, Moon, MoreHorizontal, Network,
-  PanelLeft, Plus, RefreshCw, Search, Server, Settings, ShieldAlert, SlidersHorizontal,
+  PanelLeft, Plus, RefreshCw, Search, Send, Server, Settings, ShieldAlert, SlidersHorizontal,
   Sparkles, Sun, X, Zap, Loader2
 } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -31,6 +31,7 @@ const nav = [
   { id: 'telemetry', label: 'Telemetry & Metrics', icon: Activity },
   { id: 'security', label: 'Security & Exposure', icon: ShieldAlert },
   { id: 'optimization', label: 'Cost Optimization', icon: CircleDollarSign },
+  { id: 'copilot', label: 'AI FinOps Copilot', icon: Sparkles },
   { id: 'settings', label: 'Settings & API Keys', icon: Settings },
 ]
 
@@ -930,6 +931,9 @@ export default function Page() {
                     }
                   />
                 )}
+                {view === 'copilot' && (
+                  <CopilotView apiUrl={apiUrl} />
+                )}
                 {view === 'settings' && (
                   <SettingsView
                     connectionState={connectionState}
@@ -1469,6 +1473,14 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
               </CardHeader>
               <CardContent>
                 <p className="min-h-10 text-sm text-muted-foreground">{item.desc}</p>
+                {item.ai_rationale && item.ai_rationale !== item.desc && (
+                  <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2.5 text-xs text-cyan-200">
+                    <div className="mb-1 flex items-center gap-1.5 font-medium text-cyan-300">
+                      <Sparkles className="size-3.5" /> AI Architecture Rationale
+                    </div>
+                    {item.ai_rationale}
+                  </div>
+                )}
                 <div className="mt-5 flex items-center justify-between">
                   <div>
                     <div className="text-xl font-semibold text-emerald-300">Saves ${Number(item.savings ?? 0).toFixed(2)}/mo</div>
@@ -1482,6 +1494,162 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
           )
         })}
       </div>
+    </>
+  )
+}
+
+function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; model?: string; tool?: string }>>([
+    {
+      role: 'assistant',
+      text: "👋 Welcome to **CloudPulse Autonomous FinOps Copilot**, powered by **Groq Cloud LLM** (compound-mini / compound / Qwen 27B) and live TimescaleDB telemetry.\n\nI can analyze your live AWS inventory, explain spend surges, evaluate Graviton modernization ROI, and generate ready-to-merge Terraform/OpenTofu Pull Requests.\n\nAsk me anything or click one of the quick prompts below!",
+      model: 'groq/compound-mini'
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const sendMessage = async (queryText: string) => {
+    const text = queryText.trim();
+    if (!text || loading) return;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch(apiUrl('/api/v2/copilot/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, prompt: text, history: [] })
+      });
+      const data = await res.json();
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: data.answer || data.response || 'No response received from Copilot.',
+          model: data.model || 'groq',
+          tool: data.tool_called
+        }
+      ]);
+    } catch (err: any) {
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `⚠️ Error communicating with Copilot: ${err?.message || err}`,
+          model: 'error'
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const chips = [
+    "What is the cost footprint of our 9 t3.micro instances?",
+    "Compare m5.2xlarge with Graviton pricing",
+    "Why did we have a spike in cloud spend?",
+    "Generate Terraform PR to downsize idle compute",
+    "/audit",
+    "/optimize",
+    "/forecast"
+  ];
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="Autonomous Copilot"
+        title="AI FinOps Architect & Code Remediation"
+        description="Interact with the sovereign cloud economist powered by Groq LLM inference and TimescaleDB."
+        action={
+          <div className="flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-300">
+            <Sparkles className="size-3.5" />
+            <span>Active Backend: <strong>Groq LLM</strong></span>
+          </div>
+        }
+      />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {chips.map((chip, i) => (
+          <button
+            key={i}
+            onClick={() => sendMessage(chip)}
+            disabled={loading}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 disabled:opacity-50"
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+
+      <Card className="flex flex-col border-white/8 bg-card/70 backdrop-blur">
+        <CardContent className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
+          <div className="flex flex-col gap-4 overflow-y-auto" style={{ minHeight: '380px', maxHeight: '520px' }}>
+            {messages.map((m, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {m.role === 'assistant' && (
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
+                    <Sparkles className="size-4" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[85%] rounded-xl p-4 text-sm leading-relaxed ${
+                    m.role === 'user'
+                      ? 'bg-cyan-500 text-slate-950 font-medium'
+                      : 'border border-white/8 bg-white/5 text-foreground'
+                  }`}
+                >
+                  {m.role === 'assistant' && m.model && (
+                    <div className="mb-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono">
+                        {m.model}
+                      </span>
+                      {m.tool && (
+                        <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 font-mono text-cyan-300">
+                          tool: {m.tool}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div className="whitespace-pre-wrap font-sans space-y-2">
+                    {m.text}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
+                  <Loader2 className="size-4 animate-spin" />
+                </div>
+                <span>Copilot is reasoning with Groq LLM & analyzing live telemetry...</span>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex gap-2 border-t border-white/8 pt-4">
+            <Input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
+              placeholder="Ask a question or type /audit, /optimize, /forecast, /pricing..."
+              disabled={loading}
+              className="border-white/10 bg-white/5 text-foreground placeholder:text-muted-foreground"
+            />
+            <Button
+              onClick={() => sendMessage(input)}
+              disabled={loading || !input.trim()}
+              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+            >
+              {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </>
   )
 }
