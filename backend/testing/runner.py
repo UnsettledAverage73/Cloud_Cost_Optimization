@@ -416,7 +416,8 @@ class CloudPulseTestRunner:
             latencies.append(elapsed)
 
             data = res["data"]
-            is_code_ok = (code == tc["expected_code"])
+            expected = tc["expected_code"]
+            is_code_ok = (code in expected) if isinstance(expected, (list, tuple, set)) else (code == expected)
             custom_ok = True
             error_detail = res["error"]
 
