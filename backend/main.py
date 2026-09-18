@@ -74,6 +74,8 @@ try:
     from services.notification_engine import notification_engine
     from services.anomaly_detector import anomaly_detector
     from services.spend_forecaster import spend_forecaster
+    from collectors.multicloud_connector import multicloud_orchestrator
+    from services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -94,6 +96,8 @@ except ImportError:
     from backend.services.notification_engine import notification_engine
     from backend.services.anomaly_detector import anomaly_detector
     from backend.services.spend_forecaster import spend_forecaster
+    from backend.collectors.multicloud_connector import multicloud_orchestrator
+    from backend.services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1915,6 +1919,56 @@ async def calculate_custom_forecast(payload: dict):
         mtd_spend=mtd
     )
     return forecast
+
+
+# =====================================================================
+# 🌐 MULTI-CLOUD CONNECTORS (AZURE / GCP) & RBAC SECURITY APIS
+# =====================================================================
+
+@app.get("/api/v2/multicloud/summary")
+async def get_multicloud_summary():
+    """Returns cross-cloud spend distribution across AWS, Azure, and GCP."""
+    summary_spend = mock_database.DB.get("summary", {}).get("estimated_monthly_spend", 74.16)
+    return multicloud_orchestrator.get_cross_cloud_summary(aws_spend=summary_spend)
+
+
+@app.post("/api/v2/multicloud/ingest")
+async def ingest_multicloud_records(payload: dict):
+    """Ingests Azure or GCP raw billing records and converts them to FOCUS 1.0."""
+    provider = payload.get("provider", "").lower()
+    records = payload.get("records", [])
+    if provider == "azure":
+        normalized = multicloud_orchestrator.ingest_azure_batch(records)
+    elif provider == "gcp":
+        normalized = multicloud_orchestrator.ingest_gcp_batch(records)
+    else:
+        raise HTTPException(status_code=400, detail="Provider must be 'azure' or 'gcp'")
+
+    return {
+        "status": "ingested",
+        "provider": provider.upper(),
+        "records_ingested": len(normalized),
+        "focus_records": normalized
+    }
+
+
+@app.get("/api/v2/auth/verify-role")
+async def verify_rbac_role(api_key: Optional[str] = None, permission: Optional[str] = None):
+    """Validates API token and checks RBAC authorization."""
+    identity = rbac_manager.authenticate_key(api_key)
+    if not identity.get("authenticated"):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid API key")
+
+    has_perm = True
+    if permission:
+        has_perm = rbac_manager.check_permission(identity["role"], permission)
+
+    return {
+        "identity": identity,
+        "requested_permission": permission,
+        "authorized": has_perm
+    }
+
 
 
 

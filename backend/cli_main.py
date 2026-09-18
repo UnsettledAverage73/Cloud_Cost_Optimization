@@ -1015,6 +1015,62 @@ def cmd_forecast(args):
     out.append("=" * 90 + "\n")
     emit_output("\n".join(out), output_dest)
 
+
+# ==========================================
+# COMMAND: multicloud (Cross-Cloud Spend & Connectors)
+# ==========================================
+def cmd_multicloud(args):
+    """
+    Consolidates cloud spend across AWS, Microsoft Azure, and Google Cloud (GCP)
+    under the unified FOCUS 1.0 open cost specification.
+    """
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    backend_url = get_backend_url(getattr(args, "url", None))
+
+    try:
+        data = http_json(f"{backend_url}/api/v2/multicloud/summary", timeout=4.0)
+    except Exception:
+        try:
+            from collectors.multicloud_connector import multicloud_orchestrator
+            try:
+                from mock_database import DB
+            except ImportError:
+                from backend.mock_database import DB
+        except ImportError:
+            from backend.collectors.multicloud_connector import multicloud_orchestrator
+            from backend.mock_database import DB
+
+        aws_spend = DB.get("summary", {}).get("estimated_monthly_spend", 74.16)
+        data = multicloud_orchestrator.get_cross_cloud_summary(aws_spend=aws_spend)
+
+    if fmt == "json":
+        emit_output(json.dumps(data, indent=2), output_dest)
+        return
+
+    providers = data.get("providers", {})
+    total_spend = data.get("total_multicloud_monthly_spend", 0.0)
+
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 90)
+    out.append(f"     🌐 CLOUDPULSE MULTI-CLOUD FLEET & FOCUS 1.0 OVERVIEW")
+    out.append("=" * 90)
+    out.append(f"  • Total Consolidated Monthly Spend : {GREEN}{BOLD}${total_spend:.2f} / month{RESET}")
+    out.append(f"  • Normalized FOCUS 1.0 Records     : {CYAN}{data.get('total_focus_records_tracked', 0)} cost lines{RESET}")
+    out.append("-" * 90)
+    out.append(f"  {'PROVIDER':<16} {'MONTHLY SPEND':<20} {'FLEET SHARE':<16} {'STATUS'}")
+    out.append("  " + "-" * 88)
+    for p_name, p_info in providers.items():
+        spend_str = f"${p_info.get('monthly_spend', 0.0):.2f}/mo"
+        share_str = f"{p_info.get('share_percent', 0.0):.1f}%"
+        status_str = f"{GREEN}ACTIVE SYNC{RESET}"
+        out.append(f"  {p_name:<16} {spend_str:<20} {share_str:<16} {status_str}")
+    out.append("=" * 90)
+    out.append("  💡 Unified under FinOps Open Cost & Usage Specification (FOCUS 1.0)")
+    out.append("=" * 90 + "\n")
+    emit_output("\n".join(out), output_dest)
+
 # ==========================================
 # COMMAND: onboard (Customer AWS Account Onboarding)
 # ==========================================
@@ -2236,8 +2292,11 @@ def main():
     p_fc.add_argument("--days", "-d", type=int, default=30, help="Forecast projection horizon in days (default: 30)")
     p_fc.add_argument("--budget", "-b", type=float, default=100.0, help="Monthly budget threshold in USD (default: 100.0)")
     p_fc.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
-    p_fc.add_argument("--output", "-o", default=None, help="File path to save the generated report")
-    p_fc.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+    # multicloud (Cross-Cloud Spend & Connectors)
+    p_mc = subparsers.add_parser("multicloud", parents=[common_parser], help="Multi-cloud fleet spend consolidation (AWS, Azure, GCP) and FOCUS 1.0 mapping")
+    p_mc.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_mc.add_argument("--output", "-o", default=None, help="File path to save the generated report")
+    p_mc.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
 
     args = parser.parse_args()
 
@@ -2256,6 +2315,7 @@ def main():
         "apply": cmd_apply,
         "anomalies": cmd_anomalies,
         "forecast": cmd_forecast,
+        "multicloud": cmd_multicloud,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,
