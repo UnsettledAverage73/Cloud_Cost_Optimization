@@ -5,7 +5,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-High%20Performance-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14%2B-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-10%20Passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-44%20Passed-brightgreen)](backend/tests/)
 [![Standards](https://img.shields.io/badge/Compliance-AWS%20Well--Architected%20%7C%20FinOps%20Foundation-orange)](https://www.finops.org/)
 
 ---
@@ -22,7 +22,7 @@ graph TD
     end
 
     subgraph Level3_4 [Sovereign Brain & Knowledge Base]
-        Analytics --> FinOpsAI["FinOps Agent (Local Ollama / Groq / Mistral)"]
+        Analytics --> FinOpsAI["FinOps Agent (Groq Multi-Model LLM / Ollama / Mistral)"]
         FinOpsAI <--> Pricing["Dynamic AWS Pricing Engine & Well-Architected Knowledge"]
         FinOpsAI --> Remediate["Safe Automated Remediator (Dry-Run & Snapshots)"]
     end
@@ -39,11 +39,11 @@ graph TD
 ## 🌟 Key Enterprise Capabilities
 
 - **⚡ FinOps 4-Pillar Health Score:** Instant 0–100 score across Compute Efficiency, Storage Optimization, Network Cleanliness, and Security Posture.
-- **📈 Rate-of-Spend Acceleration & Anomaly Detection:** Identifies spend surges (>25% spike over 7-day moving average) before invoices spike.
-- **🤖 Autonomous FinOps AI Agent:** Local-first inference via **Ollama (Qwen 2.5 / Mistral)** with resilient fallback to **Groq (Llama 3.1 8B)** and **Mistral AI**, featuring interactive slash commands (`/audit`, `/optimize`, `/forecast`, `/health`, `/pricing`, `/remediate`).
+- **📈 Rate-of-Spend Acceleration & Anomaly Detection:** Identifies spend surges (>25% spike over 7-day moving average) with AI-powered root-cause forensics.
+- **🤖 Autonomous FinOps AI Copilot:** Powered by **Groq Cloud Multi-Model Engine** (`groq/compound-mini`, `groq/compound`, `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) with resilient fallback to local **Ollama** and **Mistral AI**, featuring interactive slash commands (`/audit`, `/optimize`, `/forecast`, `/health`, `/pricing`, `/remediate`).
 - **🛡️ Safe Automated Remediation:** 1-click or automated policy fixes with dry-run protection, automatic EBS safety snapshotting before deletion, gp2 to gp3 migrations, and 0.0.0.0/0 port revocations.
-- **📚 Persistent Ledger & Audit Trail:** SQLite database storing infrastructure snapshots, remediation execution history, and optimization lifecycles.
-- **🔔 Multi-Channel Escalation:** Rich Slack Block Kit payloads and automated WhatsApp alerts for critical budget overruns and open security ports.
+- **🏗️ Automated Terraform / OpenTofu PR Generator:** Produces clean HCL diffs, migration safety plans, and pull request bodies to remediate waste automatically.
+- **📚 TimescaleDB Telemetry Ledger:** Time-series hypertables storing infrastructure metrics, FOCUS 1.0 billing records, and audit history.
 - **🎮 Simulation & Demo Engine:** Full standalone offline testing and interactive demo mode without requiring live AWS credentials.
 
 ---
@@ -54,8 +54,8 @@ Interact with the FinOps Agent via the `/api/v1/agent/chat` endpoint or web term
 
 | Slash Command | Description |
 | :--- | :--- |
-| `/audit` | Runs a comprehensive FinOps and security audit, outputting overall health and potential savings. |
-| `/optimize` | Lists all prioritized savings recommendations categorized by Quick Wins and architectural changes. |
+| `/audit` | Runs a comprehensive FinOps and security audit, outputting overall health, potential savings, and AI executive briefing. |
+| `/optimize` | Lists all prioritized savings recommendations categorized by Quick Wins and architectural changes with AI rationale. |
 | `/forecast` | Calculates daily burn rate, projected month-end bill, budget status, and runway days. |
 | `/health` | Breaks down the 4-pillar FinOps health score (Compute, Storage, Network, Security). |
 | `/pricing [type] [region]` | Looks up real-time hourly and monthly On-Demand pricing for any instance type and AWS region. |
@@ -73,20 +73,23 @@ Cloud_Cost_Optimization/
 │   ├── schemas.py                     # Pydantic Schemas for Ingestion & Connections
 │   ├── mock_database.py               # In-Memory Active State Cache
 │   ├── requirements.txt               # Backend Python Dependencies
+│   ├── cli_main.py                    # Unified CLI Implementation
 │   │
-│   ├── data/
-│   │   ├── finops_database.py         # SQLite Persistent Ledger & Audit Log
-│   │   └── cloud_simulator.py         # Diurnal Telemetry & Multi-Cloud Resource Simulator
+│   ├── copilot/                       # Autonomous Copilot Engine & Specialized Tools
+│   │   ├── agent.py                   # Autonomous Multi-Tool Copilot Router
+│   │   └── tools/                     # SQL Analytics, Pricing RAG, Forensics, Terraform PR
 │   │
 │   ├── services/
-│   │   ├── finops_agent.py            # Hybrid AI Agent (Ollama, Groq, Mistral) & Slash Commands
+│   │   ├── llm_engine.py              # Central Groq Multi-Model LLM Engine
+│   │   ├── finops_agent.py            # Hybrid AI Agent (Groq, Ollama, Mistral) & Commands
 │   │   ├── cost_analytics.py          # 4-Pillar Health Score, Anomaly Detection & Forecasting
 │   │   ├── pricing_service.py         # Dynamic AWS Pricing API Client & Catalog
-│   │   ├── remediator.py              # Automated Safe Remediator with Safety Snapshots
-│   │   └── notifier.py                # Slack Block Kit & Twilio WhatsApp Alert Dispatcher
+│   │   └── remediator.py              # Automated Safe Remediator with Safety Snapshots
 │   │
-│   └── tests/
-│       └── test_finops_system.py      # Comprehensive Test Suite (10/10 Passing)
+│   ├── testing/                       # Synthetic Backend Integration Testing Suite
+│   │   └── runner.py                  # Test Suite Runner (26 Endpoints, HTML/JSON Export)
+│   │
+│   └── tests/                         # Full Pytest Test Suite (44/44 Passing)
 │
 ├── frontend/                          # Next.js Full-Stack Web Dashboard (React, Tailwind)
 │   ├── app/page.tsx                   # Enterprise Cloud Dashboard Tabs & Control Center
