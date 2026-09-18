@@ -382,8 +382,16 @@ def _optional_call(client, operation, **kwargs):
         return {}
 
 
-def _refresh_live_aws_state():
-    global last_live_error
+_last_live_refresh_time = 0.0
+LIVE_CACHE_TTL_SECONDS = 180.0  # Cache live AWS state for 3 minutes
+
+def _refresh_live_aws_state(force: bool = False):
+    global last_live_error, _last_live_refresh_time
+    now = time.time()
+    db = _db()
+    if not force and (now - _last_live_refresh_time) < LIVE_CACHE_TTL_SECONDS and db.get("nodes"):
+        return True
+
     session = _build_aws_session()
     if not session:
         last_live_error = "No AWS session is configured."
@@ -394,7 +402,6 @@ def _refresh_live_aws_state():
         orchestrator = AWSDataIngestionOrchestrator(session, region)
         data = orchestrator.execute_full_pipeline()
 
-        db = _db()
         db["nodes"] = data["nodes"]
         db["ebs_volumes"] = data["ebs_volumes"]
         db["ebs_snapshots"] = data["ebs_snapshots"]
@@ -421,6 +428,7 @@ def _refresh_live_aws_state():
         db["metadata"]["timestamp"] = datetime.now(timezone.utc).isoformat()
         saved = _saved_credentials() or {}
         db["metadata"]["organization"] = saved.get("account_name", db["metadata"].get("organization", "Acme Corp"))
+        _last_live_refresh_time = time.time()
         return True
     except (ClientError, BotoCoreError) as error:
         if isinstance(error, ClientError):
@@ -960,7 +968,7 @@ async def connect_cloud_account(credentials: CloudConnectRequest):
                 identity = sts.get_caller_identity()
 
                 _save_active_credentials(credentials)
-                if not _refresh_live_aws_state():
+                if not _refresh_live_aws_state(force=True):
                     connection = _connection_state()
                     if _is_permission_denied(last_live_error):
                         _set_connection_mode("limited", last_live_error)
@@ -1003,7 +1011,7 @@ async def connect_cloud_account(credentials: CloudConnectRequest):
                 )
 
     _save_active_credentials(credentials)
-    if credentials.provider.upper() == "AWS" and not _refresh_live_aws_state():
+    if credentials.provider.upper() == "AWS" and not _refresh_live_aws_state(force=True):
         connection = _connection_state()
         if _is_permission_denied(last_live_error):
             _set_connection_mode("limited", last_live_error)
