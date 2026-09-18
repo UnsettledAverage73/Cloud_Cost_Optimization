@@ -454,7 +454,8 @@ def cmd_connect(args):
     # Support reading from credentials block file if provided
     if args.credentials_file:
         try:
-            with open(args.credentials_file, "r", encoding="utf-8") as f:
+            expanded_path = os.path.expanduser(args.credentials_file)
+            with open(expanded_path, "r", encoding="utf-8") as f:
                 content = f.read()
             for line in content.splitlines():
                 line = line.strip()
