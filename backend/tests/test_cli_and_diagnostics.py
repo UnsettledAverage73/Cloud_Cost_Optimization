@@ -166,3 +166,321 @@ def test_cmd_inspect_and_cost_commands(capsys):
         assert inspect_json["cost_parameters"]["total_monthly_cost_usd"] == 11.84
         assert inspect_json["finops_assessment"]["is_idle"] is True
 
+
+def test_cli_exporters_unit():
+    from cli_exporters import FinOpsReportExporter
+
+    # 1. Cost Rollup Exporters
+    summary = {
+        "total_instances": 1,
+        "running_instances": 1,
+        "total_monthly_spend_usd": 11.84,
+        "compute_spend_usd": 7.60,
+        "storage_spend_usd": 0.64,
+        "public_ipv4_spend_usd": 3.60
+    }
+    instances = [
+        {
+            "instance_id": "i-test12345",
+            "name": "api-server",
+            "type": "t3.micro",
+            "state": "running",
+            "cpu_utilization_avg": 0.25,
+            "compute_cost": 7.60,
+            "storage_cost": 0.64,
+            "public_ip_cost": 3.60,
+            "total_cost": 11.84
+        }
+    ]
+    csv_out = FinOpsReportExporter.cost_rollup_to_csv(summary, instances)
+    assert "i-test12345" in csv_out
+    assert "11.84" in csv_out
+    assert "Total Monthly Spend" in csv_out
+
+    md_out = FinOpsReportExporter.cost_rollup_to_markdown(summary, instances)
+    assert "CloudPulse FinOps Executive Spend Report" in md_out
+    assert "| `i-test12345` |" in md_out
+    assert "$11.84/mo" in md_out
+
+    # 2. Single Instance Cost Exporters
+    cost_data = {
+        "instance_id": "i-test12345",
+        "instance_type": "t3.micro",
+        "state": "running",
+        "formula": "Total = (Hourly Compute × 730h) + Storage + IPv4",
+        "parameters": {
+            "hourly_rate_usd": 0.0104,
+            "operating_hours": 730,
+            "compute_cost_usd": 7.60,
+            "storage_cost_usd": 0.64,
+            "public_ipv4_cost_usd": 3.60,
+            "total_cost_usd": 11.84
+        },
+        "line_items": [
+            {"item": "EC2 Compute", "type": "t3.micro", "cost": 7.60, "share_pct": 64.2},
+            {"item": "EBS Storage", "type": "1 volume", "cost": 0.64, "share_pct": 5.4}
+        ],
+        "savings_opportunities": [
+            {"action": "Graviton Upgrade", "target_type": "t4g.micro", "monthly_savings": 1.52}
+        ]
+    }
+    inst_csv = FinOpsReportExporter.single_instance_cost_to_csv(cost_data)
+    assert "i-test12345" in inst_csv
+    assert "Graviton Upgrade" in inst_csv
+
+    inst_md = FinOpsReportExporter.single_instance_cost_to_markdown(cost_data)
+    assert "FinOps Cost Decomposition:" in inst_md
+    assert "Graviton Upgrade" in inst_md
+
+    # 3. EBS Volumes Exporters
+    ebs_vols = [
+        {
+            "volume_id": "vol-12345",
+            "size_gb": 8,
+            "volume_type": "gp3",
+            "cost": 0.64,
+            "attached_instance_id": "i-test12345",
+            "status": "in-use",
+            "is_orphaned": False
+        }
+    ]
+    ebs_csv = FinOpsReportExporter.ebs_volumes_to_csv(ebs_vols)
+    assert "vol-12345" in ebs_csv
+    assert "0.64" in ebs_csv
+
+    ebs_md = FinOpsReportExporter.ebs_volumes_to_markdown(ebs_vols)
+    assert "CloudPulse EBS Storage & Attachment Audit" in ebs_md
+    assert "vol-12345" in ebs_md
+
+    # 4. EC2 Compute Exporters
+    nodes = [
+        {
+            "instance_id": "i-test12345",
+            "name": "worker",
+            "instance_type": "t3.micro",
+            "state": "running",
+            "availability_zone": "us-east-1a",
+            "public_ip": "1.2.3.4",
+            "cost": 7.60,
+            "metrics": {"cpu_utilization_avg": 0.5}
+        }
+    ]
+    ec2_csv = FinOpsReportExporter.ec2_compute_to_csv(nodes)
+    assert "i-test12345" in ec2_csv
+    assert "t3.micro" in ec2_csv
+
+    ec2_md = FinOpsReportExporter.ec2_compute_to_markdown(nodes)
+    assert "CloudPulse EC2 Compute Inventory & Telemetry" in ec2_md
+    assert "i-test12345" in ec2_md
+
+    # 5. Network Exporters
+    eips = [{"public_ip": "3.4.5.6", "allocation_id": "eipalloc-1", "association_id": None, "instance_id": None}]
+    enis = [{"interface_id": "eni-1", "status": "in-use", "private_ip": "10.0.1.5", "public_ip": "3.4.5.6", "attached_instance_id": None}]
+    net_csv = FinOpsReportExporter.network_to_csv(eips, enis, nodes)
+    assert "eipalloc-1" in net_csv
+    assert "3.4.5.6" in net_csv
+
+    net_md = FinOpsReportExporter.network_to_markdown(eips, enis, nodes)
+    assert "CloudPulse Networking & IPv4 Spend Audit" in net_md
+    assert "eipalloc-1" in net_md
+
+    # 6. Security Groups Exporters
+    sgs = [
+        {
+            "group_id": "sg-12345",
+            "group_name": "open-ssh",
+            "inbound_rules": [
+                {"protocol": "tcp", "from_port": 22, "to_port": 22, "source_cidr": "0.0.0.0/0", "is_open_to_world": True}
+            ]
+        }
+    ]
+    sg_csv = FinOpsReportExporter.security_groups_to_csv(sgs)
+    assert "sg-12345" in sg_csv
+    assert "Security Group ID" in sg_csv
+
+    sg_md = FinOpsReportExporter.security_groups_to_markdown(sgs)
+    assert "CloudPulse Security Groups & Ingress Exposure Audit" in sg_md
+    assert "sg-12345" in sg_md
+
+    # 7. CloudWatch Logs Exporters
+    logs = [
+        {
+            "log_group_name": "/aws/lambda/test",
+            "retention_in_days": None,
+            "stored_bytes": 104857600,
+            "stored_gb": 0.1,
+            "is_never_expire": True,
+            "cost": 0.03
+        }
+    ]
+    logs_csv = FinOpsReportExporter.cloudwatch_logs_to_csv(logs)
+    assert "/aws/lambda/test" in logs_csv
+    assert "YES" in logs_csv
+
+    logs_md = FinOpsReportExporter.cloudwatch_logs_to_markdown(logs)
+    assert "CloudPulse CloudWatch Log Groups & Retention Audit" in logs_md
+    assert "/aws/lambda/test" in logs_md
+
+
+def test_cli_cost_category_filtering_and_file_export(capsys, tmp_path):
+    from cli_main import cmd_cost
+    import argparse
+
+    mock_inventory = {
+        "metadata": {"region": "us-east-1", "timestamp": "2026-09-18T20:00:00Z"},
+        "compute": {
+            "nodes": [
+                {
+                    "instance_id": "i-test12345",
+                    "name": "api-server",
+                    "instance_type": "t3.micro",
+                    "state": "running",
+                    "platform": "linux",
+                    "architecture": "x86_64",
+                    "cost": 7.60,
+                    "public_ip": "1.2.3.4",
+                    "metrics": {"cpu_utilization_avg": 0.25, "cpu_utilization_max": 2.5}
+                }
+            ]
+        },
+        "ec2_other_resources": {
+            "ebs_volumes": [
+                {
+                    "volume_id": "vol-test123",
+                    "size_gb": 8,
+                    "volume_type": "gp3",
+                    "cost": 0.64,
+                    "attached_instance_id": "i-test12345",
+                    "status": "in-use",
+                    "is_orphaned": False
+                }
+            ],
+            "elastic_ips": [],
+            "amis": [],
+            "network_interfaces": [],
+            "ebs_snapshots": [],
+            "cloudwatch_log_groups": [],
+            "s3_buckets": [],
+            "security_groups": []
+        },
+        "vpc_resources": {"nat_gateways": [], "vpc_endpoints": []}
+    }
+
+    with patch("cli_main.fetch_inventory_data", return_value=mock_inventory):
+        # 1. Cost EC2 category in CSV format
+        args = argparse.Namespace(url=None, instance_id="ec2", format="csv", output=None, json_only=False)
+        cmd_cost(args)
+        out = capsys.readouterr().out
+        assert "Instance ID,Name,Instance Type" in out
+        assert "i-test12345" in out
+
+        # 2. Cost EBS category in Markdown format
+        args = argparse.Namespace(url=None, instance_id="ebs", format="markdown", output=None, json_only=False)
+        cmd_cost(args)
+        out = capsys.readouterr().out
+        assert "CloudPulse EBS Storage & Attachment Audit" in out
+        assert "vol-test123" in out
+
+        # 3. Cost Network category in Markdown format
+        args = argparse.Namespace(url=None, instance_id="network", format="markdown", output=None, json_only=False)
+        cmd_cost(args)
+        out = capsys.readouterr().out
+        assert "CloudPulse Networking & IPv4 Spend Audit" in out
+
+        # 4. Cost account rollup with file export
+        cost_out_file = tmp_path / "cost_rollup.md"
+        args = argparse.Namespace(url=None, instance_id=None, format="markdown", output=str(cost_out_file), json_only=False)
+        cmd_cost(args)
+        assert cost_out_file.exists()
+        file_text = cost_out_file.read_text()
+        assert "CloudPulse FinOps Executive Spend Report" in file_text
+        assert "\033[" not in file_text  # ANSI codes stripped!
+
+
+def test_cli_inspect_categories_and_file_export(capsys, tmp_path):
+    from cli_main import cmd_inspect
+    import argparse
+
+    mock_inventory = {
+        "metadata": {"region": "us-east-1", "timestamp": "2026-09-18T20:00:00Z"},
+        "compute": {
+            "nodes": [
+                {
+                    "instance_id": "i-test12345",
+                    "name": "api-server",
+                    "instance_type": "t3.micro",
+                    "state": "running",
+                    "platform": "linux",
+                    "architecture": "x86_64",
+                    "cost": 7.60,
+                    "public_ip": "1.2.3.4",
+                    "metrics": {"cpu_utilization_avg": 0.25, "cpu_utilization_max": 2.5}
+                }
+            ]
+        },
+        "ec2_other_resources": {
+            "ebs_volumes": [
+                {
+                    "volume_id": "vol-test123",
+                    "size_gb": 8,
+                    "volume_type": "gp3",
+                    "cost": 0.64,
+                    "attached_instance_id": "i-test12345",
+                    "status": "in-use",
+                    "is_orphaned": False
+                }
+            ],
+            "elastic_ips": [],
+            "amis": [],
+            "network_interfaces": [],
+            "ebs_snapshots": [],
+            "cloudwatch_log_groups": [
+                {
+                    "log_group_name": "/aws/ec2/system",
+                    "retention_in_days": 7,
+                    "stored_bytes": 50000000,
+                    "stored_gb": 0.05,
+                    "is_never_expire": False,
+                    "cost": 0.015
+                }
+            ],
+            "s3_buckets": [],
+            "security_groups": [
+                {
+                    "group_id": "sg-999",
+                    "group_name": "web-sg",
+                    "inbound_rules": [
+                        {"protocol": "tcp", "from_port": 80, "to_port": 80, "source_cidr": "0.0.0.0/0", "is_open_to_world": True}
+                    ]
+                }
+            ]
+        },
+        "vpc_resources": {"nat_gateways": [], "vpc_endpoints": []}
+    }
+
+    with patch("cli_main.fetch_inventory_data", return_value=mock_inventory):
+        # 1. Inspect Security in CSV format
+        args = argparse.Namespace(url=None, resource_id="security", format="csv", output=None, json_only=False)
+        cmd_inspect(args)
+        out = capsys.readouterr().out
+        assert "Security Group ID,Group Name,VPC ID" in out
+        assert "sg-999" in out
+
+        # 2. Inspect Logs in Markdown format
+        args = argparse.Namespace(url=None, resource_id="logs", format="markdown", output=None, json_only=False)
+        cmd_inspect(args)
+        out = capsys.readouterr().out
+        assert "/aws/ec2/system" in out
+        assert "CloudPulse CloudWatch Log Groups & Retention Audit" in out
+
+        # 3. Inspect Full Inventory written to markdown file
+        inv_file = tmp_path / "full_inventory.md"
+        args = argparse.Namespace(url=None, resource_id=None, format="markdown", output=str(inv_file), json_only=False)
+        cmd_inspect(args)
+        assert inv_file.exists()
+        inv_text = inv_file.read_text()
+        assert "CloudPulse Comprehensive AWS Cloud Inventory Report" in inv_text
+        assert "i-test12345" in inv_text
+        assert "\033[" not in inv_text
+
+
