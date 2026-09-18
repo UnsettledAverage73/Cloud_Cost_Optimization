@@ -103,3 +103,66 @@ def test_test_runner_html_generation(tmp_path):
     content = html_file.read_text()
     assert "CloudPulse Production Health & Test Suite" in content
     assert "Copilot Chat" in content
+
+def test_cmd_inspect_and_cost_commands(capsys):
+    from cli_main import cmd_inspect, cmd_cost
+    import argparse
+
+    mock_inventory = {
+        "metadata": {"region": "us-east-1", "timestamp": "2026-09-18T20:00:00Z"},
+        "compute": {
+            "nodes": [
+                {
+                    "instance_id": "i-test12345",
+                    "name": "api-server",
+                    "instance_type": "t3.micro",
+                    "state": "running",
+                    "platform": "linux",
+                    "architecture": "x86_64",
+                    "cost": 7.60,
+                    "public_ip": "1.2.3.4",
+                    "metrics": {"cpu_utilization_avg": 0.25, "cpu_utilization_max": 2.5}
+                }
+            ]
+        },
+        "ec2_other_resources": {
+            "ebs_volumes": [
+                {
+                    "volume_id": "vol-test123",
+                    "size_gb": 8,
+                    "volume_type": "gp3",
+                    "cost": 0.64,
+                    "attached_instance_id": "i-test12345",
+                    "status": "in-use",
+                    "is_orphaned": False
+                }
+            ],
+            "elastic_ips": [],
+            "amis": [],
+            "network_interfaces": [],
+            "ebs_snapshots": [],
+            "cloudwatch_log_groups": [],
+            "s3_buckets": [],
+            "security_groups": []
+        },
+        "vpc_resources": {"nat_gateways": [], "vpc_endpoints": []}
+    }
+
+    with patch("cli_main.fetch_inventory_data", return_value=mock_inventory):
+        # 1. Test cost command json
+        args_cost_json = argparse.Namespace(url=None, instance_id="i-test12345", json_only=True)
+        cmd_cost(args_cost_json)
+        captured = capsys.readouterr()
+        cost_json = json.loads(captured.out)
+        assert cost_json["instance_id"] == "i-test12345"
+        assert cost_json["parameters"]["total_cost_usd"] == 11.84
+
+        # 2. Test inspect command json
+        args_inspect_json = argparse.Namespace(url=None, resource_id="i-test12345", json_only=True)
+        cmd_inspect(args_inspect_json)
+        captured = capsys.readouterr()
+        inspect_json = json.loads(captured.out)
+        assert inspect_json["instance_id"] == "i-test12345"
+        assert inspect_json["cost_parameters"]["total_monthly_cost_usd"] == 11.84
+        assert inspect_json["finops_assessment"]["is_idle"] is True
+
