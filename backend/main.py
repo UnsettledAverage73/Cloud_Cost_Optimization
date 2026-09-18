@@ -68,6 +68,8 @@ try:
     from services.finops_rag import finops_rag_pipeline
     from collectors.fleet_manager import fleet_manager, FleetAccountConfig
     from engines.focus_spec import FOCUSNormalizer
+    from services.vector_store import vector_knowledge_store
+    from services.query_cache import query_cache
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -82,6 +84,8 @@ except ImportError:
     from backend.services.finops_rag import finops_rag_pipeline
     from backend.collectors.fleet_manager import fleet_manager, FleetAccountConfig
     from backend.engines.focus_spec import FOCUSNormalizer
+    from backend.services.vector_store import vector_knowledge_store
+    from backend.services.query_cache import query_cache
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1441,6 +1445,49 @@ async def get_copilot_rag_status():
     }
 
 
+@app.get("/api/v2/copilot/knowledge/search")
+async def search_knowledge_base(q: str = "", limit: int = 3):
+    """Executes semantic vector search over Well-Architected and FinOps policies."""
+    results = vector_knowledge_store.search(query=q, top_k=limit)
+    return {"query": q, "count": len(results), "results": results}
+
+
+@app.get("/api/v2/copilot/knowledge/policies")
+async def list_knowledge_policies():
+    """Lists all indexed policies in the semantic vector store."""
+    docs = vector_knowledge_store.get_all_documents()
+    return {"count": len(docs), "policies": docs}
+
+
+@app.post("/api/v2/copilot/knowledge/index")
+async def index_knowledge_policy(payload: dict):
+    """Indexes a new custom organization FinOps policy into the vector knowledge base."""
+    import uuid as _uuid
+    doc_id = payload.get("id") or str(_uuid.uuid4())
+    title = payload.get("title")
+    content = payload.get("content")
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="title and content are required")
+    category = payload.get("category", "custom-policy")
+    tags = payload.get("tags", [])
+    vector_knowledge_store.add_document(doc_id=doc_id, title=title, content=content, category=category, tags=tags)
+    vector_knowledge_store.save_to_disk()
+    return {"status": "success", "indexed_id": doc_id}
+
+
+@app.get("/api/v2/copilot/rag/cache-stats")
+async def get_rag_cache_stats():
+    """Returns RAG query cache performance metrics and hit rates."""
+    return query_cache.get_stats()
+
+
+@app.delete("/api/v2/copilot/rag/cache")
+async def clear_rag_cache():
+    """Clears the RAG query cache."""
+    query_cache.clear()
+    return {"status": "success", "message": "Query cache cleared"}
+
+
 @app.get("/api/v2/copilot/status")
 @app.get("/api/v1/copilot/status")
 async def get_copilot_status():
@@ -1453,13 +1500,16 @@ async def get_copilot_status():
         "status": "ready" if engine_ready else "heuristic_fallback",
         "provider": copilot_agent.provider,
         "active_model": active_model,
-        "tools_enabled": ["sql_analytics", "pricing_rag", "cloudtrail_forensics", "terraform_pr", "finops_rag"],
+        "tools_enabled": ["sql_analytics", "pricing_rag", "cloudtrail_forensics", "terraform_pr", "finops_rag", "vector_knowledge_store"],
         "groq_configured": bool(copilot_agent.groq_api_key),
         "api_endpoints": [
             "/api/v2/copilot/chat",
             "/api/v2/copilot/rag/ask",
             "/api/v2/copilot/rag/recommendations",
             "/api/v2/copilot/rag/status",
+            "/api/v2/copilot/rag/cache-stats",
+            "/api/v2/copilot/knowledge/search",
+            "/api/v2/copilot/knowledge/policies",
             "/api/v2/copilot/diagnose-spike",
             "/api/v2/copilot/generate-iac-pr",
             "/api/v2/copilot/pricing",

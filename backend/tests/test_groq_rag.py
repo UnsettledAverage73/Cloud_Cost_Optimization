@@ -130,7 +130,7 @@ def test_rag_ask_with_mocked_llm(sample_inventory):
 def test_rag_ask_deterministic_fallback(sample_inventory):
     pipeline = FinOpsRAGPipeline()
     with patch.object(pipeline.engine, "is_available", return_value=False):
-        res = pipeline.ask("How to save money?", inventory=sample_inventory)
+        res = pipeline.ask("How to save money?", inventory=sample_inventory, use_cache=False)
         assert res["status"] == "fallback"
         assert res["provider"] == "deterministic_rag_fallback"
         assert "vol-orphan123" in res["answer"]

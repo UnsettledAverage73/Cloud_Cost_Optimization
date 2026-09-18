@@ -366,27 +366,42 @@ def cmd_ask(args):
         pass
 
     # RAG direct route if requested
+    use_cache = not getattr(args, "no_cache", False)
+    show_semantic = getattr(args, "semantic", False)
+
     if use_rag:
         try:
             resp = http_json(
                 f"{backend_url}/api/v2/copilot/rag/ask",
                 method="POST",
-                payload={"query": prompt, "inventory": live_inv}
+                payload={"query": prompt, "inventory": live_inv, "use_cache": use_cache}
             )
             answer = resp.get("answer", "No response received.")
             provider = resp.get("provider", "groq")
             model = resp.get("model", "unknown")
             items = resp.get("retrieved_items", 0)
             savings = resp.get("potential_monthly_savings", 0.0)
-            badge = f"{DIM}[{provider}:{model} | RAG: {items} resources audited | ${savings:.2f}/mo potential savings]{RESET}"
+            cache_tag = f" | {CYAN}⚡ CACHED{RESET}" if resp.get("cached") else ""
+            badge = f"{DIM}[{provider}:{model} | RAG: {items} resources audited | ${savings:.2f}/mo potential savings{cache_tag}]{RESET}"
             print(f"{badge}\n\n{answer}\n")
+            if show_semantic and resp.get("semantic_policies"):
+                print(f"{CYAN}{BOLD}📜 Matched Well-Architected & Corporate Policies:{RESET}")
+                for p in resp["semantic_policies"]:
+                    print(f"  • {BOLD}{p['title']}{RESET} (Score: {p.get('similarity_score', 0):.2f})")
+                print()
             return
         except Exception:
             try:
                 from services.finops_rag import finops_rag_pipeline
-                res = finops_rag_pipeline.ask(prompt, inventory=live_inv)
-                badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG: {res.get('retrieved_items', 0)} resources audited]{RESET}"
+                res = finops_rag_pipeline.ask(prompt, inventory=live_inv, use_cache=use_cache)
+                cache_tag = f" | {CYAN}⚡ CACHED (<5ms){RESET}" if res.get("cached") else ""
+                badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG: {res.get('retrieved_items', 0)} resources audited{cache_tag}]{RESET}"
                 print(f"{badge}\n\n{res.get('answer')}\n")
+                if show_semantic and res.get("semantic_policies"):
+                    print(f"{CYAN}{BOLD}📜 Matched Well-Architected & Corporate Policies:{RESET}")
+                    for p in res["semantic_policies"]:
+                        print(f"  • {BOLD}{p['title']}{RESET} (Score: {p.get('similarity_score', 0):.2f})")
+                    print()
                 return
             except Exception:
                 pass
@@ -401,9 +416,15 @@ def cmd_ask(args):
     except Exception as e:
         try:
             from services.finops_rag import finops_rag_pipeline
-            res = finops_rag_pipeline.ask(prompt, inventory=live_inv)
-            badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG]{RESET}"
+            res = finops_rag_pipeline.ask(prompt, inventory=live_inv, use_cache=use_cache)
+            cache_tag = f" | {CYAN}⚡ CACHED{RESET}" if res.get("cached") else ""
+            badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG{cache_tag}]{RESET}"
             print(f"{badge}\n\n{res.get('answer')}\n")
+            if show_semantic and res.get("semantic_policies"):
+                print(f"{CYAN}{BOLD}📜 Matched Well-Architected & Corporate Policies:{RESET}")
+                for p in res["semantic_policies"]:
+                    print(f"  • {BOLD}{p['title']}{RESET} (Score: {p.get('similarity_score', 0):.2f})")
+                print()
         except Exception:
             print(f"{RED}Failed to query AI Copilot:{RESET} {e}")
             sys.exit(1)
@@ -1773,6 +1794,8 @@ def main():
     p_ask = subparsers.add_parser("ask", parents=[common_parser], help="Ask autonomous FinOps AI Copilot questions or execute slash commands")
     p_ask.add_argument("prompt", nargs="+", help="Your question or slash command (e.g. /optimize, /health)")
     p_ask.add_argument("--rag", action="store_true", help="Force deep RAG context retrieval & augmentation")
+    p_ask.add_argument("--no-cache", action="store_true", help="Bypass query cache and force fresh inference")
+    p_ask.add_argument("--semantic", action="store_true", help="Display matched Well-Architected and corporate policies")
 
     # recommend (Autonomous Groq RAG FinOps Recommendation Engine)
     p_rec = subparsers.add_parser("recommend", parents=[common_parser], help="Autonomous Groq RAG FinOps recommendation engine")

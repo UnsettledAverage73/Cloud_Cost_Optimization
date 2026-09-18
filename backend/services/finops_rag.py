@@ -23,10 +23,14 @@ try:
     from services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
     from copilot.tools.pricing_rag_tool import lookup_aws_pricing, AWS_INSTANCE_PRICING_TABLE, STORAGE_PRICING_TABLE
     from engines.finops_analyzer import FinOpsAnalyzer
+    from services.vector_store import vector_knowledge_store
+    from services.query_cache import query_cache
 except ImportError:
     from backend.services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
     from backend.copilot.tools.pricing_rag_tool import lookup_aws_pricing, AWS_INSTANCE_PRICING_TABLE, STORAGE_PRICING_TABLE
     from backend.engines.finops_analyzer import FinOpsAnalyzer
+    from backend.services.vector_store import vector_knowledge_store
+    from backend.services.query_cache import query_cache
 
 logger = logging.getLogger("cloudpulse.finops_rag")
 
@@ -58,6 +62,16 @@ class FinOpsRAGPipeline:
                 return DB
             except Exception:
                 return {}
+
+    def _get_inventory_fingerprint(self, inventory: Dict[str, Any]) -> str:
+        """Computes a lightweight state fingerprint to validate query cache validity."""
+        meta = inventory.get("metadata", {})
+        ts = meta.get("timestamp", "")
+        spend = inventory.get("summary", {}).get("estimated_monthly_spend", 0.0)
+        nodes = inventory.get("compute", {}).get("nodes") or inventory.get("nodes", [])
+        ec2_other = inventory.get("ec2_other_resources", {})
+        vols = ec2_other.get("ebs_volumes") or inventory.get("ebs_volumes", [])
+        return f"{ts}:{spend}:{len(nodes)}:{len(vols)}"
 
     # =========================================================================
     # 1. RETRIEVE STAGE
@@ -143,6 +157,14 @@ class FinOpsRAGPipeline:
             except Exception:
                 pass
 
+        # Hybrid Semantic Vector Search across FinOps policies
+        semantic_policies = []
+        if query_str:
+            try:
+                semantic_policies = vector_knowledge_store.search(query=query_str, top_k=2)
+            except Exception as e:
+                logger.debug(f"Vector search exception: {e}")
+
         return {
             "metadata": metadata,
             "domains": list(domain_matches) if domain_matches else ["all"],
@@ -155,6 +177,7 @@ class FinOpsRAGPipeline:
             "nat_gateways": nat_gws,
             "pricing_rate_cards": pricing_rate_cards,
             "fleet_summary": fleet_summary,
+            "semantic_policies": semantic_policies,
             "total_retrieved_items": (
                 len(retrieved_nodes) + len(retrieved_vols) + len(retrieved_eips) +
                 len(retrieved_sgs) + len(retrieved_logs)
@@ -376,6 +399,15 @@ class FinOpsRAGPipeline:
                 f"- FOCUS 1.0 Compliance: {augmented_fleet['total_focus_records']} normalized cost lines active"
             )
 
+        # Augment Semantic Policies from Vector Knowledge Store
+        semantic_policies = retrieved.get("semantic_policies", [])
+        if semantic_policies:
+            knowledge_chunks.append("\n**AWS Well-Architected Framework & Enterprise Policy Guidelines:**")
+            for p in semantic_policies:
+                knowledge_chunks.append(
+                    f"- *{p['title']}* (Category: {p.get('category')}, Relevance: {p.get('similarity_score', 0):.2f}):\n  {p['content']}"
+                )
+
         knowledge_chunks.append(
             f"\n**AGGREGATE QUANTIFIED RECOVERABLE SAVINGS:**\n"
             f"• Monthly Potential Savings: **${total_recoverable_monthly:.2f}/month**\n"
@@ -392,18 +424,27 @@ class FinOpsRAGPipeline:
             "security": augmented_security,
             "logs": augmented_logs,
             "fleet": augmented_fleet,
+            "semantic_policies": semantic_policies,
             "retrieved_item_count": retrieved.get("total_retrieved_items", 0)
         }
 
     # =========================================================================
     # 3. GENERATE STAGE
     # =========================================================================
-    def ask(self, query: str, inventory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def ask(self, query: str, inventory: Optional[Dict[str, Any]] = None, use_cache: bool = True) -> Dict[str, Any]:
         """
         Full RAG cycle for user questions:
-        Retrieve -> Augment -> Generate with Groq LLM.
+        Cache Check -> Retrieve -> Augment -> Generate with Groq LLM -> Cache Set.
         """
-        retrieved = self.retrieve_context(query=query, inventory=inventory)
+        inv = self._get_inventory(inventory)
+        fingerprint = self._get_inventory_fingerprint(inv)
+
+        if use_cache:
+            cached = query_cache.get(query, fingerprint)
+            if cached:
+                return cached
+
+        retrieved = self.retrieve_context(query=query, inventory=inv)
         augmented = self.augment_context(retrieved, user_query=query)
 
         sys_prompt = (
@@ -423,10 +464,11 @@ class FinOpsRAGPipeline:
             {"role": "user", "content": user_content}
         ]
 
+        result = None
         if self.engine and self.engine.is_available():
             reply = self.engine.chat_completion(messages, max_tokens=1000, temperature=0.2)
             if reply:
-                return {
+                result = {
                     "answer": reply,
                     "provider": "groq",
                     "model": self.engine.active_model,
@@ -434,37 +476,46 @@ class FinOpsRAGPipeline:
                     "status": "success",
                     "retrieved_domains": retrieved.get("domains", ["all"]),
                     "retrieved_items": retrieved.get("total_retrieved_items", 0),
-                    "potential_monthly_savings": augmented["total_monthly_savings"]
+                    "potential_monthly_savings": augmented["total_monthly_savings"],
+                    "semantic_policies": augmented.get("semantic_policies", []),
+                    "cached": False
                 }
 
-        # Deterministic Grounded Fallback
-        fallback_answer = (
-            f"### 🤖 Grounded FinOps Analysis (RAG Heuristic Mode)\n\n"
-            f"Based on real-time retrieval of your cloud environment ({augmented['retrieved_item_count']} items analyzed):\n\n"
-            f"• **Potential Recoverable Spend:** **${augmented['total_monthly_savings']:.2f}/month** (${augmented['total_annual_savings']:.2f}/year)\n"
-        )
-        for c in augmented["compute"]:
-            if c["is_idle"]:
-                fallback_answer += f"• **Idle Compute:** `{c['instance_id']}` ({c['type']}) has average CPU of {c['cpu_avg']}%. {c['suggested_action']}\n"
-        for s in augmented["storage"]:
-            if s["is_orphaned"]:
-                fallback_answer += f"• **Orphaned Storage:** `{s['volume_id']}` ({s['size_gb']} GB) is unattached. {s['action']}\n"
-            elif s["type"] == "gp2":
-                fallback_answer += f"• **gp2 Volume:** `{s['volume_id']}` should be upgraded to gp3. {s['action']}\n"
-        for net in augmented["network"]:
-            if net["is_unattached"]:
-                fallback_answer += f"• **Unattached Elastic IP:** `{net['public_ip']}` is incurring AWS idle IPv4 fees ($0.005/hr). Release to save $3.60/mo.\n"
+        if not result:
+            # Deterministic Grounded Fallback
+            fallback_answer = (
+                f"### 🤖 Grounded FinOps Analysis (RAG Heuristic Mode)\n\n"
+                f"Based on real-time retrieval of your cloud environment ({augmented['retrieved_item_count']} items analyzed):\n\n"
+                f"• **Potential Recoverable Spend:** **${augmented['total_monthly_savings']:.2f}/month** (${augmented['total_annual_savings']:.2f}/year)\n"
+            )
+            for c in augmented["compute"]:
+                if c["is_idle"]:
+                    fallback_answer += f"• **Idle Compute:** `{c['instance_id']}` ({c['type']}) has average CPU of {c['cpu_avg']}%. {c['suggested_action']}\n"
+            for s in augmented["storage"]:
+                if s["is_orphaned"]:
+                    fallback_answer += f"• **Orphaned Storage:** `{s['volume_id']}` ({s['size_gb']} GB) is unattached. {s['action']}\n"
+                elif s["type"] == "gp2":
+                    fallback_answer += f"• **gp2 Volume:** `{s['volume_id']}` should be upgraded to gp3. {s['action']}\n"
+            for net in augmented["network"]:
+                if net["is_unattached"]:
+                    fallback_answer += f"• **Unattached Elastic IP:** `{net['public_ip']}` is incurring AWS idle IPv4 fees ($0.005/hr). Release to save $3.60/mo.\n"
 
-        return {
-            "answer": fallback_answer,
-            "provider": "deterministic_rag_fallback",
-            "model": "rule_engine",
-            "pipeline": "RAG",
-            "status": "fallback",
-            "retrieved_domains": retrieved.get("domains", ["all"]),
-            "retrieved_items": retrieved.get("total_retrieved_items", 0),
-            "potential_monthly_savings": augmented["total_monthly_savings"]
-        }
+            result = {
+                "answer": fallback_answer,
+                "provider": "deterministic_rag_fallback",
+                "model": "rule_engine",
+                "pipeline": "RAG",
+                "status": "fallback",
+                "retrieved_domains": retrieved.get("domains", ["all"]),
+                "retrieved_items": retrieved.get("total_retrieved_items", 0),
+                "potential_monthly_savings": augmented["total_monthly_savings"],
+                "semantic_policies": augmented.get("semantic_policies", []),
+                "cached": False
+            }
+
+        if use_cache and result:
+            query_cache.set(query, result, fingerprint)
+        return result
 
     def generate_recommendations(
         self,
