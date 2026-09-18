@@ -1,4 +1,6 @@
 import os
+import sys
+import glob
 import json
 import logging
 from typing import Dict, List, Any, Optional
@@ -23,6 +25,18 @@ def _load_env():
             except Exception:
                 pass
 
+def _discover_venv():
+    for base in [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]:
+        for pattern in [
+            os.path.join(base, "venv", "lib", "python*", "site-packages"),
+            os.path.join(base, "..", "venv", "lib", "python*", "site-packages"),
+            os.path.join(base, "..", "..", "venv", "lib", "python*", "site-packages"),
+        ]:
+            for sp in glob.glob(pattern):
+                if sp not in sys.path:
+                    sys.path.insert(0, sp)
+
+_discover_venv()
 _load_env()
 
 def _get_groq_key() -> Optional[str]:

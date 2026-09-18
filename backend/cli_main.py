@@ -16,9 +16,13 @@ import urllib.error
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-# Ensure parent and backend paths are importable
+# Ensure parent, backend, and venv paths are importable
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+import glob
+for sp in glob.glob(os.path.join(ROOT_DIR, "venv", "lib", "python*", "site-packages")):
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
 for p in [CURRENT_DIR, ROOT_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
