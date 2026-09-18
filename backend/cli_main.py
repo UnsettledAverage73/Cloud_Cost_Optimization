@@ -508,14 +508,18 @@ def cmd_connect(args):
             print(f"  • Warning      : {YELLOW}{res.get('warning')}{RESET}")
 
         # Fetch discovered nodes
-        nodes = http_json(f"{backend_url}/api/nodes")
-        print(f"\n{BOLD}📦 Discovered Live Compute Nodes ({len(nodes)}):{RESET}")
-        print(f"  {'INSTANCE ID':<22} {'NAME':<16} {'TYPE':<12} {'STATE':<10} {'PUBLIC IP':<16} {'COST/MO'}")
-        print("  " + "-" * 88)
-        for n in nodes:
-            state_color = GREEN if n.get('state') == 'running' else YELLOW
-            print(f"  {n.get('instance_id'):<22} {n.get('name', 'unnamed'):<16} {n.get('type', ''):<12} {state_color}{n.get('state', ''):<10}{RESET} {n.get('public_ip') or 'None':<16} ${n.get('cost', 0):.2f}/mo")
-        print()
+        try:
+            nodes = http_json(f"{backend_url}/api/nodes", timeout=30.0)
+            print(f"\n{BOLD}📦 Discovered Live Compute Nodes ({len(nodes)}):{RESET}")
+            print(f"  {'INSTANCE ID':<22} {'NAME':<16} {'TYPE':<12} {'STATE':<10} {'PUBLIC IP':<16} {'COST/MO'}")
+            print("  " + "-" * 88)
+            for n in nodes:
+                state_color = GREEN if n.get('state') == 'running' else YELLOW
+                print(f"  {n.get('instance_id'):<22} {n.get('name', 'unnamed'):<16} {n.get('type', ''):<12} {state_color}{n.get('state', ''):<10}{RESET} {n.get('public_ip') or 'None':<16} ${n.get('cost', 0):.2f}/mo")
+            print()
+        except Exception as err:
+            print(f"\n{YELLOW}Note fetching initial node list:{RESET} {err}")
+            print("Run `cloudpulse audit` to view discovered resources.")
     except Exception as e:
         print(f"{RED}✖ Failed to connect AWS account:{RESET} {e}")
         sys.exit(1)
