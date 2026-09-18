@@ -358,10 +358,21 @@ def cmd_ask(args):
         except Exception as e:
             print(f"Notice falling back to copilot v2: {e}")
 
+    # Fetch live cloud inventory to ground RAG in actual AWS infrastructure
+    live_inv = None
+    try:
+        live_inv = fetch_inventory_data(backend_url)
+    except Exception:
+        pass
+
     # RAG direct route if requested
     if use_rag:
         try:
-            resp = http_json(f"{backend_url}/api/v2/copilot/rag/ask", method="POST", payload={"query": prompt})
+            resp = http_json(
+                f"{backend_url}/api/v2/copilot/rag/ask",
+                method="POST",
+                payload={"query": prompt, "inventory": live_inv}
+            )
             answer = resp.get("answer", "No response received.")
             provider = resp.get("provider", "groq")
             model = resp.get("model", "unknown")
@@ -373,7 +384,7 @@ def cmd_ask(args):
         except Exception:
             try:
                 from services.finops_rag import finops_rag_pipeline
-                res = finops_rag_pipeline.ask(prompt)
+                res = finops_rag_pipeline.ask(prompt, inventory=live_inv)
                 badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG: {res.get('retrieved_items', 0)} resources audited]{RESET}"
                 print(f"{badge}\n\n{res.get('answer')}\n")
                 return
@@ -390,7 +401,7 @@ def cmd_ask(args):
     except Exception as e:
         try:
             from services.finops_rag import finops_rag_pipeline
-            res = finops_rag_pipeline.ask(prompt)
+            res = finops_rag_pipeline.ask(prompt, inventory=live_inv)
             badge = f"{DIM}[{res.get('provider')}:{res.get('model')} | Local RAG]{RESET}"
             print(f"{badge}\n\n{res.get('answer')}\n")
         except Exception:
@@ -412,18 +423,25 @@ def cmd_recommend(args):
     print(f"\n{CYAN}{BOLD}🧠 CloudPulse Groq FinOps RAG Engine{RESET}")
     print(f"Retrieving cloud telemetry & generating AI recommendations (focus: {focus})...\n")
 
+    # Fetch live cloud inventory
+    live_inv = None
+    try:
+        live_inv = fetch_inventory_data(backend_url)
+    except Exception:
+        pass
+
     report_data = None
     try:
         report_data = http_json(
             f"{backend_url}/api/v2/copilot/rag/recommendations",
             method="POST",
-            payload={"focus_domain": focus},
+            payload={"focus_domain": focus, "inventory": live_inv},
             timeout=45.0
         )
     except Exception:
         try:
             from services.finops_rag import finops_rag_pipeline
-            report_data = finops_rag_pipeline.generate_recommendations(focus_domain=focus)
+            report_data = finops_rag_pipeline.generate_recommendations(inventory=live_inv, focus_domain=focus)
         except Exception as local_err:
             print(f"{RED}Error generating RAG recommendations:{RESET} {local_err}")
             sys.exit(1)
