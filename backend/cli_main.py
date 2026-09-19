@@ -1046,22 +1046,30 @@ def cmd_multicloud(args):
     """
     Consolidates cloud spend across AWS, Microsoft Azure, and Google Cloud (GCP)
     under the unified FOCUS 1.0 open cost specification.
+    Reports real-time connected telemetry only. Unconnected clouds show $0 and NOT CONNECTED.
     """
     fmt = get_report_format(args)
     output_dest = getattr(args, "output", None)
-    backend_url = get_backend_url(getattr(args, "url", None))
 
     try:
-        data = http_json(f"{backend_url}/api/v2/multicloud/summary", timeout=4.0)
-    except Exception:
-        try:
-            from collectors.multicloud_connector import multicloud_orchestrator
-        except ImportError:
-            from backend.collectors.multicloud_connector import multicloud_orchestrator
+        from collectors.multicloud_connector import multicloud_orchestrator
+        from engines.focus_spec import FOCUSNormalizer
+    except ImportError:
+        from backend.collectors.multicloud_connector import multicloud_orchestrator
+        from backend.engines.focus_spec import FOCUSNormalizer
 
-        inv = resolve_cli_inventory()
-        aws_spend = inv.get("summary", {}).get("estimated_monthly_spend", 74.16)
-        data = multicloud_orchestrator.get_cross_cloud_summary(aws_spend=aws_spend)
+    inv = resolve_cli_inventory()
+    nodes = inv.get("compute", {}).get("nodes", []) or inv.get("nodes", [])
+    ec2_other = inv.get("ec2_other_resources", {})
+    vols = ec2_other.get("ebs_volumes", []) or inv.get("ebs_volumes", [])
+
+    aws_spend = inv.get("summary", {}).get("estimated_monthly_spend")
+    if not aws_spend:
+        aws_spend = sum(n.get("cost", 0.0) for n in nodes) + sum(v.get("cost", 0.0) for v in vols)
+        aws_spend = round(aws_spend, 2)
+
+    focus_records = FOCUSNormalizer.convert_inventory_to_focus(inv)
+    data = multicloud_orchestrator.get_cross_cloud_summary(aws_spend=aws_spend, aws_focus_count=len(focus_records))
 
     if fmt == "json":
         emit_output(json.dumps(data, indent=2), output_dest)
@@ -1075,7 +1083,7 @@ def cmd_multicloud(args):
     except ImportError:
         from backend.services.currency_converter import currency_converter
 
-    total_spend_str = currency_converter.format_dual(total_spend, primary_currency=curr)
+    total_spend_str = currency_converter.format_dual(total_spend, primary_currency=curr) if total_spend > 0 else "$0.00"
 
     out = []
     out.append(get_banner_str())
@@ -1089,9 +1097,14 @@ def cmd_multicloud(args):
     out.append("  " + "-" * 88)
     for p_name, p_info in providers.items():
         m_spend = p_info.get('monthly_spend', 0.0)
-        spend_str = currency_converter.format_dual(m_spend, primary_currency=curr)
+        is_active = p_info.get("status") == "ACTIVE SYNC"
+        if is_active and m_spend > 0:
+            spend_str = currency_converter.format_dual(m_spend, primary_currency=curr)
+            status_str = f"{GREEN}ACTIVE SYNC{RESET}"
+        else:
+            spend_str = "$0.00" if curr == "USD" else "₹0.00"
+            status_str = f"{YELLOW}NOT CONNECTED{RESET}"
         share_str = f"{p_info.get('share_percent', 0.0):.1f}%"
-        status_str = f"{GREEN}ACTIVE SYNC{RESET}"
         out.append(f"  {p_name:<10} {spend_str:<30} {share_str:<14} {status_str}")
     out.append("=" * 90)
     out.append("  💡 Unified under FinOps Open Cost & Usage Specification (FOCUS 1.0)")

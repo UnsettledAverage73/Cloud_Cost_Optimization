@@ -3,6 +3,7 @@ CloudPulse Fleet Inventory Cache & Asynchronous State
 High-throughput caching layer ensuring instant sub-second responses, persistent disk caching, and background thread refreshes.
 """
 
+import os
 import time
 import json
 import logging
@@ -28,6 +29,8 @@ class FleetStateCache:
 
     def _load_from_disk(self):
         """Loads cached state from persistent disk if available."""
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            return
         try:
             if CACHE_FILE.exists():
                 with open(CACHE_FILE, "r") as f:
@@ -39,6 +42,8 @@ class FleetStateCache:
 
     def _save_to_disk(self):
         """Persists memory cache to disk."""
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            return
         try:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             with open(CACHE_FILE, "w") as f:

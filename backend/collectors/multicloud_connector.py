@@ -110,60 +110,12 @@ class GCPCostConnector:
 class MultiCloudOrchestrator:
     """
     Consolidates AWS, Microsoft Azure, and Google Cloud billing into unified cross-cloud FinOps rollups.
+    Reports real-time connected data only. Unconnected clouds show $0 and NOT CONNECTED.
     """
 
     def __init__(self):
         self.azure_records: List[Dict[str, Any]] = []
         self.gcp_records: List[Dict[str, Any]] = []
-        self._seed_sample_multicloud_data()
-
-    def _seed_sample_multicloud_data(self):
-        """Seeds realistic Azure & GCP multi-cloud assets for enterprise fleet view."""
-        # Azure resources: Standard_D2s_v5 VM, Premium SSD, Public IP
-        azure_samples = [
-            {
-                "resourceId": "/subscriptions/sub-1122/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-app-east",
-                "resourceName": "vm-app-east",
-                "consumedService": "Microsoft.Compute",
-                "cost": 54.75,
-                "region": "eastus",
-                "subscriptionId": "sub-1122",
-                "subscriptionName": "Azure Production East"
-            },
-            {
-                "resourceId": "/subscriptions/sub-1122/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/saapplogs",
-                "resourceName": "saapplogs",
-                "consumedService": "Microsoft.Storage",
-                "cost": 18.20,
-                "region": "eastus",
-                "subscriptionId": "sub-1122",
-                "subscriptionName": "Azure Production East"
-            }
-        ]
-        for a in azure_samples:
-            self.azure_records.append(AzureCostConnector.normalize_azure_record(a))
-
-        # GCP resources: e2-standard-2, pd-balanced
-        gcp_samples = [
-            {
-                "project_id": "prj-gcp-ai-cluster",
-                "project_name": "GCP AI Workloads",
-                "service_name": "Compute Engine",
-                "sku_description": "e2-standard-2 in us-central1",
-                "cost": 48.90,
-                "region": "us-central1"
-            },
-            {
-                "project_id": "prj-gcp-ai-cluster",
-                "project_name": "GCP AI Workloads",
-                "service_name": "Cloud Storage",
-                "sku_description": "Standard Storage US Regional",
-                "cost": 12.40,
-                "region": "us-central1"
-            }
-        ]
-        for g in gcp_samples:
-            self.gcp_records.append(GCPCostConnector.normalize_gcp_record(g))
 
     def ingest_azure_batch(self, raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         normalized = [AzureCostConnector.normalize_azure_record(item) for item in raw_items]
@@ -175,34 +127,47 @@ class MultiCloudOrchestrator:
         self.gcp_records.extend(normalized)
         return normalized
 
-    def get_cross_cloud_summary(self, aws_spend: float = 74.16) -> Dict[str, Any]:
+    def get_cross_cloud_summary(self, aws_spend: float = 0.0, aws_focus_count: int = 0) -> Dict[str, Any]:
         """
         Consolidates cross-cloud spend across AWS, Azure, and GCP.
+        Reports real-time connected spend only. Unconnected clouds show $0 and NOT CONNECTED.
         """
         azure_spend = sum(float(r.get("EffectiveCost", 0.0)) for r in self.azure_records)
         gcp_spend = sum(float(r.get("EffectiveCost", 0.0)) for r in self.gcp_records)
-        total_spend = aws_spend + azure_spend + gcp_spend
+        total_spend = round(aws_spend + azure_spend + gcp_spend, 2)
+
+        aws_active = aws_spend > 0 or aws_focus_count > 0
+        azure_active = len(self.azure_records) > 0
+        gcp_active = len(self.gcp_records) > 0
+
+        providers = {
+            "AWS": {
+                "monthly_spend": round(aws_spend, 2),
+                "share_percent": round((aws_spend / total_spend * 100.0), 1) if total_spend > 0 else 0.0,
+                "status": "ACTIVE SYNC" if aws_active else "NOT CONNECTED",
+                "active_accounts": 1 if aws_active else 0,
+                "focus_records": aws_focus_count
+            },
+            "Azure": {
+                "monthly_spend": round(azure_spend, 2),
+                "share_percent": round((azure_spend / total_spend * 100.0), 1) if total_spend > 0 else 0.0,
+                "status": "ACTIVE SYNC" if azure_active else "NOT CONNECTED",
+                "active_records": len(self.azure_records)
+            },
+            "GCP": {
+                "monthly_spend": round(gcp_spend, 2),
+                "share_percent": round((gcp_spend / total_spend * 100.0), 1) if total_spend > 0 else 0.0,
+                "status": "ACTIVE SYNC" if gcp_active else "NOT CONNECTED",
+                "active_records": len(self.gcp_records)
+            }
+        }
+
+        total_focus = aws_focus_count + len(self.azure_records) + len(self.gcp_records)
 
         return {
-            "total_multicloud_monthly_spend": round(total_spend, 2),
-            "providers": {
-                "AWS": {
-                    "monthly_spend": round(aws_spend, 2),
-                    "share_percent": round((aws_spend / total_spend * 100.0), 1) if total_spend > 0 else 0.0,
-                    "active_accounts": 1
-                },
-                "Azure": {
-                    "monthly_spend": round(azure_spend, 2),
-                    "share_percent": round((azure_spend / total_spend * 100.0), 1) if total_spend > 0 else 0.0,
-                    "active_records": len(self.azure_records)
-                },
-                "GCP": {
-                    "monthly_spend": round(gcp_spend, 2),
-                    "share_percent": round((gcp_spend / total_spend * 100.0), 1) if total_spend > 0 else 0.0,
-                    "active_records": len(self.gcp_records)
-                }
-            },
-            "total_focus_records_tracked": len(self.azure_records) + len(self.gcp_records) + 20
+            "total_multicloud_monthly_spend": total_spend,
+            "providers": providers,
+            "total_focus_records_tracked": total_focus
         }
 
 

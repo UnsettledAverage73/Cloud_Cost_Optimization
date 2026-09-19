@@ -62,19 +62,28 @@ def test_gcp_cost_connector_focus_normalization():
 def test_multicloud_orchestrator_spend_aggregation():
     """Verifies cross-cloud consolidation across AWS, Azure, and GCP."""
     orchestrator = MultiCloudOrchestrator()
-    summary = orchestrator.get_cross_cloud_summary(aws_spend=74.16)
+    # Unconnected state: Azure & GCP report $0 and NOT CONNECTED
+    summary = orchestrator.get_cross_cloud_summary(aws_spend=74.16, aws_focus_count=18)
 
     assert "total_multicloud_monthly_spend" in summary
-    assert summary["total_multicloud_monthly_spend"] > 100.0
-    providers = summary["providers"]
-    assert "AWS" in providers
-    assert "Azure" in providers
-    assert "GCP" in providers
+    assert summary["total_multicloud_monthly_spend"] == 74.16
+    assert summary["providers"]["AWS"]["status"] == "ACTIVE SYNC"
+    assert summary["providers"]["Azure"]["status"] == "NOT CONNECTED"
+    assert summary["providers"]["GCP"]["status"] == "NOT CONNECTED"
+
+    # Explicit batch ingestion of Azure & GCP records
+    orchestrator.ingest_azure_batch([{"cost": 50.0, "consumedService": "Microsoft.Compute", "resourceId": "azure-vm-1"}])
+    orchestrator.ingest_gcp_batch([{"cost": 30.0, "service": {"description": "Compute Engine"}, "resource": {"name": "gcp-vm-1"}}])
+
+    updated = orchestrator.get_cross_cloud_summary(aws_spend=74.16, aws_focus_count=18)
+    assert updated["total_multicloud_monthly_spend"] == 154.16
+    assert updated["providers"]["Azure"]["status"] == "ACTIVE SYNC"
+    assert updated["providers"]["GCP"]["status"] == "ACTIVE SYNC"
 
     total_shares = (
-        providers["AWS"]["share_percent"] +
-        providers["Azure"]["share_percent"] +
-        providers["GCP"]["share_percent"]
+        updated["providers"]["AWS"]["share_percent"] +
+        updated["providers"]["Azure"]["share_percent"] +
+        updated["providers"]["GCP"]["share_percent"]
     )
     assert 99.0 <= total_shares <= 101.0  # Accounts for minor rounding
 
