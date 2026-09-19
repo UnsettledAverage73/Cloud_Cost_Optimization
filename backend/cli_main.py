@@ -1069,22 +1069,30 @@ def cmd_multicloud(args):
 
     providers = data.get("providers", {})
     total_spend = data.get("total_multicloud_monthly_spend", 0.0)
+    curr = getattr(args, "currency", "USD").upper()
+    try:
+        from services.currency_converter import currency_converter
+    except ImportError:
+        from backend.services.currency_converter import currency_converter
+
+    total_spend_str = currency_converter.format_dual(total_spend, primary_currency=curr)
 
     out = []
     out.append(get_banner_str())
     out.append("=" * 90)
     out.append(f"     🌐 CLOUDPULSE MULTI-CLOUD FLEET & FOCUS 1.0 OVERVIEW")
     out.append("=" * 90)
-    out.append(f"  • Total Consolidated Monthly Spend : {GREEN}{BOLD}${total_spend:.2f} / month{RESET}")
+    out.append(f"  • Total Consolidated Monthly Spend : {GREEN}{BOLD}{total_spend_str} / month{RESET}")
     out.append(f"  • Normalized FOCUS 1.0 Records     : {CYAN}{data.get('total_focus_records_tracked', 0)} cost lines{RESET}")
     out.append("-" * 90)
-    out.append(f"  {'PROVIDER':<16} {'MONTHLY SPEND':<20} {'FLEET SHARE':<16} {'STATUS'}")
+    out.append(f"  {'PROVIDER':<10} {'MONTHLY SPEND':<30} {'FLEET SHARE':<14} {'STATUS'}")
     out.append("  " + "-" * 88)
     for p_name, p_info in providers.items():
-        spend_str = f"${p_info.get('monthly_spend', 0.0):.2f}/mo"
+        m_spend = p_info.get('monthly_spend', 0.0)
+        spend_str = currency_converter.format_dual(m_spend, primary_currency=curr)
         share_str = f"{p_info.get('share_percent', 0.0):.1f}%"
         status_str = f"{GREEN}ACTIVE SYNC{RESET}"
-        out.append(f"  {p_name:<16} {spend_str:<20} {share_str:<16} {status_str}")
+        out.append(f"  {p_name:<10} {spend_str:<30} {share_str:<14} {status_str}")
     out.append("=" * 90)
     out.append("  💡 Unified under FinOps Open Cost & Usage Specification (FOCUS 1.0)")
     out.append("=" * 90 + "\n")
