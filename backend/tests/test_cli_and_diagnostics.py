@@ -484,3 +484,70 @@ def test_cli_inspect_categories_and_file_export(capsys, tmp_path):
         assert "\033[" not in inv_text
 
 
+def test_cli_notify_whatsapp_and_slack(capsys):
+    from cli_main import cmd_notify
+    import argparse
+
+    # 1. WhatsApp Success
+    with patch("services.notifier.finops_notifier.send_whatsapp_alert", return_value=True) as mock_wa:
+        args = argparse.Namespace(channel="whatsapp", to="+919876543210", title="Test Alert", message="Spike detected")
+        cmd_notify(args)
+        out = capsys.readouterr().out
+        assert "CLOUDPULSE MULTI-CHANNEL NOTIFICATION DISPATCHER" in out
+        assert "WhatsApp message dispatched successfully" in out
+        mock_wa.assert_called_once_with("Test Alert", "Spike detected", to_number="+919876543210")
+
+    # 2. WhatsApp Failure
+    with patch("services.notifier.finops_notifier.send_whatsapp_alert", return_value=False):
+        args = argparse.Namespace(channel="whatsapp", to="+919876543210", title="Test Alert", message="Spike detected")
+        cmd_notify(args)
+        out = capsys.readouterr().out
+        assert "Failed to dispatch WhatsApp message" in out
+
+    # 3. Slack Dispatch
+    with patch("cli_main.resolve_cli_inventory", return_value={"summary": {"estimated_monthly_spend": 100.0}}), \
+         patch("services.notifier.finops_notifier.send_slack_alert", return_value=True) as mock_slack:
+        args = argparse.Namespace(channel="slack", to=None, title="Slack Alert", message="Test Slack")
+        cmd_notify(args)
+        out = capsys.readouterr().out
+        assert "Slack webhook alert dispatched successfully" in out
+        mock_slack.assert_called_once()
+
+
+def test_finops_notifier_twilio_auth():
+    from services.notifier import FinOpsNotifier
+    from unittest.mock import MagicMock
+
+    # Case 1: API Key without Account SID -> diagnostic warning and None client
+    notifier = FinOpsNotifier()
+    notifier.twilio_api_key = "SK123"
+    notifier.twilio_api_secret = "secret123"
+    notifier.twilio_account_sid = None
+    assert notifier._get_twilio_client() is None
+
+    # Case 2: API Key with Account SID -> Client(api_key, api_secret, account_sid=account_sid)
+    notifier.twilio_account_sid = "AC123"
+    with patch("twilio.rest.Client") as mock_client:
+        client_instance = notifier._get_twilio_client()
+        mock_client.assert_called_once_with("SK123", "secret123", account_sid="AC123")
+
+    # Case 3: send_whatsapp_alert successfully creates message
+    mock_tw_client = MagicMock()
+    mock_msg = MagicMock()
+    mock_msg.sid = "SM999"
+    mock_tw_client.messages.create.return_value = mock_msg
+
+    with patch.object(notifier, "_get_twilio_client", return_value=mock_tw_client):
+        success = notifier.send_whatsapp_alert(
+            title="High Spend Detected",
+            message="EC2 runaway cost",
+            to_number="919876543210"
+        )
+        assert success is True
+        mock_tw_client.messages.create.assert_called_once()
+        call_kwargs = mock_tw_client.messages.create.call_args[1]
+        assert call_kwargs["to"] == "whatsapp:+919876543210"
+        assert "High Spend Detected" in call_kwargs["body"]
+
+
+

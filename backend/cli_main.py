@@ -1231,6 +1231,52 @@ def cmd_pov(args):
 
 
 # ==========================================
+# COMMAND: notify (Multi-Channel Escalation & WhatsApp Alerts)
+# ==========================================
+def cmd_notify(args):
+    """Dispatches real-time FinOps alert via WhatsApp or Slack."""
+    channel = getattr(args, "channel", "whatsapp") or "whatsapp"
+    channel = channel.lower()
+    title = getattr(args, "title", "CloudPulse FinOps Alert") or "CloudPulse FinOps Alert"
+    msg = getattr(args, "message", "Cost anomaly detected across cloud infrastructure.") or "Cost anomaly detected."
+    recipient = getattr(args, "to", None)
+
+    try:
+        from services.notifier import finops_notifier
+    except ImportError:
+        from backend.services.notifier import finops_notifier
+
+    print(get_banner_str())
+    print("=" * 90)
+    print("  📢 CLOUDPULSE MULTI-CHANNEL NOTIFICATION DISPATCHER")
+    print("=" * 90)
+    print(f"  • Target Channel   : {channel.upper()}")
+    print(f"  • Alert Title      : {title}")
+    if recipient:
+        print(f"  • Target Recipient : {recipient}")
+    print(f"  • Alert Message    : {msg}")
+    print("-" * 90)
+
+    if channel == "whatsapp":
+        success = finops_notifier.send_whatsapp_alert(title, msg, to_number=recipient)
+        if success:
+            print(f"  {GREEN}{BOLD}✅ WhatsApp message dispatched successfully.{RESET}")
+        else:
+            print(f"  {RED}{BOLD}❌ Failed to dispatch WhatsApp message. Verify credentials, Account SID & recipient.{RESET}")
+    elif channel == "slack":
+        inv = resolve_cli_inventory()
+        gross = inv.get("summary", {}).get("estimated_monthly_spend", 63.20)
+        sample_findings = [{"title": title, "message": msg, "severity": "HIGH", "savings": 15.0}]
+        success = finops_notifier.send_slack_alert(sample_findings, monthly_cost=gross)
+        if success:
+            print(f"  {GREEN}{BOLD}✅ Slack webhook alert dispatched successfully.{RESET}")
+        else:
+            print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check SLACK_WEBHOOK_URL.{RESET}")
+    print("=" * 90 + "\n")
+
+
+
+# ==========================================
 # COMMAND: onboard (Customer AWS Account Onboarding)
 # ==========================================
 def cmd_onboard(args):
@@ -2468,6 +2514,13 @@ def main():
     p_pov.add_argument("--format", "-m", choices=["html", "markdown", "md", "json"], default="html", help="Report format (default: html)")
     p_pov.add_argument("--open", dest="open_browser", action="store_true", help="Automatically open generated HTML report in default browser")
 
+    # notify (Multi-Channel Alerts: WhatsApp & Slack)
+    p_notify = subparsers.add_parser("notify", parents=[common_parser], help="Dispatch real-time FinOps alert via WhatsApp or Slack")
+    p_notify.add_argument("--channel", choices=["whatsapp", "slack"], default="whatsapp", help="Notification channel (default: whatsapp)")
+    p_notify.add_argument("--to", default=None, help="Recipient phone number with country code (e.g. +91XXXXXXXXXX)")
+    p_notify.add_argument("--title", default="CloudPulse FinOps Alert", help="Alert title")
+    p_notify.add_argument("--message", "-m", default="Cost anomaly detected across cloud infrastructure.", help="Alert body message")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -2487,6 +2540,7 @@ def main():
         "forecast": cmd_forecast,
         "multicloud": cmd_multicloud,
         "pov": cmd_pov,
+        "notify": cmd_notify,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,

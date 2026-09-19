@@ -2,19 +2,55 @@ import json
 import os
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+# Auto-load local .env if present
+for cand in [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env"]:
+    if cand.exists():
+        try:
+            with open(cand, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() not in os.environ:
+                            os.environ[k.strip()] = v.strip().strip("'\"")
+        except Exception:
+            pass
 
 class FinOpsNotifier:
     """
     Multi-channel notification dispatcher supporting Slack Webhooks and Twilio WhatsApp escalation.
+    Supports both Account SID + Auth Token, and API Key SID + Secret authentication.
     """
 
     def __init__(self, slack_webhook_url: Optional[str] = None):
         self.slack_webhook_url = slack_webhook_url or os.getenv("SLACK_WEBHOOK_URL")
-        self.twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        self.twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
         self.twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+        self.twilio_api_key = os.getenv("TWILIO_API_KEY")
+        self.twilio_api_secret = os.getenv("TWILIO_API_SECRET")
         self.twilio_whatsapp_from = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
         self.whatsapp_recipient = os.getenv("WHATSAPP_ALERT_TO")
+
+    def _get_twilio_client(self):
+        """Constructs Twilio REST Client using configured credentials."""
+        from twilio.rest import Client
+
+        # Priority 1: API Key + Secret + Account SID
+        if self.twilio_api_key and self.twilio_api_secret:
+            if not self.twilio_account_sid:
+                print("⚠️ [NOTIFIER] Twilio API Key detected, but TWILIO_ACCOUNT_SID (starts with AC...) is missing.")
+                print("   Twilio requires the Account SID to route WhatsApp messages. Add TWILIO_ACCOUNT_SID=AC... to .env")
+                return None
+            return Client(self.twilio_api_key, self.twilio_api_secret, account_sid=self.twilio_account_sid)
+
+        # Priority 2: Master Account SID + Auth Token
+        if self.twilio_account_sid and self.twilio_auth_token:
+            return Client(self.twilio_account_sid, self.twilio_auth_token)
+
+        return None
 
     def format_slack_payload(self, findings: List[Dict[str, Any]], monthly_cost: float, health_score: float) -> Dict[str, Any]:
         """Formats findings into a rich Slack Block Kit layout."""
@@ -72,20 +108,43 @@ class FinOpsNotifier:
 
     def send_whatsapp_alert(self, title: str, message: str, to_number: Optional[str] = None) -> bool:
         recipient = to_number or self.whatsapp_recipient
-        if not (self.twilio_sid and self.twilio_auth_token and recipient):
+        if not recipient:
+            print("⚠️ [NOTIFIER] Recipient phone number not specified. Set WHATSAPP_ALERT_TO in .env or pass to_number.")
+            return False
+
+        client = self._get_twilio_client()
+        if not client:
             print("⚠️ [NOTIFIER] WhatsApp Twilio credentials not configured.")
             return False
 
+        # Ensure correct WhatsApp prefix
+        clean_num = recipient.strip()
+        if not clean_num.startswith("whatsapp:"):
+            if not clean_num.startswith("+"):
+                clean_num = f"+{clean_num}"
+            target_to = f"whatsapp:{clean_num}"
+        else:
+            target_to = clean_num
+
+        body = (
+            f"⚡ *CloudPulse AI FinOps Autopilot*\n\n"
+            f"🚨 *{title}*\n"
+            f"{message}\n\n"
+            f"👉 Run `./bin/cloudpulse apply --dry-run` to generate Terraform PR."
+        )
+
         try:
-            from twilio.rest import Client
-            client = Client(self.twilio_sid, self.twilio_auth_token)
-            body = f"🚨 *CloudPulse FinOps Alert*\n\n*{title}*\n{message}\n\nLogin to dashboard for 1-click remediation."
             msg = client.messages.create(
                 from_=self.twilio_whatsapp_from,
-                to=f"whatsapp:{recipient}" if not recipient.startswith("whatsapp:") else recipient,
+                to=target_to,
                 body=body
             )
-            return bool(msg.sid)
+            print(f"✅ [NOTIFIER] WhatsApp alert dispatched successfully (SID: {msg.sid})")
+            return True
         except Exception as e:
             print(f"❌ [NOTIFIER] Failed to dispatch WhatsApp alert: {e}")
             return False
+
+
+# Global singleton
+finops_notifier = FinOpsNotifier()
