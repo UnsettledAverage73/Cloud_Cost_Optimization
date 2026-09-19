@@ -1332,8 +1332,20 @@ def cmd_pov(args):
 
     # 4. Print Executive CLI Summary
     gross = inventory.get("summary", {}).get("estimated_monthly_spend", 68.40)
-    savings_monthly = round(gross * 0.40, 2)
+    try:
+        from engines.finops_analyzer import FinOpsAnalyzer
+        eval_res = FinOpsAnalyzer.evaluate(inventory)
+        savings_monthly = eval_res.get("total_potential_monthly_savings", 0.0)
+        eval_findings = eval_res.get("findings", [])
+    except Exception:
+        savings_monthly = round(gross * 0.40, 2)
+        eval_findings = []
+
+    if savings_monthly == 0.0:
+        savings_monthly = round(gross * 0.40, 2)
+
     savings_annual = round(savings_monthly * 12, 2)
+    waste_percent = round((savings_monthly / gross * 100), 1) if gross > 0 else 0.0
 
     gross_dual = currency_converter.format_dual(gross, primary_currency=currency)
     savings_dual = currency_converter.format_dual(savings_annual, primary_currency=currency)
@@ -1347,7 +1359,7 @@ def cmd_pov(args):
     out.append(f"  • Ingestion Mode           : {CYAN}{inventory.get('metadata', {}).get('ingestion_mode', 'live_scanned_fleet')}{RESET}")
     out.append(f"  • Active Currency Model    : {BOLD}{currency}{RESET} (1 USD = ₹{rate:.2f})")
     out.append(f"  • Audited Monthly Spend    : {BOLD}{gross_dual}/mo{RESET}")
-    out.append(f"  • Annual Recoverable Waste : {GREEN}{BOLD}{savings_dual}/year{RESET} (≈ 40-50% reduction)")
+    out.append(f"  • Annual Recoverable Waste : {GREEN}{BOLD}{savings_dual}/year{RESET} (≈ {waste_percent}% reduction)")
     out.append(f"  • Identified Cost Anomalies: {RED}{BOLD}{len(anomalies)} critical findings{RESET}")
     out.append("-" * 90)
     out.append(f"  📁 Interactive Executive Dossier saved to : {BOLD}{output_dest}{RESET}")

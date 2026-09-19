@@ -206,7 +206,20 @@ class GitOpsRemediationEngine:
             title = f.get("title", f"{action} on {res_id}")
             item_summaries.append(f"- **`{res_id}`** ({f.get('resource_type', 'Cloud Asset')}): {title} ➔ **+${savings:.2f}/mo**")
 
-            if res_id.startswith("vol-"):
+            if "savings-plan" in res_id.lower() or "commitment" in f.get("category", "").lower():
+                term_years = "1" if "1yr" in res_id.lower() or "1-year" in res_id.lower() else "3"
+                hourly_commit = round(savings / (0.28 if term_years == "1" else 0.46) / 730, 4)
+                diff_sections.append(
+                    f"# --- commitments.tf ({res_id}) ---\n"
+                    f"+ resource \"aws_savingsplans_savings_plan\" \"{res_id.lower().replace('-', '_')}\" {{\n"
+                    f"+   savings_plan_type = \"Compute\"\n"
+                    f"+   commitment        = \"{hourly_commit}\" # $/hr commitment floor\n"
+                    f"+   term              = \"{term_years}_YEAR\"\n"
+                    f"+   payment_option    = \"NO_UPFRONT\"\n"
+                    f"+   # FinOps Autopilot: Saves ${savings:.2f}/mo (Zero-Downtime, $0 Upfront)\n"
+                    f"+ }}\n"
+                )
+            elif res_id.startswith("vol-"):
                 diff_sections.append(
                     f"# --- storage.tf ({res_id}) ---\n"
                     f"resource \"aws_ebs_volume\" \"vol_{res_id.replace('-', '_')}\" {{\n"
@@ -222,10 +235,25 @@ class GitOpsRemediationEngine:
                     f"+  instance_type = \"m7g.large\" # FinOps Graviton: Save ${savings:.2f}/mo\n"
                     f"}}\n"
                 )
+            elif res_id.startswith("nat-"):
+                diff_sections.append(
+                    f"# --- networking.tf ({res_id}) ---\n"
+                    f"- resource \"aws_nat_gateway\" \"gw_{res_id.replace('-', '_')}\" {{\n"
+                    f"-   # Idle NAT Gateway eliminated: Save ${savings:.2f}/mo\n"
+                    f"- }}\n"
+                )
             elif "." in res_id:
                 diff_sections.append(
                     f"# --- networking.tf (EIP {res_id}) ---\n"
                     f"- resource \"aws_eip\" \"eip_{res_id.replace('.', '_')}\" {{}}\n"
+                )
+            elif res_id.startswith("rds-") or "database" in f.get("category", "").lower():
+                diff_sections.append(
+                    f"# --- database.tf ({res_id}) ---\n"
+                    f"resource \"aws_db_instance\" \"db_{res_id.replace('-', '_')}\" {{\n"
+                    f"-  multi_az = true\n"
+                    f"+  multi_az = false # Non-prod single-AZ right-provisioning: Save ${savings:.2f}/mo\n"
+                    f"}}\n"
                 )
             else:
                 diff_sections.append(

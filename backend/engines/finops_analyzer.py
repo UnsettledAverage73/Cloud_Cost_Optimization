@@ -169,3 +169,8 @@ class FinOpsAnalyzer:
             "daily_burn_optimized": daily_burn_optimized,
             "annual_projected_savings": round(potential_savings * 12, 2),
         }
+
+    # Convenient aliases
+    analyze = evaluate
+    analyze_all = evaluate
+
