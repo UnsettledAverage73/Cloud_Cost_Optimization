@@ -6,6 +6,7 @@ from engines.rightsizing_engine import RightsizingEngine
 from engines.storage_optimizer import StorageOptimizer
 from engines.network_optimizer import NetworkOptimizer
 from engines.database_optimizer import DatabaseOptimizer
+from engines.commitment_optimizer import CommitmentOptimizer
 
 logger = logging.getLogger("finops.engines.analyzer")
 
@@ -24,12 +25,13 @@ class FinOpsAnalyzer:
         storage_findings = StorageOptimizer.analyze(inventory)
         network_findings = NetworkOptimizer.analyze(inventory)
         db_findings = DatabaseOptimizer.analyze(inventory)
+        commitment_findings = CommitmentOptimizer.analyze(inventory)
 
         # Merge and deduplicate by resource_id + action
         all_findings: List[Dict[str, Any]] = []
         seen_keys = set()
 
-        for group in [waste_findings, rightsizing_findings, storage_findings, network_findings, db_findings]:
+        for group in [waste_findings, rightsizing_findings, storage_findings, network_findings, db_findings, commitment_findings]:
             for item in group:
                 key = (item.get("resource_id"), item.get("action"))
                 if key not in seen_keys:

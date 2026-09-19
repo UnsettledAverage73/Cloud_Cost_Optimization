@@ -1736,6 +1736,50 @@ async def get_fleet_focus_records():
     }
 
 
+@app.post("/api/v2/focus/query")
+async def execute_focus_sql_query(payload: dict):
+    """Executes high-throughput SQL analytics over FOCUS 1.0 datasets."""
+    sql = payload.get("query")
+    if not sql:
+        raise HTTPException(status_code=400, detail="SQL query is required")
+
+    try:
+        from engines.focus_lakehouse import focus_lakehouse
+    except ImportError:
+        from backend.engines.focus_lakehouse import focus_lakehouse
+
+    db = mock_database.DB
+    focus_records = FOCUSNormalizer.normalize_inventory(db)
+    focus_lakehouse.load_focus_records(focus_records)
+
+    try:
+        result = focus_lakehouse.execute_query(sql)
+        return {"status": "success", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v2/focus/analytics")
+async def get_focus_analytics():
+    """Returns pre-aggregated FOCUS 1.0 analytics (by service, account, and top cost drivers)."""
+    try:
+        from engines.focus_lakehouse import focus_lakehouse
+    except ImportError:
+        from backend.engines.focus_lakehouse import focus_lakehouse
+
+    db = mock_database.DB
+    focus_records = FOCUSNormalizer.normalize_inventory(db)
+    focus_lakehouse.load_focus_records(focus_records)
+
+    return {
+        "status": "success",
+        "spend_by_service": focus_lakehouse.get_spend_by_service(),
+        "spend_by_account": focus_lakehouse.get_spend_by_account(),
+        "top_cost_drivers": focus_lakehouse.get_top_cost_drivers(limit=10)
+    }
+
+
+
 # =====================================================================
 # 🖥️ MULTI-OS IN-GUEST HOST AGENT INGESTION & DEPLOYMENT API
 # =====================================================================

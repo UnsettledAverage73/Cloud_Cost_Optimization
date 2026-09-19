@@ -1365,6 +1365,101 @@ def cmd_pov(args):
 
 
 # ==========================================
+# COMMAND: query (FOCUS 1.0 In-Memory SQL Lakehouse)
+# ==========================================
+def cmd_query(args):
+    """
+    Executes in-memory SQL queries or preset aggregations against normalized FOCUS 1.0 datasets.
+    """
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+
+    try:
+        from engines.focus_lakehouse import focus_lakehouse
+        from engines.focus_spec import FOCUSNormalizer
+    except ImportError:
+        from backend.engines.focus_lakehouse import focus_lakehouse
+        from backend.engines.focus_spec import FOCUSNormalizer
+
+    inv = resolve_cli_inventory()
+    focus_records = FOCUSNormalizer.normalize_inventory(inv)
+    focus_lakehouse.load_focus_records(focus_records)
+
+    preset = getattr(args, "preset", None)
+    sql_query = getattr(args, "sql", None)
+
+    if preset == "services":
+        data = focus_lakehouse.get_spend_by_service()
+        title = "FOCUS 1.0 SPEND BY SERVICE"
+    elif preset == "accounts":
+        data = focus_lakehouse.get_spend_by_account()
+        title = "FOCUS 1.0 SPEND BY ACCOUNT"
+    elif preset == "top-drivers":
+        data = focus_lakehouse.get_top_cost_drivers(limit=getattr(args, "limit", 10))
+        title = "FOCUS 1.0 TOP COST DRIVERS"
+    elif sql_query:
+        try:
+            res = focus_lakehouse.execute_query(sql_query)
+            data = res.get("rows", [])
+            title = f"FOCUS 1.0 SQL QUERY RESULTS ({res.get('execution_time_ms', 0)}ms)"
+        except Exception as e:
+            print(f"{RED}{BOLD}❌ SQL Execution Error: {e}{RESET}")
+            sys.exit(1)
+    else:
+        # Default to services preset
+        data = focus_lakehouse.get_spend_by_service()
+        title = "FOCUS 1.0 SPEND BY SERVICE"
+
+    if fmt == "json":
+        emit_output(json.dumps(data, indent=2), output_dest)
+        return
+    elif fmt == "csv":
+        import csv
+        import io
+        if not data:
+            emit_output("No records found\n", output_dest)
+            return
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=list(data[0].keys()))
+        writer.writeheader()
+        writer.writerows(data)
+        emit_output(output.getvalue(), output_dest)
+        return
+    elif fmt in ("markdown", "md"):
+        if not data:
+            emit_output("*No records returned*\n", output_dest)
+            return
+        headers = list(data[0].keys())
+        lines = [f"# {title}", ""]
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+        for row in data:
+            lines.append("| " + " | ".join(str(row.get(h, "")) for h in headers) + " |")
+        emit_output("\n".join(lines) + "\n", output_dest)
+        return
+    else:
+        # Table output
+        out = []
+        out.append(get_banner_str())
+        out.append("=" * 90)
+        out.append(f"     📊 CLOUDPULSE FOCUS 1.0 LAKEHOUSE: {title}")
+        out.append("=" * 90)
+        if not data:
+            out.append("  No records returned.")
+        else:
+            headers = list(data[0].keys())
+            col_widths = {h: max(len(h), max(len(str(r.get(h, ""))) for r in data)) for h in headers}
+            header_str = "  " + "  ".join(f"{h.upper():<{col_widths[h]}}" for h in headers)
+            out.append(header_str)
+            out.append("  " + "-" * (len(header_str) - 2))
+            for row in data:
+                row_str = "  " + "  ".join(f"{str(row.get(h, '')):<{col_widths[h]}}" for h in headers)
+                out.append(row_str)
+        out.append("=" * 90 + "\n")
+        emit_output("\n".join(out), output_dest)
+
+
+# ==========================================
 # COMMAND: notify (Multi-Channel Escalation & WhatsApp Alerts)
 # ==========================================
 def cmd_notify(args):
@@ -2652,6 +2747,15 @@ def main():
     p_pov.add_argument("--format", "-m", choices=["html", "markdown", "md", "json"], default="html", help="Report format (default: html)")
     p_pov.add_argument("--open", dest="open_browser", action="store_true", help="Automatically open generated HTML report in default browser")
 
+    # query (FOCUS 1.0 SQL Lakehouse Engine)
+    p_query = subparsers.add_parser("query", parents=[common_parser], help="Execute SQL analytics or preset aggregations over FOCUS 1.0 datasets")
+    p_query.add_argument("sql", nargs="?", default=None, help="Read-only SQL query against 'focus_costs' table (e.g. 'SELECT ServiceName, SUM(EffectiveCost) FROM focus_costs GROUP BY ServiceName')")
+    p_query.add_argument("--preset", "-p", choices=["services", "accounts", "top-drivers"], default=None, help="Preset FinOps aggregation")
+    p_query.add_argument("--limit", "-l", type=int, default=10, help="Row limit for top cost drivers (default: 10)")
+    p_query.add_argument("--format", "-m", choices=["table", "json", "csv", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_query.add_argument("--output", "-o", default=None, help="File path to save the output")
+    p_query.add_argument("--json", dest="json_only", action="store_true", help="Output raw structured JSON (shorthand for --format json)")
+
     # notify (Multi-Channel Alerts: WhatsApp & Slack)
     p_notify = subparsers.add_parser("notify", parents=[common_parser], help="Dispatch real-time FinOps alert via WhatsApp or Slack")
     p_notify.add_argument("--channel", choices=["whatsapp", "slack"], default="whatsapp", help="Notification channel (default: whatsapp)")
@@ -2679,6 +2783,7 @@ def main():
         "multicloud": cmd_multicloud,
         "pov": cmd_pov,
         "notify": cmd_notify,
+        "query": cmd_query,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,
