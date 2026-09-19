@@ -527,6 +527,7 @@ def test_finops_notifier_twilio_auth():
 
     # Case 2: API Key with Account SID -> Client(api_key, api_secret, account_sid=account_sid)
     notifier.twilio_account_sid = "AC123"
+    notifier.twilio_auth_token = None
     with patch("twilio.rest.Client") as mock_client:
         client_instance = notifier._get_twilio_client()
         mock_client.assert_called_once_with("SK123", "secret123", account_sid="AC123")

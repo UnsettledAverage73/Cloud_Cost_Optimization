@@ -38,17 +38,17 @@ class FinOpsNotifier:
         """Constructs Twilio REST Client using configured credentials."""
         from twilio.rest import Client
 
-        # Priority 1: API Key + Secret + Account SID
+        # Priority 1: Master Account SID + Auth Token (Canonical Twilio Auth)
+        if self.twilio_account_sid and self.twilio_auth_token:
+            return Client(self.twilio_account_sid, self.twilio_auth_token)
+
+        # Priority 2: API Key + Secret + Account SID
         if self.twilio_api_key and self.twilio_api_secret:
             if not self.twilio_account_sid:
                 print("⚠️ [NOTIFIER] Twilio API Key detected, but TWILIO_ACCOUNT_SID (starts with AC...) is missing.")
                 print("   Twilio requires the Account SID to route WhatsApp messages. Add TWILIO_ACCOUNT_SID=AC... to .env")
                 return None
             return Client(self.twilio_api_key, self.twilio_api_secret, account_sid=self.twilio_account_sid)
-
-        # Priority 2: Master Account SID + Auth Token
-        if self.twilio_account_sid and self.twilio_auth_token:
-            return Client(self.twilio_account_sid, self.twilio_auth_token)
 
         return None
 
@@ -142,7 +142,14 @@ class FinOpsNotifier:
             print(f"✅ [NOTIFIER] WhatsApp alert dispatched successfully (SID: {msg.sid})")
             return True
         except Exception as e:
-            print(f"❌ [NOTIFIER] Failed to dispatch WhatsApp alert: {e}")
+            err_str = str(e)
+            print(f"❌ [NOTIFIER] Failed to dispatch WhatsApp alert: {err_str}")
+            if "21654" in err_str or "ContentSid Required" in err_str:
+                print("💡 [TWILIO SANDBOX HINT] Your phone has not joined the WhatsApp Sandbox yet.")
+                print("   1. Open WhatsApp on your phone (+91 9637843011).")
+                print("   2. Go to Twilio Console -> Messaging -> Try it out -> Send a WhatsApp message.")
+                print("   3. Send the unique code (e.g. 'join <keyword>') to +1 415 523 8886.")
+                print("   4. Once Twilio replies 'You are all set!', re-run the notification command.")
             return False
 
 
