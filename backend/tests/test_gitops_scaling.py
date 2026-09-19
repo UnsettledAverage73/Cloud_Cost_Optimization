@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from services.gitops_engine import GitOpsRemediationEngine, gitops_engine
 from services.notification_engine import FinOpsNotificationEngine, notification_engine
-from cli_main import cmd_apply
+from cli_main import cmd_apply, cmd_notify
 from main import app
 
 
@@ -328,4 +328,180 @@ def test_cli_cmd_apply_batch(capsys):
     assert "Annual Fleet Recovery" in captured
     assert "storage.tf" in captured
     assert "compute.tf" in captured
+
+
+def test_notification_slack_batch_summary_formatting():
+    """Verifies that Slack batch digest generates valid Block Kit with dual currency and interactive buttons."""
+    findings = [
+        {"resource_id": "vol-12345", "category": "Storage", "action": "delete_volume", "monthly_savings": 10.0},
+        {"resource_id": "i-67890", "category": "Compute", "action": "migrate_graviton", "monthly_savings": 25.0}
+    ]
+    card = notification_engine.format_slack_batch_summary(
+        findings=findings,
+        total_monthly_spend=100.0,
+        total_monthly_savings=35.0,
+        health_score=82.5,
+        account_id="123456789012",
+        currency="USD",
+        rate=84.0
+    )
+    assert "blocks" in card
+    blocks = card["blocks"]
+    header = blocks[0]
+    assert header["type"] == "header"
+    assert "Fleet Optimization Digest" in header["text"]["text"]
+
+    fields_sec = blocks[1]
+    assert fields_sec["type"] == "section"
+    assert any("82.5/100" in f["text"] for f in fields_sec["fields"])
+    assert any("$100.00" in f["text"] for f in fields_sec["fields"])
+
+    actions = [b for b in blocks if b.get("type") == "actions"]
+    assert len(actions) == 1
+    elements = actions[0]["elements"]
+    action_ids = [e.get("action_id") for e in elements]
+    assert "cloudpulse_batch_pr" in action_ids
+    assert "cloudpulse_view_pov" in action_ids
+    assert "cloudpulse_snooze" in action_ids
+
+
+def test_notification_teams_batch_adaptive_card_formatting():
+    """Verifies that Teams batch digest formats valid Adaptive Card v1.4 schema."""
+    findings = [
+        {"resource_id": "vol-12345", "category": "Storage", "action": "delete_volume", "monthly_savings": 10.0},
+        {"resource_id": "i-67890", "category": "Compute", "action": "migrate_graviton", "monthly_savings": 25.0}
+    ]
+    card = notification_engine.format_teams_batch_adaptive_card(
+        findings=findings,
+        total_monthly_spend=100.0,
+        total_monthly_savings=35.0,
+        health_score=82.5,
+        account_id="123456789012",
+        currency="INR",
+        rate=84.0
+    )
+    assert card["type"] == "message"
+    attachments = card["attachments"]
+    assert len(attachments) == 1
+    content = attachments[0]["content"]
+    assert content["$schema"] == "http://adaptivecards.io/schemas/adaptive-card.json"
+    assert content["version"] == "1.4"
+    assert "actions" in content
+    actions = content["actions"]
+    assert any(a.get("type") == "Action.Submit" and a.get("data", {}).get("action") == "batch_pr" for a in actions)
+    assert any(a.get("type") == "Action.OpenUrl" for a in actions)
+
+
+def test_notification_interactive_callbacks():
+    """Verifies that interactive callbacks trigger appropriate automated actions."""
+    # Test batch_pr action
+    res_pr = notification_engine.handle_interactive_callback({"action": "batch_pr", "repo": "org/repo"})
+    assert res_pr["status"] == "success"
+    assert "Batch Remediation PR created" in res_pr["message"]
+    assert "https://github.com/org/repo/pull/" in res_pr["pr_url"]
+
+    # Test apply/remediate action
+    res_apply = notification_engine.handle_interactive_callback({"action": "apply", "resource_id": "i-test123"})
+    assert res_apply["status"] == "success"
+    assert res_apply["scheduled"] is True
+
+    # Test snooze action
+    res_snooze = notification_engine.handle_interactive_callback({"action": "snooze"})
+    assert res_snooze["status"] == "success"
+    assert res_snooze["snoozed_days"] == 14
+
+    # Test unknown action
+    res_unk = notification_engine.handle_interactive_callback({"action": "unknown_action"})
+    assert res_unk["status"] == "ignored"
+
+
+def test_api_notifications_slack_batch():
+    """Verifies FastAPI POST /api/v2/notifications/slack/batch endpoint."""
+    client = TestClient(app)
+    payload = {
+        "currency": "USD",
+        "rate": 84.0,
+        "repo_name": "custom/repo",
+        "findings": [
+            {"resource_id": "vol-abc", "category": "Storage", "action": "delete_volume", "monthly_savings": 5.0}
+        ]
+    }
+    response = client.post("/api/v2/notifications/slack/batch", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "blocks" in data["payload"]
+    assert "cloudpulse_batch_pr" in json.dumps(data["payload"])
+
+
+def test_api_notifications_teams_batch():
+    """Verifies FastAPI POST /api/v2/notifications/teams/batch endpoint."""
+    client = TestClient(app)
+    payload = {
+        "currency": "INR",
+        "rate": 84.0,
+        "findings": [
+            {"resource_id": "i-xyz", "category": "Compute", "action": "migrate_graviton", "monthly_savings": 15.0}
+        ]
+    }
+    response = client.post("/api/v2/notifications/teams/batch", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["payload"]["type"] == "message"
+    assert "attachments" in data["payload"]
+
+
+def test_api_notifications_interactive_callback():
+    """Verifies FastAPI POST /api/v2/notifications/interactive/callback endpoint."""
+    client = TestClient(app)
+    payload = {"action": "batch_pr", "repo": "fleet/infra"}
+    response = client.post("/api/v2/notifications/interactive/callback", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "https://github.com/fleet/infra/pull/" in data["pr_url"]
+
+
+def test_cli_cmd_notify_slack_batch_dry_run(capsys):
+    """Verifies CLI cmd_notify with --channel slack --batch --dry-run."""
+    args = argparse.Namespace(
+        channel="slack",
+        batch=True,
+        dry_run=True,
+        currency="USD",
+        webhook=None,
+        to=None,
+        title="Fleet Alert",
+        message="Monthly optimization",
+        url="http://localhost:8000"
+    )
+    cmd_notify(args)
+    captured = capsys.readouterr().out
+    assert "CLOUDPULSE MULTI-CHANNEL NOTIFICATION DISPATCHER" in captured
+    assert "Target Channel   : SLACK" in captured
+    assert "FLEET BATCH DIGEST" in captured
+    assert "cloudpulse_batch_pr" in captured
+
+
+def test_cli_cmd_notify_teams_batch_dry_run(capsys):
+    """Verifies CLI cmd_notify with --channel teams --batch --dry-run."""
+    args = argparse.Namespace(
+        channel="teams",
+        batch=True,
+        dry_run=True,
+        currency="INR",
+        webhook=None,
+        to=None,
+        title="Fleet Alert",
+        message="Monthly optimization",
+        url="http://localhost:8000"
+    )
+    cmd_notify(args)
+    captured = capsys.readouterr().out
+    assert "CLOUDPULSE MULTI-CHANNEL NOTIFICATION DISPATCHER" in captured
+    assert "Target Channel   : TEAMS" in captured
+    assert "FLEET BATCH DIGEST" in captured
+    assert "AdaptiveCard" in captured
+
 

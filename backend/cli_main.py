@@ -1472,30 +1472,40 @@ def cmd_query(args):
 
 
 # ==========================================
-# COMMAND: notify (Multi-Channel Escalation & WhatsApp Alerts)
+# COMMAND: notify (Multi-Channel Escalation, WhatsApp, Slack & Teams)
 # ==========================================
 def cmd_notify(args):
-    """Dispatches real-time FinOps alert via WhatsApp or Slack."""
+    """Dispatches real-time FinOps alert via WhatsApp, Slack, or Microsoft Teams."""
     channel = getattr(args, "channel", "whatsapp") or "whatsapp"
     channel = channel.lower()
     title = getattr(args, "title", "CloudPulse FinOps Alert") or "CloudPulse FinOps Alert"
     msg = getattr(args, "message", "Cost anomaly detected across cloud infrastructure.") or "Cost anomaly detected."
     recipient = getattr(args, "to", None)
+    webhook_url = getattr(args, "webhook", None)
+    is_batch = getattr(args, "batch", False)
+    dry_run = getattr(args, "dry_run", False)
+    curr = getattr(args, "currency", "USD").upper()
 
     try:
         from services.notifier import finops_notifier
+        from services.notification_engine import notification_engine
+        from engines.finops_analyzer import FinOpsAnalyzer
     except ImportError:
         from backend.services.notifier import finops_notifier
+        from backend.services.notification_engine import notification_engine
+        from backend.engines.finops_analyzer import FinOpsAnalyzer
 
     print(get_banner_str())
     print("=" * 90)
     print("  📢 CLOUDPULSE MULTI-CHANNEL NOTIFICATION DISPATCHER")
     print("=" * 90)
     print(f"  • Target Channel   : {channel.upper()}")
+    print(f"  • Mode             : {'FLEET BATCH DIGEST' if is_batch else 'SINGLE ALERT'}")
     print(f"  • Alert Title      : {title}")
     if recipient:
         print(f"  • Target Recipient : {recipient}")
-    print(f"  • Alert Message    : {msg}")
+    if webhook_url:
+        print(f"  • Target Webhook   : {webhook_url[:35]}...")
     print("-" * 90)
 
     if channel == "whatsapp":
@@ -1504,15 +1514,88 @@ def cmd_notify(args):
             print(f"  {GREEN}{BOLD}✅ WhatsApp message dispatched successfully.{RESET}")
         else:
             print(f"  {RED}{BOLD}❌ Failed to dispatch WhatsApp message. Verify credentials, Account SID & recipient.{RESET}")
+
     elif channel == "slack":
         inv = resolve_cli_inventory()
-        gross = inv.get("summary", {}).get("estimated_monthly_spend", 63.20)
+        gross = inv.get("summary", {}).get("estimated_monthly_spend", 68.40)
         sample_findings = [{"title": title, "message": msg, "severity": "HIGH", "savings": 15.0}]
-        success = finops_notifier.send_slack_alert(sample_findings, monthly_cost=gross)
-        if success:
-            print(f"  {GREEN}{BOLD}✅ Slack webhook alert dispatched successfully.{RESET}")
+
+        if is_batch:
+            eval_res = FinOpsAnalyzer.evaluate(inv)
+            gross = eval_res.get("total_monthly_spend", gross)
+            savings = eval_res.get("total_potential_monthly_savings", 0.0)
+            health = eval_res.get("health_score", 85.0)
+            findings = eval_res.get("findings", [])
+            card = notification_engine.format_slack_batch_summary(
+                findings=findings,
+                total_monthly_spend=gross,
+                total_monthly_savings=savings,
+                health_score=health,
+                account_id=inv.get("metadata", {}).get("account_id", "582812122408"),
+                currency=curr
+            )
+            target_url = webhook_url or os.getenv("SLACK_WEBHOOK_URL")
+            if dry_run or not target_url:
+                print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook):{RESET}")
+                print(json.dumps(card, indent=2))
+            else:
+                success = notification_engine.dispatch_webhook(target_url, card)
+                if success:
+                    print(f"  {GREEN}{BOLD}✅ Slack Block Kit alert dispatched successfully.{RESET}")
+                else:
+                    print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check webhook URL.{RESET}")
         else:
-            print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check SLACK_WEBHOOK_URL.{RESET}")
+            if dry_run:
+                card = finops_notifier.format_slack_payload(sample_findings, monthly_cost=gross)
+                print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook):{RESET}")
+                print(json.dumps(card, indent=2))
+            else:
+                if webhook_url:
+                    finops_notifier.slack_webhook_url = webhook_url
+                success = finops_notifier.send_slack_alert(sample_findings, monthly_cost=gross)
+                if success:
+                    print(f"  {GREEN}{BOLD}✅ Slack webhook alert dispatched successfully.{RESET}")
+                else:
+                    print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check SLACK_WEBHOOK_URL.{RESET}")
+
+    elif channel == "teams":
+        inv = resolve_cli_inventory()
+        eval_res = FinOpsAnalyzer.evaluate(inv)
+        gross = eval_res.get("total_monthly_spend", 68.40)
+        savings = eval_res.get("total_potential_monthly_savings", 0.0)
+        health = eval_res.get("health_score", 85.0)
+        findings = eval_res.get("findings", [])
+
+        if is_batch:
+            card = notification_engine.format_teams_batch_adaptive_card(
+                findings=findings,
+                total_monthly_spend=gross,
+                total_monthly_savings=savings,
+                health_score=health,
+                account_id=inv.get("metadata", {}).get("account_id", "582812122408"),
+                currency=curr
+            )
+        else:
+            card = notification_engine.format_teams_adaptive_card(
+                resource_id="fleet-overview",
+                finding_title=title,
+                severity="HIGH",
+                current_monthly_spend=gross,
+                potential_monthly_savings=savings,
+                recommended_action=msg
+            )
+
+        target_url = webhook_url or os.getenv("TEAMS_WEBHOOK_URL")
+        if dry_run or not target_url:
+            print(f"  {CYAN}{BOLD}ℹ️  Microsoft Teams Adaptive Card Preview (v1.4 Schema - Dry-Run / No Webhook):{RESET}")
+            print(json.dumps(card, indent=2))
+        else:
+            success = notification_engine.dispatch_webhook(target_url, card)
+            if success:
+                print(f"  {GREEN}{BOLD}✅ Microsoft Teams Adaptive Card dispatched successfully.{RESET}")
+            else:
+                print(f"  {RED}{BOLD}❌ Failed to dispatch Teams alert. Check webhook URL.{RESET}")
+
     print("=" * 90 + "\n")
 
 
@@ -2768,12 +2851,15 @@ def main():
     p_query.add_argument("--output", "-o", default=None, help="File path to save the output")
     p_query.add_argument("--json", dest="json_only", action="store_true", help="Output raw structured JSON (shorthand for --format json)")
 
-    # notify (Multi-Channel Alerts: WhatsApp & Slack)
-    p_notify = subparsers.add_parser("notify", parents=[common_parser], help="Dispatch real-time FinOps alert via WhatsApp or Slack")
-    p_notify.add_argument("--channel", choices=["whatsapp", "slack"], default="whatsapp", help="Notification channel (default: whatsapp)")
+    # notify (Multi-Channel Alerts: WhatsApp, Slack, Teams)
+    p_notify = subparsers.add_parser("notify", parents=[common_parser], help="Dispatch real-time FinOps alert via WhatsApp, Slack, or Microsoft Teams")
+    p_notify.add_argument("--channel", choices=["whatsapp", "slack", "teams"], default="whatsapp", help="Notification channel (default: whatsapp)")
     p_notify.add_argument("--to", default=None, help="Recipient phone number with country code (e.g. +91XXXXXXXXXX)")
+    p_notify.add_argument("--webhook", "-w", default=None, help="Target incoming webhook URL (Slack / Teams)")
     p_notify.add_argument("--title", default="CloudPulse FinOps Alert", help="Alert title")
     p_notify.add_argument("--message", "-m", default="Cost anomaly detected across cloud infrastructure.", help="Alert body message")
+    p_notify.add_argument("--batch", "-b", action="store_true", help="Generate fleet-wide batch optimization digest with interactive remediation actions")
+    p_notify.add_argument("--dry-run", "-d", action="store_true", help="Print card JSON payload preview without sending HTTP POST")
 
     args = parser.parse_args()
 

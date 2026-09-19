@@ -8,6 +8,7 @@ import math
 import json
 import logging
 import re
+import zlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
@@ -139,20 +140,20 @@ class TextVectorizer:
         vec = np.zeros(self.vector_dim, dtype=np.float32)
         for i, t in enumerate(tokens):
             # Primary word hash
-            h1 = hash(t) % self.vector_dim
-            vec[h1] += 1.0
+            h1 = zlib.crc32(t.encode("utf-8")) % self.vector_dim
+            vec[h1] += 2.5
 
             # Bigram hash for phrase-level semantic context
             if i < len(tokens) - 1:
                 bigram = f"{t}_{tokens[i+1]}"
-                h2 = hash(bigram) % self.vector_dim
+                h2 = zlib.crc32(bigram.encode("utf-8")) % self.vector_dim
                 vec[h2] += 1.5
 
             # 3-gram character shingles for prefix/stem matching (e.g. graviton -> grav, iton)
             for j in range(len(t) - 2):
                 shingle = t[j:j+3]
-                h3 = hash(shingle) % self.vector_dim
-                vec[h3] += 0.4
+                h3 = zlib.crc32(shingle.encode("utf-8")) % self.vector_dim
+                vec[h3] += 0.2
 
         # L2 Normalization to unit length for direct cosine similarity via dot product
         norm = np.linalg.norm(vec)
