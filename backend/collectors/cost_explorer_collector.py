@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+from botocore.exceptions import BotoCoreError, ClientError
 from collectors.base import AWSBaseCollector
 
 logger = logging.getLogger("finops.collectors.cost_explorer")
@@ -96,13 +97,16 @@ class CostExplorerCollector(AWSBaseCollector):
         return sorted(service_costs, key=lambda s: s["amount"], reverse=True)
 
     def collect_native_rightsizing(self) -> List[Dict[str, Any]]:
-        resp = self.call(
-            "ce",
-            "get_rightsizing_recommendation",
-            {"Service": "AmazonEC2"},
-            default={"RightsizingRecommendations": []},
-            custom_region="us-east-1",
-        )
+        try:
+            client = self.get_client("ce", "us-east-1")
+            resp = client.get_rightsizing_recommendation(Service="AmazonEC2")
+        except (ClientError, BotoCoreError) as err:
+            logger.debug(f"Cost Explorer rightsizing opt-in notice: {err}")
+            return []
+        except Exception as ex:
+            logger.debug(f"Cost Explorer rightsizing notice: {ex}")
+            return []
+
         recommendations = []
         for rec in resp.get("RightsizingRecommendations", []):
             current = rec.get("CurrentInstance", {})

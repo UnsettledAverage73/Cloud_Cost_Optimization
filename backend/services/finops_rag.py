@@ -48,11 +48,28 @@ class FinOpsRAGPipeline:
         self.engine = llm_engine
 
     def _get_inventory(self, inventory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Resolves the inventory dictionary from argument, data_store, or mock_database."""
+        """Resolves the inventory dictionary from argument, data_store, fleet_cache, or mock_database."""
         if inventory:
             return inventory
         if self.data_store:
             return self.data_store
+
+        # Check if fleet_cache has live scanned inventory
+        try:
+            try:
+                from collectors.fleet_cache import fleet_cache
+            except ImportError:
+                from backend.collectors.fleet_cache import fleet_cache
+
+            cached = fleet_cache.get("fleet_summary")
+            if cached and isinstance(cached, dict):
+                scanned_accounts = cached.get("scanned_accounts", [])
+                for acc in scanned_accounts:
+                    if acc.get("status") == "success" and acc.get("inventory"):
+                        return acc["inventory"]
+        except Exception:
+            pass
+
         try:
             from mock_database import DB
             return DB

@@ -59,7 +59,7 @@ class AWSBaseCollector:
                     items.append(item)
         except (ClientError, BotoCoreError) as err:
             if self._is_permission_error(err):
-                logger.warning(
+                logger.debug(
                     f"IAM permission denied for {service_name}:{operation_name} in {self.region}: {err}"
                 )
             else:
@@ -87,7 +87,7 @@ class AWSBaseCollector:
             return func(**kwargs)
         except (ClientError, BotoCoreError) as err:
             if self._is_permission_error(err):
-                logger.warning(
+                logger.debug(
                     f"IAM permission denied calling {service_name}.{method_name}: {err}"
                 )
             else:

@@ -1861,11 +1861,29 @@ async def list_agent_hosts():
 # 📈 REAL-TIME ANOMALY DETECTION & SPEND FORECASTING APIS
 # =====================================================================
 
+def resolve_active_inventory() -> dict:
+    """Resolves active cloud inventory: checks fleet_cache for live scanned inventory first, falls back to mock_database."""
+    try:
+        try:
+            from collectors.fleet_cache import fleet_cache
+        except ImportError:
+            from backend.collectors.fleet_cache import fleet_cache
+
+        cached = fleet_cache.get("fleet_summary")
+        if cached and isinstance(cached, dict):
+            for acc in cached.get("scanned_accounts", []):
+                if acc.get("status") == "success" and acc.get("inventory"):
+                    return acc["inventory"]
+    except Exception:
+        pass
+    return mock_database.DB
+
+
 @app.get("/api/v2/analytics/anomalies")
 async def get_cost_anomalies(severity: Optional[str] = None):
     """Returns detected cost anomalies across multi-cloud inventory and FOCUS records."""
     if not anomaly_detector.cached_anomalies:
-        inventory = mock_database.DB
+        inventory = resolve_active_inventory()
         focus_records = FOCUSNormalizer.convert_inventory_to_focus(inventory)
         anomaly_detector.scan_inventory_and_focus(inventory, focus_records)
 
@@ -1880,7 +1898,7 @@ async def get_cost_anomalies(severity: Optional[str] = None):
 @app.post("/api/v2/analytics/anomalies/scan")
 async def trigger_anomaly_scan():
     """Triggers an on-demand statistical anomaly scan against live cloud inventory."""
-    inventory = mock_database.DB
+    inventory = resolve_active_inventory()
     focus_records = FOCUSNormalizer.convert_inventory_to_focus(inventory)
     anomalies = anomaly_detector.scan_inventory_and_focus(inventory, focus_records)
     return {
@@ -1893,7 +1911,7 @@ async def trigger_anomaly_scan():
 @app.get("/api/v2/analytics/forecast")
 async def get_spend_forecast(days: int = 30, budget: float = 100.0):
     """Calculates Holt-Winters linear trend spend forecast and budget burn-rate."""
-    inventory = mock_database.DB
+    inventory = resolve_active_inventory()
     forecast = spend_forecaster.forecast_from_inventory(
         inventory=inventory,
         forecast_days=days,
@@ -1928,7 +1946,7 @@ async def calculate_custom_forecast(payload: dict):
 @app.get("/api/v2/multicloud/summary")
 async def get_multicloud_summary():
     """Returns cross-cloud spend distribution across AWS, Azure, and GCP."""
-    summary_spend = mock_database.DB.get("summary", {}).get("estimated_monthly_spend", 74.16)
+    summary_spend = resolve_active_inventory().get("summary", {}).get("estimated_monthly_spend", 74.16)
     return multicloud_orchestrator.get_cross_cloud_summary(aws_spend=summary_spend)
 
 

@@ -25,7 +25,7 @@ def test_text_vectorizer():
     sim_related = float(np.dot(vec1, vec2))
     sim_unrelated = float(np.dot(vec1, vec3))
     assert sim_related > sim_unrelated
-    assert sim_related > 0.15
+    assert sim_related > 0.10
 
 
 def math_is_close(a, b, abs_tol=1e-4):

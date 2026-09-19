@@ -854,6 +854,31 @@ def cmd_apply(args):
     out.append("=" * 88)
     out.append(f"  ✨ Review the PR and merge to let Terraform Cloud/CI apply the infrastructure change.")
     out.append("=" * 88 + "\n")
+def resolve_cli_inventory() -> dict:
+    """Resolves cloud inventory: checks fleet_cache for live scanned inventory first, falls back to mock_database."""
+    try:
+        try:
+            from collectors.fleet_cache import fleet_cache
+        except ImportError:
+            from backend.collectors.fleet_cache import fleet_cache
+        cached = fleet_cache.get("fleet_summary")
+        if cached and isinstance(cached, dict):
+            for acc in cached.get("scanned_accounts", []):
+                if acc.get("status") == "success" and acc.get("inventory"):
+                    return acc["inventory"]
+    except Exception:
+        pass
+    try:
+        from mock_database import DB
+        return DB
+    except ImportError:
+        try:
+            from backend.mock_database import DB
+            return DB
+        except Exception:
+            return {}
+
+
 # ==========================================
 # COMMAND: anomalies (Real-Time Cost Anomaly Detection)
 # ==========================================
@@ -876,16 +901,11 @@ def cmd_anomalies(args):
         try:
             from services.anomaly_detector import anomaly_detector
             from engines.focus_spec import FOCUSNormalizer
-            try:
-                from mock_database import DB
-            except ImportError:
-                from backend.mock_database import DB
         except ImportError:
             from backend.services.anomaly_detector import anomaly_detector
             from backend.engines.focus_spec import FOCUSNormalizer
-            from backend.mock_database import DB
 
-        inv = DB
+        inv = resolve_cli_inventory()
         recs = FOCUSNormalizer.convert_inventory_to_focus(inv)
         anomaly_detector.scan_inventory_and_focus(inv, recs)
         anomalies = anomaly_detector.get_anomalies(severity)
@@ -955,15 +975,10 @@ def cmd_forecast(args):
     except Exception:
         try:
             from services.spend_forecaster import spend_forecaster
-            try:
-                from mock_database import DB
-            except ImportError:
-                from backend.mock_database import DB
         except ImportError:
             from backend.services.spend_forecaster import spend_forecaster
-            from backend.mock_database import DB
 
-        inv = DB
+        inv = resolve_cli_inventory()
         data = spend_forecaster.forecast_from_inventory(inv, forecast_days=days, monthly_budget=budget)
 
     if fmt == "json":
@@ -1033,15 +1048,11 @@ def cmd_multicloud(args):
     except Exception:
         try:
             from collectors.multicloud_connector import multicloud_orchestrator
-            try:
-                from mock_database import DB
-            except ImportError:
-                from backend.mock_database import DB
         except ImportError:
             from backend.collectors.multicloud_connector import multicloud_orchestrator
-            from backend.mock_database import DB
 
-        aws_spend = DB.get("summary", {}).get("estimated_monthly_spend", 74.16)
+        inv = resolve_cli_inventory()
+        aws_spend = inv.get("summary", {}).get("estimated_monthly_spend", 74.16)
         data = multicloud_orchestrator.get_cross_cloud_summary(aws_spend=aws_spend)
 
     if fmt == "json":

@@ -212,7 +212,8 @@ def test_fleet_manager_resilience():
             }
         return mock_orch
 
-    with patch("collectors.fleet_manager.AWSDataIngestionOrchestrator", side_effect=mock_orch_side_effect):
+    with patch("collectors.fleet_manager.AWSDataIngestionOrchestrator", side_effect=mock_orch_side_effect), \
+         patch("collectors.fleet_manager.fleet_cache"):
         summary = manager.scan_fleet_parallel(["acc-good", "acc-bad"])
         assert summary["accounts_scanned"] == 2
         assert summary["successful_scans"] == 1
