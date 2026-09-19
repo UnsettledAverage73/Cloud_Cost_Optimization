@@ -36,9 +36,14 @@ class OfflineIngestionCollector:
                 return self._parse_json_file(self.data_path)
             elif suffix in [".csv", ".tsv"]:
                 return self._parse_billing_csv(self.data_path)
+            elif suffix == ".parquet":
+                return self._parse_billing_parquet(self.data_path)
             else:
-                raise ValueError(f"Unsupported file format: {suffix}. Expected .json or .csv")
+                raise ValueError(f"Unsupported file format: {suffix}. Expected .json, .csv, or .parquet")
         elif self.data_path.is_dir():
+            parquet_files = list(self.data_path.glob("*.parquet"))
+            if parquet_files:
+                return self._parse_billing_parquet(self.data_path)
             return self._parse_directory(self.data_path)
 
         raise ValueError(f"Invalid path type for offline ingestion: {self.data_path}")
@@ -348,3 +353,85 @@ class OfflineIngestionCollector:
                 "total_ebs_volumes": len(volumes)
             }
         }
+
+    def _parse_billing_parquet(self, parquet_path: Path) -> Dict[str, Any]:
+        """Parses AWS CUR 2.0 / FOCUS 1.0 Parquet file(s) into standard inventory using DuckDB."""
+        try:
+            import duckdb
+        except ImportError:
+            raise RuntimeError("DuckDB is required to parse Parquet billing files. Please install duckdb.")
+
+        conn = duckdb.connect(":memory:")
+        path_str = str(parquet_path / "*.parquet") if parquet_path.is_dir() else str(parquet_path)
+
+        cols_info = conn.execute(f"DESCRIBE SELECT * FROM read_parquet('{path_str}') LIMIT 1").fetchall()
+        col_names = [c[0] for c in cols_info]
+
+        cost_col = next((c for c in ["EffectiveCost", "lineItem/UnblendedCost", "lineItem/NetUnblendedCost", "BilledCost", "cost"] if c in col_names), None)
+        res_col = next((c for c in ["ResourceId", "ResourceID", "lineItem/ResourceId", "resource_id"] if c in col_names), None)
+        prod_col = next((c for c in ["ServiceName", "lineItem/ProductCode", "ProductCode", "service"] if c in col_names), None)
+        type_col = next((c for c in ["ResourceType", "product/instanceType", "instance_type"] if c in col_names), None)
+
+        cost_expr = f'COALESCE(TRY_CAST("{cost_col}" AS DOUBLE), 0.0)' if cost_col else "0.0"
+        res_expr = f'COALESCE("{res_col}", \'\')' if res_col else "''"
+        prod_expr = f'COALESCE("{prod_col}", \'\')' if prod_col else "''"
+        type_expr = f'COALESCE("{type_col}", \'t3.micro\')' if type_col else "'t3.micro'"
+
+        query = f"""
+            SELECT 
+                {res_expr} as resource_id,
+                {prod_expr} as product_code,
+                {type_expr} as instance_type,
+                SUM({cost_expr}) as total_cost
+            FROM read_parquet('{path_str}')
+            GROUP BY 1, 2, 3
+        """
+        rows = conn.execute(query).fetchall()
+
+        nodes = []
+        volumes = []
+        total_spend = 0.0
+
+        for r_id, p_code, i_type, c_val in rows:
+            cost = float(c_val or 0.0)
+            total_spend += cost
+            p_lower = str(p_code).lower()
+            str_rid = str(r_id)
+
+            if "ec2" in p_lower or "compute" in p_lower or str_rid.startswith("i-"):
+                if str_rid.startswith("i-") or not str_rid.startswith("vol-"):
+                    nodes.append({
+                        "instance_id": str_rid or f"i-cur-{len(nodes)+1}",
+                        "instance_type": str(i_type) if i_type else "t3.micro",
+                        "cost": round(cost, 2),
+                        "state": "running",
+                        "metrics": {"cpu_utilization_avg": 0.8}
+                    })
+            elif "ebs" in p_lower or "storage" in p_lower or str_rid.startswith("vol-"):
+                volumes.append({
+                    "volume_id": str_rid or f"vol-cur-{len(volumes)+1}",
+                    "volume_type": "gp2",
+                    "size_gb": 50,
+                    "cost": round(cost, 2),
+                    "is_orphaned": False
+                })
+
+        return {
+            "metadata": {
+                "account_id": "cur-parquet-import",
+                "ingestion_mode": "offline_parquet",
+                "source_file": str(parquet_path)
+            },
+            "compute": {"nodes": nodes},
+            "ec2_other_resources": {
+                "ebs_volumes": volumes,
+                "elastic_ips": [],
+                "security_groups": []
+            },
+            "summary": {
+                "estimated_monthly_spend": round(total_spend, 2),
+                "total_compute_nodes": len(nodes),
+                "total_ebs_volumes": len(volumes)
+            }
+        }
+

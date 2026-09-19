@@ -110,6 +110,35 @@ vol-cur-disk-1,AmazonEC2,10.00,gp2
     assert inv["summary"]["estimated_monthly_spend"] == 35.50
 
 
+def test_offline_ingest_cur_parquet(tmp_path):
+    import duckdb
+    parquet_file = tmp_path / "sample_cur.parquet"
+    conn = duckdb.connect(":memory:")
+    conn.execute('''
+        CREATE TABLE sample_cur AS SELECT 
+            'i-parquet-node-1' as "ResourceId",
+            'AmazonEC2' as "ServiceName",
+            't3.large' as "ResourceType",
+            60.50 as "EffectiveCost"
+        UNION ALL SELECT
+            'vol-parquet-disk-1' as "ResourceId",
+            'AmazonEBS' as "ServiceName",
+            'gp3' as "ResourceType",
+            20.00 as "EffectiveCost"
+    ''')
+    conn.execute(f"COPY sample_cur TO '{parquet_file}' (FORMAT PARQUET)")
+
+    collector = OfflineIngestionCollector(parquet_file)
+    inv = collector.load_inventory()
+
+    assert inv["metadata"]["ingestion_mode"] == "offline_parquet"
+    assert len(inv["compute"]["nodes"]) == 1
+    assert inv["compute"]["nodes"][0]["instance_id"] == "i-parquet-node-1"
+    assert len(inv["ec2_other_resources"]["ebs_volumes"]) == 1
+    assert inv["summary"]["estimated_monthly_spend"] == 80.50
+
+
+
 # =====================================================================
 # 3. EXECUTIVE POV REPORTER TESTS
 # =====================================================================

@@ -90,8 +90,25 @@ function ChartTooltip({ active, payload, label }: any) {
   )
 }
 
-function formatCurrency(value: number | null | undefined) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '$0';
+function formatCurrency(value: number | null | undefined, curr: 'USD' | 'INR' = 'USD', rate = 84.0) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return curr === 'INR' ? '₹0' : '$0';
+  if (curr === 'INR') {
+    const inrVal = value * rate;
+    if (inrVal >= 10_000_000) {
+      return `₹${(inrVal / 10_000_000).toFixed(2)} Cr`;
+    }
+    if (inrVal >= 100_000) {
+      return `₹${(inrVal / 100_000).toFixed(2)} L`;
+    }
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(inrVal);
+  }
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(2)}M`;
+  }
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -218,6 +235,7 @@ export default function Page() {
   const [view, setView] = useState('overview');
   const [collapsed, setCollapsed] = useState(false);
   const [provider, setProvider] = useState('all');
+  const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
   const [light, setLight] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectionState, setConnectionState] = useState<any>({ connected: false, status: 'disconnected', message: '' });
@@ -778,6 +796,15 @@ export default function Page() {
                   <SelectItem value="azure">Azure</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={currency} onValueChange={(value) => setCurrency((value as 'USD' | 'INR') || 'USD')}>
+                <SelectTrigger className="hidden h-9 w-28 border-white/10 bg-white/5 text-xs font-medium sm:flex">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                  <SelectItem value="INR">INR (₹ Lakhs)</SelectItem>
+                </SelectContent>
+              </Select>
               <div className="hidden items-center gap-2 border-l border-white/10 pl-3 text-xs text-muted-foreground md:flex">
                 <span className={`size-1.5 rounded-full ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                 {connectionAccessMode === 'limited' ? 'Limited access / sample inventory' : 'Live Dynamic Data'}
@@ -880,6 +907,7 @@ export default function Page() {
                     spend={spend}
                     alerts={alerts}
                     summary={summary}
+                    currency={currency}
                     sectionStatus={dataSources.summary?.status || 'idle'}
                   />
                 )}
@@ -920,6 +948,7 @@ export default function Page() {
                     items={optimizations}
                     applied={applied}
                     setApplied={setApplied}
+                    currency={currency}
                     sectionStatus={
                       dataSources.optimizations?.status === 'error'
                         ? 'error'
@@ -1043,7 +1072,7 @@ export default function Page() {
 
 
 
-function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus }: any) {
+function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, currency = 'USD' }: any) {
   const totalSpend = summary?.monthly_spend ?? 0;
   const activeNodes = summary?.running_nodes ?? 0;
   const totalNodes = summary?.total_nodes ?? 0;
@@ -1066,10 +1095,10 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus }
         }
       />
     
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={CircleDollarSign} label="Total monthly spend" value={formatCurrency(totalSpend)} detail={`Last synced ${lastSynced}`} tone="cyan" trend="Live" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={CircleDollarSign} label={`Total monthly spend (${currency})`} value={formatCurrency(totalSpend, currency)} detail={`Last synced ${lastSynced}`} tone="cyan" trend="Live" />
         <MetricCard icon={Cpu} label="Active compute nodes" value={formatInteger(activeNodes)} detail={`${formatInteger(Math.max(totalNodes - activeNodes, 0))} stopped · ${formatInteger(totalNodes)} total`} tone="emerald" />
-        <MetricCard icon={ArrowDownRight} label="Monthly wasted spend" value={formatCurrency(wastedSpend)} detail="Actionable savings" tone="amber" />
+        <MetricCard icon={ArrowDownRight} label={`Monthly wasted spend (${currency})`} value={formatCurrency(wastedSpend, currency)} detail="Actionable savings" tone="amber" />
         <MetricCard icon={ShieldAlert} label="Critical security risks" value={formatInteger(criticalRisks)} detail="Exposure alerts from the backend" tone="red" />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
@@ -1413,7 +1442,7 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
   )
 }
 
-function Optimization({ accessMode, items = [], applied, setApplied, sectionStatus }: any) {
+function Optimization({ accessMode, items = [], applied, setApplied, sectionStatus, currency = 'USD' }: any) {
   const toggleOptimization = async (id: string) => {
     const isApplied = applied.includes(id);
     const newApplied = isApplied ? applied.filter((x: string) => x !== id) : [...applied, id];
@@ -1459,7 +1488,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
           {formatInteger(items.length)} {accessMode === 'limited' ? 'fallback recommendations' : 'live recommendations'}
         </span>
         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-          ${items.reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0).toFixed(2)} potential savings
+          {formatCurrency(items.reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0), currency)} potential savings
         </span>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
@@ -1483,7 +1512,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
                 )}
                 <div className="mt-5 flex items-center justify-between">
                   <div>
-                    <div className="text-xl font-semibold text-emerald-300">Saves ${Number(item.savings ?? 0).toFixed(2)}/mo</div>
+                    <div className="text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
                   </div>
                   <Button size="sm" variant={done ? 'secondary' : 'outline'} onClick={() => toggleOptimization(item.id)}>
                     {done ? <><Check data-icon="inline-start" />Applied</> : 'Review'}

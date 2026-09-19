@@ -1,56 +1,100 @@
 """
 CloudPulse In-Memory FOCUS 1.0 Lakehouse Query Engine
 Provides high-throughput SQL analytics over FOCUS 1.0 standardized cost datasets.
+Uses embedded DuckDB for zero-copy Parquet and in-memory analytics with automatic SQLite fallback.
 Enables sub-millisecond filtering, aggregation by service/account/region, and custom SQL analytics.
 """
 
-import sqlite3
 import time
 import logging
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+try:
+    import duckdb
+    _HAS_DUCKDB = True
+except ImportError:
+    import sqlite3
+    _HAS_DUCKDB = False
 
 logger = logging.getLogger("finops.engines.lakehouse")
 
 
 class FOCUSLakehouse:
     """
-    In-memory SQL analytics engine implementing FinOps Open Cost & Usage Specification (FOCUS 1.0).
+    High-performance in-memory SQL analytics engine implementing
+    FinOps Open Cost & Usage Specification (FOCUS 1.0).
+    Powered by DuckDB with automatic SQLite3 fallback.
     """
 
     def __init__(self):
-        self.conn = sqlite3.connect(":memory:", check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
+        self.engine_type = "duckdb" if _HAS_DUCKDB else "sqlite3"
+        if _HAS_DUCKDB:
+            self.conn = duckdb.connect(":memory:")
+        else:
+            self.conn = sqlite3.connect(":memory:", check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
         self._init_schema()
 
     def _init_schema(self):
         cursor = self.conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS focus_costs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ChargePeriodStart TEXT,
-                ChargePeriodEnd TEXT,
-                BillingAccountId TEXT,
-                SubAccountId TEXT,
-                ProviderName TEXT,
-                RegionName TEXT,
-                ServiceName TEXT,
-                ResourceID TEXT,
-                ResourceType TEXT,
-                EffectiveCost REAL,
-                ListCost REAL,
-                BilledCost REAL,
-                UsageQuantity REAL,
-                UsageUnit TEXT,
-                PricingQuantity REAL,
-                PricingUnit TEXT,
-                Currency TEXT
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_service ON focus_costs(ServiceName)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_account ON focus_costs(BillingAccountId)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_provider ON focus_costs(ProviderName)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_resource ON focus_costs(ResourceID)")
-        self.conn.commit()
+        if self.engine_type == "duckdb":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS focus_costs (
+                    ChargePeriodStart VARCHAR,
+                    ChargePeriodEnd VARCHAR,
+                    BillingAccountId VARCHAR,
+                    SubAccountId VARCHAR,
+                    ProviderName VARCHAR,
+                    RegionName VARCHAR,
+                    ServiceName VARCHAR,
+                    ResourceID VARCHAR,
+                    ResourceType VARCHAR,
+                    EffectiveCost DOUBLE,
+                    ListCost DOUBLE,
+                    BilledCost DOUBLE,
+                    UsageQuantity DOUBLE,
+                    UsageUnit VARCHAR,
+                    PricingQuantity DOUBLE,
+                    PricingUnit VARCHAR,
+                    Currency VARCHAR
+                )
+            """)
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_service ON focus_costs(ServiceName)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_account ON focus_costs(BillingAccountId)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_provider ON focus_costs(ProviderName)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_resource ON focus_costs(ResourceID)")
+            except Exception:
+                pass  # DuckDB doesn't strictly require explicit indexes for small-to-medium tables
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS focus_costs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ChargePeriodStart TEXT,
+                    ChargePeriodEnd TEXT,
+                    BillingAccountId TEXT,
+                    SubAccountId TEXT,
+                    ProviderName TEXT,
+                    RegionName TEXT,
+                    ServiceName TEXT,
+                    ResourceID TEXT,
+                    ResourceType TEXT,
+                    EffectiveCost REAL,
+                    ListCost REAL,
+                    BilledCost REAL,
+                    UsageQuantity REAL,
+                    UsageUnit TEXT,
+                    PricingQuantity REAL,
+                    PricingUnit TEXT,
+                    Currency TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_service ON focus_costs(ServiceName)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_account ON focus_costs(BillingAccountId)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_provider ON focus_costs(ProviderName)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_resource ON focus_costs(ResourceID)")
+            self.conn.commit()
 
     def load_focus_records(self, records: List[Dict[str, Any]], clear_existing: bool = True):
         """Loads normalized FOCUS 1.0 records into the in-memory lakehouse table."""
@@ -88,8 +132,80 @@ class FOCUSLakehouse:
                 PricingQuantity, PricingUnit, Currency
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
-        self.conn.commit()
-        logger.info(f"Loaded {len(rows)} FOCUS 1.0 records into in-memory lakehouse.")
+        if hasattr(self.conn, "commit"):
+            try:
+                self.conn.commit()
+            except Exception:
+                pass
+        logger.info(f"Loaded {len(rows)} FOCUS 1.0 records into {self.engine_type} in-memory lakehouse.")
+
+    def load_parquet(self, parquet_path: Union[str, Path], clear_existing: bool = True) -> int:
+        """
+        Directly loads a CUR 2.0 or FOCUS 1.0 Parquet file (or directory of parquet files)
+        into the lakehouse using DuckDB's zero-copy read_parquet.
+        """
+        if not _HAS_DUCKDB:
+            raise RuntimeError("DuckDB is required for direct Parquet ingestion.")
+
+        p = Path(parquet_path)
+        path_str = str(p / "*.parquet") if p.is_dir() else str(p)
+
+        cursor = self.conn.cursor()
+        if clear_existing:
+            cursor.execute("DELETE FROM focus_costs")
+
+        # Discover schema of the parquet file
+        cols_info = self.conn.execute(f"DESCRIBE SELECT * FROM read_parquet('{path_str}') LIMIT 1").fetchall()
+        col_names = [c[0] for c in cols_info]
+
+        if "EffectiveCost" in col_names and "ServiceName" in col_names and "ResourceID" in col_names:
+            # Native FOCUS 1.0 parquet schema
+            cursor.execute(f"INSERT INTO focus_costs SELECT * FROM read_parquet('{path_str}')")
+        else:
+            # Map AWS CUR 2.0 schema
+            cost_col = next((c for c in ["EffectiveCost", "lineItem/UnblendedCost", "lineItem/NetUnblendedCost", "BilledCost", "cost"] if c in col_names), None)
+            res_col = next((c for c in ["ResourceId", "ResourceID", "lineItem/ResourceId", "resource_id"] if c in col_names), None)
+            prod_col = next((c for c in ["ServiceName", "lineItem/ProductCode", "ProductCode", "service"] if c in col_names), None)
+            type_col = next((c for c in ["ResourceType", "product/instanceType", "instance_type"] if c in col_names), None)
+
+            cost_expr = f'COALESCE(TRY_CAST("{cost_col}" AS DOUBLE), 0.0)' if cost_col else "0.0"
+            res_expr = f'COALESCE("{res_col}", \'unknown\')' if res_col else "'unknown'"
+            prod_expr = f'COALESCE("{prod_col}", \'Cloud Service\')' if prod_col else "'Cloud Service'"
+            type_expr = f'COALESCE("{type_col}", \'Resource\')' if type_col else "'Resource'"
+
+            query = f"""
+                INSERT INTO focus_costs (
+                    ChargePeriodStart, ChargePeriodEnd, BillingAccountId, SubAccountId,
+                    ProviderName, RegionName, ServiceName, ResourceID, ResourceType,
+                    EffectiveCost, ListCost, BilledCost, UsageQuantity, UsageUnit,
+                    PricingQuantity, PricingUnit, Currency
+                )
+                SELECT
+                    CURRENT_TIMESTAMP as ChargePeriodStart,
+                    CURRENT_TIMESTAMP as ChargePeriodEnd,
+                    'cur-account' as BillingAccountId,
+                    'cur-account' as SubAccountId,
+                    'AWS' as ProviderName,
+                    'us-east-1' as RegionName,
+                    {prod_expr} as ServiceName,
+                    {res_expr} as ResourceID,
+                    {type_expr} as ResourceType,
+                    {cost_expr} as EffectiveCost,
+                    {cost_expr} as ListCost,
+                    {cost_expr} as BilledCost,
+                    1.0 as UsageQuantity,
+                    'Hours' as UsageUnit,
+                    1.0 as PricingQuantity,
+                    'Hours' as PricingUnit,
+                    'USD' as Currency
+                FROM read_parquet('{path_str}')
+            """
+            cursor.execute(query)
+
+        count_res = self.conn.execute("SELECT COUNT(*) FROM focus_costs").fetchone()
+        loaded_count = count_res[0] if count_res else 0
+        logger.info(f"Successfully ingested {loaded_count} lines from Parquet {path_str} into DuckDB.")
+        return loaded_count
 
     def execute_query(self, sql_query: str) -> Dict[str, Any]:
         """
@@ -112,6 +228,7 @@ class FOCUSLakehouse:
 
         return {
             "query": clean_sql,
+            "engine": self.engine_type,
             "columns": columns,
             "row_count": len(result_rows),
             "execution_time_ms": elapsed_ms,
