@@ -22,11 +22,15 @@ class CurrencyConverter:
         """Converts USD amount to INR."""
         return round(amount_usd * self.usd_to_inr_rate, 2)
 
+    convert_usd_to_inr = to_inr
+
     def to_usd(self, amount_inr: float) -> float:
         """Converts INR amount to USD."""
         if self.usd_to_inr_rate == 0:
             return 0.0
         return round(amount_inr / self.usd_to_inr_rate, 2)
+
+    convert_inr_to_usd = to_usd
 
     def format_inr(self, amount_inr: float, abbreviated: bool = True) -> str:
         """
@@ -116,3 +120,4 @@ class CurrencyConverter:
 
 # Global singleton
 currency_converter = CurrencyConverter()
+currency_engine = currency_converter

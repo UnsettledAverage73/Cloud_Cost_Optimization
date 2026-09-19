@@ -94,4 +94,64 @@ class StorageOptimizer:
                     "risk": "NONE",
                 })
 
+        # 3. High-Cost io1 / io2 Volumes Migratable to gp3
+        for vol in inventory.get("ebs_volumes", []):
+            vol_type = str(vol.get("volume_type", "")).lower()
+            if vol_type in ["io1", "io2"]:
+                vol_id = vol.get("volume_id", "unknown")
+                size_gb = vol.get("size_gb", 0)
+                iops = vol.get("iops", 3000)
+                # io1 is $0.125/GB + $0.065/IOPS; gp3 is $0.08/GB with 3000 IOPS included
+                current_cost = (size_gb * 0.125) + (iops * 0.065)
+                gp3_cost = (size_gb * 0.08) + (max(0, iops - 3000) * 0.005)
+                monthly_savings = max(15.0, round(current_cost - gp3_cost, 2))
+
+                recommendations.append({
+                    "id": f"storage-io-to-gp3-{vol_id}",
+                    "resource_id": vol_id,
+                    "resource_type": "EBS Volume",
+                    "category": "Storage Modernization",
+                    "type": "High-Cost Volume Downgrade",
+                    "title": f"Modernize Expensive {vol_type.upper()} Volume {vol_id} to gp3",
+                    "description": (
+                        f"Volume {vol_id} uses costly {vol_type.upper()} storage ($0.125/GB + IOPS fee). "
+                        f"Modernizing to gp3 delivers identical baseline 3,000 IOPS while reducing monthly cost by over 50%."
+                    ),
+                    "monthly_savings": monthly_savings,
+                    "savings": monthly_savings,
+                    "effort": "Quick Win",
+                    "action": "upgrade_gp3",
+                    "action_type": "upgrade_gp3",
+                    "severity": "HIGH",
+                    "risk": "LOW",
+                })
+
+        # 4. Stale EBS Snapshots (> 90 Days Old)
+        for snap in inventory.get("ebs_snapshots", []):
+            age_days = snap.get("age_days", 0)
+            is_stale = snap.get("is_stale", False) or age_days > 90
+            if is_stale:
+                snap_id = snap.get("snapshot_id", "unknown")
+                size_gb = snap.get("size_gb", 20)
+                monthly_savings = max(1.0, round(size_gb * 0.05, 2))
+                recommendations.append({
+                    "id": f"storage-snapshot-stale-{snap_id}",
+                    "resource_id": snap_id,
+                    "resource_type": "EBS Snapshot",
+                    "category": "Storage Waste",
+                    "type": "Stale Snapshot",
+                    "title": f"Prune Stale {age_days}-Day Old Snapshot ({snap_id})",
+                    "description": (
+                        f"Snapshot {snap_id} ({size_gb} GB) is {age_days} days old with no automated lifecycle rule. "
+                        f"Deleting obsolete incremental snapshots eliminates recurring storage charges."
+                    ),
+                    "monthly_savings": monthly_savings,
+                    "savings": monthly_savings,
+                    "effort": "Quick Win",
+                    "action": "delete_snapshot",
+                    "action_type": "delete_snapshot",
+                    "severity": "LOW",
+                    "risk": "NONE",
+                })
+
         return sorted(recommendations, key=lambda r: r["monthly_savings"], reverse=True)

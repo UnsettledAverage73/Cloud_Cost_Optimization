@@ -72,4 +72,61 @@ class NetworkOptimizer:
                     "risk": "LOW",
                 })
 
+        # 3. Idle / Orphaned Elastic Load Balancers (0 active targets)
+        for lb in inventory.get("load_balancers", []):
+            target_count = lb.get("target_count", lb.get("active_targets", None))
+            is_idle = lb.get("is_idle", False) or (target_count == 0)
+            if is_idle:
+                lb_arn = lb.get("arn", lb.get("load_balancer_arn", "unknown"))
+                lb_name = lb.get("name", lb.get("load_balancer_name", lb_arn.split("/")[-2] if "/" in lb_arn else "unknown"))
+                lb_type = lb.get("type", "application").upper()
+                recommendations.append({
+                    "id": f"network-lb-idle-{lb_name}",
+                    "resource_id": lb_name,
+                    "resource_type": f"{lb_type} Load Balancer",
+                    "category": "Network Waste",
+                    "type": "Idle Load Balancer",
+                    "title": f"Decommission 0-Target {lb_type} Load Balancer ({lb_name})",
+                    "description": (
+                        f"Load Balancer '{lb_name}' has 0 registered healthy targets yet incurs "
+                        f"base availability charges of ~$22.50/month ($0.0225/hr + LCU base)."
+                    ),
+                    "monthly_savings": 22.50,
+                    "savings": 22.50,
+                    "effort": "Quick Win",
+                    "action": "delete_load_balancer",
+                    "action_type": "delete_load_balancer",
+                    "severity": "HIGH",
+                    "risk": "LOW",
+                })
+
+        # 4. Public IPv4 Address Charges on Private Workloads ($3.60/month per IPv4)
+        for node in inventory.get("nodes", []):
+            pub_ip = node.get("public_ip")
+            name = (node.get("name") or "").lower()
+            role = (node.get("role") or "").lower()
+            # If instance is a worker, database, internal, backend, or private service with an unnecessary public IP
+            is_internal = any(k in name or k in role for k in ["worker", "backend", "db", "database", "internal", "batch", "crawler", "cron"])
+            if pub_ip and is_internal:
+                node_id = node.get("instance_id", "unknown")
+                recommendations.append({
+                    "id": f"network-ipv4-private-{node_id}",
+                    "resource_id": node_id,
+                    "resource_type": "EC2 Public IPv4",
+                    "category": "Network Architecture",
+                    "type": "Unnecessary Public IPv4",
+                    "title": f"Disassociate Public IPv4 ({pub_ip}) on Internal Worker {node.get('name', node_id)}",
+                    "description": (
+                        f"AWS charges $0.005/hr ($3.60/mo) for every public IPv4 address. Internal worker "
+                        f"'{node.get('name', node_id)}' does not serve public traffic and should use private VPC routing."
+                    ),
+                    "monthly_savings": 3.60,
+                    "savings": 3.60,
+                    "effort": "Quick Win",
+                    "action": "disassociate_public_ip",
+                    "action_type": "disassociate_public_ip",
+                    "severity": "MEDIUM",
+                    "risk": "NONE",
+                })
+
         return sorted(recommendations, key=lambda r: r["monthly_savings"], reverse=True)

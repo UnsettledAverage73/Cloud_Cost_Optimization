@@ -276,3 +276,56 @@ def test_cli_cmd_apply_json(capsys):
     assert payload["mode"] == "dry_run"
     assert payload["resource_id"] == "i-0a106c14603cb65a0"
     assert payload["status"] == "dry_run_simulation_passed"
+
+
+def test_gitops_create_batch_remediation_pr(clean_gitops_engine):
+    """Tests multi-resource batch remediation PR generation with dual-currency calculations."""
+    sample_findings = [
+        {"resource_id": "vol-12345", "action": "upgrade_gp3", "monthly_savings": 10.0, "title": "Upgrade gp2 to gp3"},
+        {"resource_id": "i-abcdef", "action": "graviton", "monthly_savings": 15.0, "title": "Migrate to Graviton"},
+        {"resource_id": "54.210.1.2", "action": "release_eip", "monthly_savings": 3.60, "title": "Release unattached EIP"}
+    ]
+    pkg = clean_gitops_engine.create_batch_remediation_pr(
+        findings=sample_findings,
+        environment="staging",
+        repo_name="org/cloud-infra"
+    )
+    assert pkg["status"] == "pr_ready"
+    assert pkg["findings_count"] == 3
+    assert pkg["total_monthly_savings"] == 28.60
+    assert pkg["total_annual_savings"] == round(28.60 * 12.0, 2)
+    assert "storage.tf" in pkg["diff"]
+    assert "compute.tf" in pkg["diff"]
+    assert "networking.tf" in pkg["diff"]
+    assert "batch-optimization" in pkg["branch_name"]
+    assert "Batch Optimization Summary" in pkg["pr_body"]
+
+
+def test_cli_cmd_apply_batch(capsys):
+    """Verifies CLI cmd_apply --batch --dry-run output formatting."""
+    args = argparse.Namespace(
+        resource_id=None,
+        batch=True,
+        demo=True,
+        action="downsize",
+        from_type=None,
+        to_type=None,
+        environment="production",
+        repo="infrastructure/aws-workloads",
+        savings=0.0,
+        dry_run=True,
+        slack=None,
+        teams=None,
+        format="table",
+        json_only=False,
+        output=None,
+        url="http://localhost:8000"
+    )
+    cmd_apply(args)
+    captured = capsys.readouterr().out
+    assert "GITOPS BATCH REMEDIATION AUTOPILOT" in captured
+    assert "Consolidated Savings" in captured
+    assert "Annual Fleet Recovery" in captured
+    assert "storage.tf" in captured
+    assert "compute.tf" in captured
+
