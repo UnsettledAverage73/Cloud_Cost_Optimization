@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudPulse Autopilot: Zero-Trust Read-Only IAM Role for 48-Hour FinOps PoV Audit'
+
+Parameters:
+  ExternalId:
+    Type: String
+    Description: 'Unique External ID provided by CloudPulse for STS AssumeRole handshake'
+    Default: 'cloudpulse-pov-audit-session'
+  TrustedAccountId:
+    Type: String
+    Description: 'CloudPulse AWS Account ID permitted to assume this audit role (leave blank if running local CLI)'
+    Default: ''
+
+Conditions:
+  HasTrustedAccount: !Not [!Equals [!Ref TrustedAccountId, '']]
+
+Resources:
+  CloudPulsePoVReadOnlyRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'CloudPulse-FinOps-PoV-ReadOnly'
+      Description: '100% Read-Only metadata collector role for CloudPulse FinOps Cost & Infrastructure Autopilot'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !If
+                - HasTrustedAccount
+                - !Sub 'arn:aws:iam::${TrustedAccountId}:root'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/SecurityAudit'
+      Policies:
+        - PolicyName: 'CloudPulseFinOpsTelemetryReadOnly'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: 'ReadCostExplorerAndBilling'
+                Effect: Allow
+                Action:
+                  - 'ce:GetCostAndUsage'
+                  - 'ce:GetCostForecast'
+                  - 'ce:GetDimensionValues'
+                  - 'ce:GetReservationUtilization'
+                  - 'ce:GetSavingsPlansUtilization'
+                  - 'cur:DescribeReportDefinitions'
+                Resource: '*'
+              - Sid: 'ReadComputeAndStorageTelemetry'
+                Effect: Allow
+                Action:
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeVolumes'
+                  - 'ec2:DescribeAddresses'
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DescribeNatGateways'
+                  - 'ec2:DescribeVpcEndpoints'
+                  - 'cloudwatch:GetMetricData'
+                  - 'cloudwatch:GetMetricStatistics'
+                  - 'logs:DescribeLogGroups'
+                Resource: '*'
+              - Sid: 'DenyAllModifications'
+                Effect: Deny
+                Action:
+                  - 'ec2:RunInstances'
+                  - 'ec2:TerminateInstances'
+                  - 'ec2:StopInstances'
+                  - 'ec2:ModifyInstanceAttribute'
+                  - 'ec2:DeleteVolume'
+                  - 'ec2:ReleaseAddress'
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: 'ARN of the created CloudPulse PoV Read-Only Role'
+    Value: !GetAtt CloudPulsePoVReadOnlyRole.Arn
+  ExternalId:
+    Description: 'Configured External ID for STS handshake'
+    Value: !Ref ExternalId

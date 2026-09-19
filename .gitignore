@@ -12,3 +12,7 @@ test_report.json
 .env
 .env.local
 .env.*.local
+Enterprise_FinOps_PoV_Audit.html
+Enterprise_PoV_Audit.md
+Enterprise_PoV_Audit.json
+
