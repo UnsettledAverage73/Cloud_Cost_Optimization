@@ -336,3 +336,134 @@ def test_cli_cmd_fleet(capsys):
         assert "CLOUDPULSE MULTI-ACCOUNT FLEET INVENTORY" in out
         assert "111111111111" in out
         assert "Org-Root" in out
+
+
+def test_fleet_manager_discover_organization_accounts():
+    """Tests AWS Organizations member account discovery and STS role generation."""
+    manager = FleetManager(max_workers=2)
+    mock_session = MagicMock()
+    mock_sts = MagicMock()
+    mock_sts.get_caller_identity.return_value = {"Account": "111111111111"}
+    mock_session.client.return_value = mock_sts
+    mock_session.region_name = "us-east-1"
+
+    mock_members = [
+        {"account_id": "111111111111", "account_name": "Org-Management", "status": "ACTIVE"},
+        {"account_id": "222222222222", "account_name": "Production-Workloads", "status": "ACTIVE"},
+        {"account_id": "333333333333", "account_name": "Staging-Workloads", "status": "ACTIVE"},
+    ]
+
+    with patch("collectors.fleet_manager.OrganizationsDiscovery") as MockDisco:
+        disco_inst = MagicMock()
+        disco_inst.list_all_member_accounts.return_value = mock_members
+        MockDisco.return_value = disco_inst
+
+        configs = manager.discover_organization_accounts(
+            management_session=mock_session,
+            role_name="CloudPulseFinOpsRole",
+            external_id="CustomExternalId123"
+        )
+
+        assert len(configs) == 3
+        # Management account uses direct session
+        assert configs[0].account_id == "111111111111"
+        assert configs[0].is_management_account is True
+        assert configs[0].role_arn is None
+
+        # Member accounts use cross-account STS role
+        assert configs[1].account_id == "222222222222"
+        assert configs[1].is_management_account is False
+        assert configs[1].role_arn == "arn:aws:iam::222222222222:role/CloudPulseFinOpsRole"
+        assert configs[1].external_id == "CustomExternalId123"
+
+        assert configs[2].account_id == "333333333333"
+        assert configs[2].role_arn == "arn:aws:iam::333333333333:role/CloudPulseFinOpsRole"
+
+
+def test_cli_fleet_discover(capsys):
+    """Tests CLI cmd_fleet discover command in table and JSON modes."""
+    mock_discover_data = {
+        "status": "success",
+        "discovered_count": 2,
+        "accounts": [
+            {
+                "account_id": "111111111111",
+                "account_name": "Management-Payer",
+                "region": "us-east-1",
+                "role_arn": None,
+                "is_management_account": True
+            },
+            {
+                "account_id": "222222222222",
+                "account_name": "Production-Cluster",
+                "region": "us-east-1",
+                "role_arn": "arn:aws:iam::222222222222:role/CloudPulseReadOnlyRole",
+                "is_management_account": False
+            }
+        ]
+    }
+
+    # 1. Table format
+    args = argparse.Namespace(
+        fleet_action="discover",
+        role_name="CloudPulseReadOnlyRole",
+        external_id="CloudPulseEnterpriseSecurityId",
+        format="table",
+        output=None,
+        url="http://testbackend",
+        json_only=False
+    )
+    with patch("cli_main.http_json", return_value=mock_discover_data):
+        cmd_fleet(args)
+        out = capsys.readouterr().out
+        assert "AWS ORGANIZATIONS FLEET DISCOVERY" in out
+        assert "Management-Payer" in out
+        assert "Production-Cluster" in out
+        assert "2 Accounts Enrolled" in out
+
+    # 2. JSON format
+    args_json = argparse.Namespace(
+        fleet_action="discover",
+        role_name="CloudPulseReadOnlyRole",
+        external_id="CloudPulseEnterpriseSecurityId",
+        format="json",
+        output=None,
+        url="http://testbackend",
+        json_only=True
+    )
+    with patch("cli_main.http_json", return_value=mock_discover_data):
+        cmd_fleet(args_json)
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert parsed["discovered_count"] == 2
+        assert len(parsed["accounts"]) == 2
+
+
+def test_api_fleet_discover_endpoint():
+    """Tests FastAPI /api/v2/fleet/discover endpoint."""
+    client = TestClient(app)
+    mock_members = [
+        {"account_id": "111111111111", "account_name": "Payer-Account", "status": "ACTIVE"},
+        {"account_id": "222222222222", "account_name": "Workload-Account", "status": "ACTIVE"}
+    ]
+
+    with patch("collectors.fleet_manager.OrganizationsDiscovery") as MockDisco, \
+         patch("main._build_aws_session") as mock_get_session:
+        disco_inst = MagicMock()
+        disco_inst.list_all_member_accounts.return_value = mock_members
+        MockDisco.return_value = disco_inst
+
+        mock_session = MagicMock()
+        mock_sts = MagicMock()
+        mock_sts.get_caller_identity.return_value = {"Account": "111111111111"}
+        mock_session.client.return_value = mock_sts
+        mock_session.region_name = "us-east-1"
+        mock_get_session.return_value = mock_session
+
+        resp = client.post("/api/v2/fleet/discover", json={"role_name": "CustomRole", "external_id": "TestExtId"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["discovered_count"] == 2
+        assert len(data["accounts"]) == 2
+

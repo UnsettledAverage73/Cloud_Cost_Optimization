@@ -75,6 +75,27 @@ class FleetManager:
         self.role_manager = CrossAccountRoleManager()
         self.accounts: Dict[str, FleetAccountConfig] = {}
         self._auto_enroll_active_account()
+        self._load_cached_accounts()
+
+    def _load_cached_accounts(self):
+        """Loads previously discovered or registered accounts from fleet_cache."""
+        try:
+            cached = fleet_cache.get("registered_accounts")
+            if cached and isinstance(cached, list):
+                for acc_data in cached:
+                    acc_id = acc_data.get("account_id")
+                    if acc_id and acc_id not in self.accounts:
+                        cfg = FleetAccountConfig(
+                            account_id=acc_id,
+                            account_name=acc_data.get("account_name", f"Account-{acc_id}"),
+                            role_arn=acc_data.get("role_arn"),
+                            external_id=acc_data.get("external_id"),
+                            region=acc_data.get("region", "us-east-1"),
+                            is_management_account=bool(acc_data.get("is_management_account", False))
+                        )
+                        self.accounts[acc_id] = cfg
+        except Exception as e:
+            logger.debug(f"Could not load cached fleet accounts: {e}")
 
     def _auto_enroll_active_account(self):
         """Auto-registers the active AWS account from environment/STS credentials if available."""
@@ -95,25 +116,45 @@ class FleetManager:
             pass
 
     def register_account(self, config: FleetAccountConfig):
-        """Enrolls an account in the fleet manager."""
+        """Enrolls an account in the fleet manager and persists to fleet cache."""
         self.accounts[config.account_id] = config
         logger.info(f"Registered fleet account {config.account_id} ({config.account_name})")
+        try:
+            fleet_cache.set("registered_accounts", [acc.to_dict() for acc in self.accounts.values()], ttl=86400)
+        except Exception:
+            pass
 
-    def discover_organization_accounts(self, management_session: boto3.Session) -> List[FleetAccountConfig]:
-        """Discovers all active member accounts via AWS Organizations API."""
+    def discover_organization_accounts(
+        self,
+        management_session: boto3.Session,
+        role_name: str = "CloudPulseReadOnlyRole",
+        external_id: str = "CloudPulseEnterpriseSecurityId"
+    ) -> List[FleetAccountConfig]:
+        """
+        Discovers all active member accounts via AWS Organizations API
+        and registers them with cross-account STS role configurations.
+        """
         disco = OrganizationsDiscovery(management_session)
         members = disco.list_all_member_accounts()
         discovered_configs = []
 
+        caller_acc = None
+        try:
+            caller_acc = management_session.client("sts").get_caller_identity().get("Account")
+        except Exception:
+            pass
+
         for m in members:
             acc_id = m.get("account_id")
             acc_name = m.get("account_name", f"Account-{acc_id}")
+            is_mgmt = (acc_id == caller_acc)
             cfg = FleetAccountConfig(
                 account_id=acc_id,
                 account_name=acc_name,
-                role_arn=f"arn:aws:iam::{acc_id}:role/CloudPulseFinOpsRole",
-                external_id="CloudPulseEnterpriseSecurityId",
-                region="us-east-1"
+                role_arn=None if is_mgmt else f"arn:aws:iam::{acc_id}:role/{role_name}",
+                external_id=external_id if not is_mgmt else None,
+                region=management_session.region_name or "us-east-1",
+                is_management_account=is_mgmt
             )
             self.register_account(cfg)
             discovered_configs.append(cfg)

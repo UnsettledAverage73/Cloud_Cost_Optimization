@@ -618,6 +618,56 @@ def cmd_fleet(args):
         emit_output("\n".join(out), output_dest)
         return
 
+    elif subcmd == "discover":
+        role_name = getattr(args, "role_name", "CloudPulseReadOnlyRole") or "CloudPulseReadOnlyRole"
+        external_id = getattr(args, "external_id", "CloudPulseEnterpriseSecurityId") or "CloudPulseEnterpriseSecurityId"
+        if fmt != "json":
+            print(f"\n{CYAN}{BOLD}🌐 Discovering AWS Organizations Member Accounts...{RESET}\n")
+
+        try:
+            payload = {"role_name": role_name, "external_id": external_id}
+            data = http_json(f"{backend_url}/api/v2/fleet/discover", method="POST", payload=payload, timeout=8.0)
+            discovered_accounts = data.get("accounts", [])
+        except Exception:
+            try:
+                from collectors.fleet_manager import fleet_manager
+            except ImportError:
+                from backend.collectors.fleet_manager import fleet_manager
+            import boto3
+            session = boto3.Session()
+            discovered_cfgs = fleet_manager.discover_organization_accounts(session, role_name=role_name, external_id=external_id)
+            discovered_accounts = [acc.to_dict() for acc in discovered_cfgs]
+            data = {"status": "success", "discovered_count": len(discovered_accounts), "accounts": discovered_accounts}
+
+        if fmt == "json":
+            emit_output(json.dumps(data, indent=2), output_dest)
+            return
+
+        out = []
+        out.append(get_banner_str())
+        out.append("=" * 95)
+        out.append(f"     🌐 AWS ORGANIZATIONS FLEET DISCOVERY ({len(discovered_accounts)} Accounts Enrolled)")
+        out.append("=" * 95)
+        if not discovered_accounts:
+            out.append(f"  {YELLOW}⚠️  No member accounts found or AWS Organizations is not enabled on this caller account.{RESET}")
+            out.append(f"  • To discover member accounts, configure credentials for the AWS Organization Payer/Management account.")
+            out.append(f"  • Your current account is enrolled as a standalone fleet account.")
+        else:
+            out.append(f"  {'ACCOUNT ID':<16} {'NAME':<24} {'REGION':<12} {'ROLE ARN / AUTH':<34} {'MGMT'}")
+            out.append("  " + "-" * 93)
+            for a in discovered_accounts:
+                mgmt_badge = f"{GREEN}YES{RESET}" if a.get("is_management_account") else "NO"
+                role_str = a.get("role_arn") or "DIRECT SESSION"
+                if len(role_str) > 34:
+                    role_str = ".." + role_str[-32:]
+                out.append(f"  {a.get('account_id'):<16} {a.get('account_name', 'unnamed'):<24} {a.get('region', 'us-east-1'):<12} {role_str:<34} {mgmt_badge}")
+            out.append("-" * 95)
+            out.append(f"  {GREEN}✔ All {len(discovered_accounts)} accounts auto-enrolled in local fleet cache.{RESET}")
+            out.append(f"  👉 Run {BOLD}./bin/cloudpulse fleet scan{RESET} to execute parallel multi-account FinOps telemetry collection.")
+        out.append("=" * 95 + "\n")
+        emit_output("\n".join(out), output_dest)
+        return
+
     else: # summary
         try:
             data = http_json(f"{backend_url}/api/v2/fleet/summary", timeout=3.0)
@@ -2549,7 +2599,9 @@ def main():
 
     # fleet
     p_fleet = subparsers.add_parser("fleet", parents=[common_parser], help="Multi-account cloud fleet management, parallel scanning, and FOCUS 1.0 reports")
-    p_fleet.add_argument("fleet_action", nargs="?", choices=["summary", "accounts", "scan"], default="summary", help="Fleet operation: summary (default), accounts, or scan")
+    p_fleet.add_argument("fleet_action", nargs="?", choices=["summary", "accounts", "scan", "discover"], default="summary", help="Fleet operation: summary (default), accounts, scan, or discover")
+    p_fleet.add_argument("--role-name", default="CloudPulseReadOnlyRole", help="Cross-account IAM role name deployed in member accounts (default: CloudPulseReadOnlyRole)")
+    p_fleet.add_argument("--external-id", default="CloudPulseEnterpriseSecurityId", help="STS ExternalId for role assumption (default: CloudPulseEnterpriseSecurityId)")
     p_fleet.add_argument("--format", "-m", choices=["table", "json", "csv", "markdown", "md"], default="table", help="Output format (table, json, csv, markdown)")
     p_fleet.add_argument("--output", "-o", default=None, help="File path to save the generated report")
     p_fleet.add_argument("--json", dest="json_only", action="store_true", help="Output raw structured JSON (shorthand for --format json)")

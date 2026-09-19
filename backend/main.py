@@ -1668,6 +1668,28 @@ async def register_fleet_account(payload: dict):
     return {"status": "success", "account": cfg.to_dict()}
 
 
+@app.post("/api/v2/fleet/discover")
+async def discover_fleet_accounts(payload: Optional[dict] = None):
+    """
+    Auto-discovers all member accounts via AWS Organizations API
+    and enrolls them into the multi-account fleet manager.
+    """
+    payload = payload or {}
+    role_name = payload.get("role_name", "CloudPulseReadOnlyRole")
+    external_id = payload.get("external_id", "CloudPulseEnterpriseSecurityId")
+    session = _build_aws_session() or boto3.Session()
+    discovered = fleet_manager.discover_organization_accounts(
+        management_session=session,
+        role_name=role_name,
+        external_id=external_id
+    )
+    return {
+        "status": "success",
+        "discovered_count": len(discovered),
+        "accounts": [acc.to_dict() for acc in discovered]
+    }
+
+
 @app.get("/api/v2/fleet/summary")
 async def get_fleet_summary(force_refresh: bool = False):
     """Returns aggregated fleet-wide FinOps executive KPIs and spend."""
