@@ -2,7 +2,7 @@ import os
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from botocore.config import Config
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request, Header
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta, timezone
@@ -78,6 +78,7 @@ try:
     from collectors.multicloud_connector import multicloud_orchestrator
     from services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
     from services.opencost_engine import opencost_engine
+    from services.github_app_engine import github_app_engine
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -101,6 +102,7 @@ except ImportError:
     from backend.collectors.multicloud_connector import multicloud_orchestrator
     from backend.services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
     from backend.services.opencost_engine import opencost_engine
+    from backend.services.github_app_engine import github_app_engine
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1764,6 +1766,68 @@ async def ingest_kubernetes_opencost_payload(payload: dict):
     """Ingests OpenCost allocation JSON telemetry into the active workload inventory."""
     count = opencost_engine.ingest_opencost_payload(payload)
     return {"status": "success", "ingested_workloads": count}
+
+
+
+# =====================================================================
+# 🐙 NATIVE GITHUB APP & CI/CD FINOPS GUARDRAILS APIS
+# =====================================================================
+
+@app.post("/api/v2/github/webhook")
+async def github_webhook_listener(
+    request: Request,
+    payload: dict,
+    x_hub_signature_256: Optional[str] = Header(None),
+    x_github_event: Optional[str] = Header(None)
+):
+    """
+    Receives and processes GitHub pull_request webhooks,
+    validates HMAC signatures, and generates automated cost comments and check runs.
+    """
+    secret = os.getenv("GITHUB_WEBHOOK_SECRET")
+    if secret and x_hub_signature_256:
+        body_bytes = await request.body()
+        if not github_app_engine.verify_signature(body_bytes, x_hub_signature_256):
+            raise HTTPException(status_code=401, detail="Invalid GitHub HMAC signature")
+
+    result = github_app_engine.handle_webhook_payload(payload)
+    return result
+
+
+@app.post("/api/v2/github/analyze-pr")
+async def analyze_github_pr_diff(payload: dict):
+    """
+    Direct endpoint for CI/CD pipelines (GitHub Actions / GitLab CI) to analyze
+    an infrastructure diff and receive cost projections, markdown comments, and check runs.
+    """
+    diff_text = payload.get("diff", "")
+    file_path = payload.get("file_path", "terraform/compute.tf")
+    currency = payload.get("currency", "USD")
+    rate = float(payload.get("rate", 84.0))
+    pr_number = payload.get("pull_number")
+
+    analysis = github_app_engine.analyze_diff(diff_text, file_path=file_path)
+    comment = github_app_engine.format_pr_comment(analysis, currency=currency, rate=rate, pr_number=pr_number)
+    check_run = github_app_engine.format_check_run(analysis, currency=currency, rate=rate)
+
+    return {
+        "status": "success",
+        "analysis": analysis,
+        "comment_markdown": comment,
+        "check_run": check_run
+    }
+
+
+@app.get("/api/v2/github/status")
+async def get_github_app_status():
+    """Returns the configuration and active guardrails for GitHub App integration."""
+    return {
+        "status": "active",
+        "app_name": "CloudPulse FinOps Guardrail",
+        "spike_threshold_usd": github_app_engine.spike_threshold_usd,
+        "webhook_configured": bool(os.getenv("GITHUB_WEBHOOK_SECRET")),
+        "supported_providers": ["GitHub", "GitLab CI", "Bitbucket Pipelines"]
+    }
 
 
 

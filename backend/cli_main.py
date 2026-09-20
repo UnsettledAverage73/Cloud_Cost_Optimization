@@ -1601,6 +1601,103 @@ def cmd_k8s(args):
 
 
 # ==========================================
+# COMMAND: gh (Native GitHub App & CI/CD FinOps Guardrail)
+# ==========================================
+def cmd_gh(args):
+    """
+    Evaluates infrastructure Pull Request diffs for cost impact, guardrail violations, and check runs.
+    """
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    curr = getattr(args, "currency", "USD").upper()
+    diff_input = getattr(args, "diff", None)
+    pr_num = getattr(args, "pr", None)
+    threshold = getattr(args, "threshold", 50.0)
+
+    try:
+        from services.github_app_engine import github_app_engine
+        from services.currency_converter import currency_converter
+    except ImportError:
+        from backend.services.github_app_engine import github_app_engine
+        from backend.services.currency_converter import currency_converter
+
+    github_app_engine.spike_threshold_usd = threshold
+
+    # If diff is a file path that exists, read it
+    if diff_input and os.path.exists(diff_input):
+        with open(diff_input, "r") as f:
+            diff_text = f.read()
+    elif diff_input:
+        diff_text = diff_input
+    else:
+        # Default demonstration diff: Rightsizing an oversized compute instance
+        diff_text = (
+            '--- a/terraform/compute.tf\n'
+            '+++ b/terraform/compute.tf\n'
+            '@@ -12,3 +12,3 @@\n'
+            ' resource "aws_instance" "worker" {\n'
+            '-  instance_type = "t3.xlarge"\n'
+            '+  instance_type = "t4g.medium"\n'
+            ' }\n'
+        )
+
+    analysis = github_app_engine.analyze_diff(diff_text)
+    comment = github_app_engine.format_pr_comment(analysis, currency=curr, pr_number=pr_num)
+    check_run = github_app_engine.format_check_run(analysis, currency=curr)
+
+    if fmt == "json":
+        res = {
+            "analysis": analysis,
+            "check_run": check_run,
+            "comment_markdown": comment
+        }
+        emit_output(json.dumps(res, indent=2), output_dest)
+        return
+    elif fmt in ("markdown", "md"):
+        emit_output(comment, output_dest)
+        return
+
+    # Table / Terminal summary mode
+    converter = currency_converter
+    diff_val = analysis["monthly_diff"]
+    is_spike = analysis["is_cost_spike"]
+    diff_str = converter.format_dual(abs(diff_val), primary_currency=curr)
+
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 90)
+    out.append("  🐙 CLOUDPULSE CI/CD FINOPS GUARDRAIL & GITHUB APP AUDIT")
+    out.append("=" * 90)
+    if is_spike:
+        out.append(f"  • Guardrail Status  : {RED}{BOLD}🚨 ACTION REQUIRED (COST SPIKE DETECTED){RESET}")
+        out.append(f"  • Policy Threshold  : Spikes > ${threshold:.2f}/mo require FinOps approval")
+    elif diff_val < 0:
+        out.append(f"  • Guardrail Status  : {GREEN}{BOLD}🟢 PASSED (COST REDUCTION VERIFIED){RESET}")
+        out.append(f"  • Verification      : Aligned with AWS Well-Architected Cost Principles")
+    else:
+        out.append(f"  • Guardrail Status  : {CYAN}{BOLD}⚪ NEUTRAL / WITHIN BUDGET LIMITS{RESET}")
+
+    out.append(f"  • Baseline Spend    : {converter.format_dual(analysis['baseline_monthly_spend'], primary_currency=curr)}/mo")
+    out.append(f"  • Projected Spend   : {converter.format_dual(analysis['projected_monthly_spend'], primary_currency=curr)}/mo")
+    delta_color = GREEN if diff_val <= 0 else RED
+    sign = "-" if diff_val < 0 else "+"
+    out.append(f"  • Monthly Net Delta : {delta_color}{BOLD}{sign}{diff_str}/mo{RESET} ({sign}{converter.format_dual(abs(analysis['annual_diff']), primary_currency=curr)}/yr)")
+    out.append(f"  • GitHub Check Run  : {BOLD}{check_run['conclusion'].upper()}{RESET} ({check_run['output']['title']})")
+    out.append("-" * 90)
+
+    out.append(f"  {'RESOURCE':<25} {'PROPOSED MODIFICATION':<40} {'MONTHLY DELTA'}")
+    out.append("  " + "-" * 86)
+    for c in analysis.get("changes", []):
+        c_sign = "+" if c["delta"] > 0 else "-"
+        c_str = converter.format_dual(abs(c["delta"]), primary_currency=curr)
+        c_color = RED if c["delta"] > 0 else GREEN
+        out.append(f"  {c['resource']:<25} {c['action']:<40} {c_color}{c_sign}{c_str}/mo{RESET}")
+
+    out.append("=" * 90 + "\n")
+    emit_output("\n".join(out), output_dest)
+
+
+# ==========================================
 # COMMAND: notify (Multi-Channel Escalation, WhatsApp, Slack & Teams)
 # ==========================================
 def cmd_notify(args):
@@ -3021,6 +3118,15 @@ def main():
     p_k8s.add_argument("--output", "-o", default=None, help="File path to save output")
     p_k8s.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
 
+    # gh (Native GitHub App & CI/CD FinOps Guardrail)
+    p_gh = subparsers.add_parser("gh", parents=[common_parser], help="Evaluate infrastructure PR diffs for cost impact, spikes, and check runs")
+    p_gh.add_argument("--diff", "-d", default=None, help="Path to unified diff file or diff string")
+    p_gh.add_argument("--pr", "-p", type=int, default=None, help="Pull Request number")
+    p_gh.add_argument("--threshold", "-t", type=float, default=50.0, help="Cost spike alert threshold in USD (default: 50.0)")
+    p_gh.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_gh.add_argument("--output", "-o", default=None, help="File path to save output")
+    p_gh.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -3043,6 +3149,7 @@ def main():
         "notify": cmd_notify,
         "query": cmd_query,
         "k8s": cmd_k8s,
+        "gh": cmd_gh,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,
