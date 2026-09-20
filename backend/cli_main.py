@@ -1734,6 +1734,25 @@ def cmd_notify(args):
 # ==========================================
 def cmd_onboard(args):
     print_banner()
+
+    if getattr(args, "helm", False):
+        print(f"{CYAN}{BOLD}☸️  CLOUDPULSE PRIVATE VPC SINGLE-TENANT HELM ONBOARDING{RESET}\n")
+        print(f"  • Deployment Model : Single-Tenant Private VPC / EKS")
+        print(f"  • Storage Mode     : {GREEN}{BOLD}Zero-Storage Ephemeral RAM mode (ephemeralMode: true){RESET}")
+        print(f"  • Security Context : Non-Root (UID 10001), Read-Only RootFS, Capabilities Dropped")
+        print(f"  • IAM Auth         : AWS IAM Roles for Service Accounts (IRSA)")
+        irsa_role = getattr(args, "irsa_role", "") or ""
+        if irsa_role:
+            print(f"  • Target IRSA Role : {irsa_role}")
+        print("-" * 75)
+        print(f"\n{BOLD}🚀 1-CLICK HELM INSTALLATION COMMAND:{RESET}\n")
+        role_flag = f'--set aws.irsaRoleArn="{irsa_role}" ' if irsa_role else ""
+        print(f"  {CYAN}helm upgrade --install cloudpulse ./deploy/helm/cloudpulse \\{RESET}")
+        print(f"  {CYAN}  --namespace finops --create-namespace \\{RESET}")
+        print(f"  {CYAN}  {role_flag}--set ephemeralMode=true{RESET}\n")
+        print(f"  {BOLD}Documentation:{RESET} deploy/helm/cloudpulse/README.md\n")
+        return
+
     backend_url = get_backend_url(args.url)
     print(f"☁️ Generating 1-Click AWS Onboarding Package on {BOLD}{backend_url}{RESET}...\n")
     try:
@@ -2870,10 +2889,12 @@ def main():
     p_iac.add_argument("--output", "-o", default=None, help="File to write Terraform HCL to")
 
     # onboard
-    p_onboard = subparsers.add_parser("onboard", parents=[common_parser], help="Generate 1-click AWS CloudFormation onboarding package")
+    p_onboard = subparsers.add_parser("onboard", parents=[common_parser], help="Generate 1-click AWS CloudFormation onboarding package or Private VPC Helm guide")
     p_onboard.add_argument("--org-id", default="default-org", help="Organization ID")
     p_onboard.add_argument("--remediation", action="store_true", help="Allow automated remediation actions")
     p_onboard.add_argument("--save-yaml", default=None, help="Save template to a YAML file")
+    p_onboard.add_argument("--helm", action="store_true", help="Display Private VPC Helm chart installation guide & production configuration")
+    p_onboard.add_argument("--irsa-role", default="", help="AWS IAM Role ARN for EKS ServiceAccount OIDC federation")
 
     # connect (AWS / Learner Lab / Cloud)
     p_connect = subparsers.add_parser("connect", parents=[common_parser], help="Connect an AWS / Learner Lab account using access keys & session token")

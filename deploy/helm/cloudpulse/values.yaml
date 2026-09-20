@@ -1,0 +1,115 @@
+# CloudPulse Enterprise Private VPC Helm Configuration
+# Zero-Storage RAM mode designed for Fortune 500 InfoSec & SOC 2 compliance.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/cloudpulse/cloudpulse-backend
+  pullPolicy: IfNotPresent
+  tag: "2.0.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Zero-Storage Ephemeral RAM mode
+# If true, runs DuckDB lakehouse and caching 100% in RAM with zero disk writes.
+ephemeralMode: true
+
+# Regional and Financial Settings
+currency: "USD"
+exchangeRate: 84.00
+awsRegion: "us-east-1"
+
+# AWS IAM Roles for Service Accounts (IRSA)
+aws:
+  irsaRoleArn: ""  # e.g. arn:aws:iam::123456789012:role/CloudPulseFinOpsReadOnlyRole
+  readOnlyMode: true
+  enableRemediationPRs: true
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "cloudpulse-sa"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8000"
+  prometheus.io/path: "/health"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+ingress:
+  enabled: false
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+  hosts:
+    - host: finops.internal.enterprise.corp
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - cloudpulse
+          topologyKey: kubernetes.io/hostname
+
+networkPolicy:
+  enabled: true
+  allowDns: true
+  allowEgressAws: true
+
+env:
+  LOG_LEVEL: "INFO"
+  FOCUS_LAKEHOUSE_ENGINE: "duckdb"
+  AUTONOMOUS_MODE: "autopilot"
+  OPENCOST_API_URL: "http://opencost.opencost.svc.cluster.local:9003"
+  SLACK_WEBHOOK_URL: ""
+  TEAMS_WEBHOOK_URL: ""

@@ -1,0 +1,20 @@
+apiVersion: v2
+name: cloudpulse
+description: Enterprise Autonomous Cloud FinOps & Waste Elimination Engine (Single-Tenant Private VPC)
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+keywords:
+  - finops
+  - cost-optimization
+  - kubernetes
+  - opencost
+  - focus-1.0
+  - gitops
+  - aws
+home: https://github.com/cloudpulse/cloudpulse
+sources:
+  - https://github.com/cloudpulse/cloudpulse
+maintainers:
+  - name: CloudPulse Platform Engineering
+    email: engineering@cloudpulse.dev
