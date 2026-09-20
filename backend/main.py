@@ -77,6 +77,7 @@ try:
     from services.spend_forecaster import spend_forecaster
     from collectors.multicloud_connector import multicloud_orchestrator
     from services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
+    from services.opencost_engine import opencost_engine
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -99,6 +100,7 @@ except ImportError:
     from backend.services.spend_forecaster import spend_forecaster
     from backend.collectors.multicloud_connector import multicloud_orchestrator
     from backend.services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
+    from backend.services.opencost_engine import opencost_engine
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1717,6 +1719,51 @@ async def handle_notification_interactive_callback(payload: dict):
     """Receives interactive button action callbacks from Slack / Teams."""
     result = notification_engine.handle_interactive_callback(payload)
     return result
+
+
+
+# =====================================================================
+# ☸️ KUBERNETES OPENCOST & WORKLOAD FINOPS APIS
+# =====================================================================
+
+@app.get("/api/v2/kubernetes/allocations")
+async def get_kubernetes_allocations(
+    namespace: Optional[str] = None,
+    currency: str = "USD",
+    rate: float = 84.0
+):
+    """Returns granular Kubernetes workload resource and cost allocations."""
+    return opencost_engine.get_workload_allocations(namespace=namespace, currency=currency, rate=rate)
+
+
+@app.get("/api/v2/kubernetes/efficiency")
+async def get_kubernetes_efficiency(
+    currency: str = "USD",
+    rate: float = 84.0
+):
+    """Returns cluster efficiency score, idle capacity waste, and namespace breakdowns."""
+    return opencost_engine.get_cluster_efficiency(currency=currency, rate=rate)
+
+
+@app.get("/api/v2/kubernetes/recommendations")
+async def get_kubernetes_recommendations(
+    threshold: float = 40.0,
+    currency: str = "USD",
+    rate: float = 84.0
+):
+    """Returns 1-click YAML rightsizing recommendations for over-provisioned workloads."""
+    return opencost_engine.get_rightsizing_recommendations(
+        efficiency_threshold=threshold,
+        currency=currency,
+        rate=rate
+    )
+
+
+@app.post("/api/v2/kubernetes/ingest")
+async def ingest_kubernetes_opencost_payload(payload: dict):
+    """Ingests OpenCost allocation JSON telemetry into the active workload inventory."""
+    count = opencost_engine.ingest_opencost_payload(payload)
+    return {"status": "success", "ingested_workloads": count}
 
 
 

@@ -1472,6 +1472,135 @@ def cmd_query(args):
 
 
 # ==========================================
+# COMMAND: k8s (Kubernetes OpenCost & Workload FinOps)
+# ==========================================
+def cmd_k8s(args):
+    """
+    Analyzes Kubernetes container allocations, cluster efficiency, and rightsizing opportunities.
+    """
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    curr = getattr(args, "currency", "USD").upper()
+    ns_filter = getattr(args, "namespace", None)
+    is_efficiency = getattr(args, "efficiency", False)
+    is_recommend = getattr(args, "recommend", False)
+    threshold = getattr(args, "threshold", 40.0)
+
+    try:
+        from services.opencost_engine import opencost_engine
+    except ImportError:
+        from backend.services.opencost_engine import opencost_engine
+
+    if is_efficiency:
+        data = opencost_engine.get_cluster_efficiency(currency=curr)
+        title = "KUBERNETES CLUSTER EFFICIENCY & IDLE CAPACITY"
+    elif is_recommend:
+        data = opencost_engine.get_rightsizing_recommendations(efficiency_threshold=threshold, currency=curr)
+        title = f"KUBERNETES WORKLOAD RIGHTSIZING RECOMMENDATIONS (EFFICIENCY < {threshold}%)"
+    else:
+        data = opencost_engine.get_workload_allocations(namespace=ns_filter, currency=curr)
+        title = f"KUBERNETES WORKLOAD COST ALLOCATIONS{f' (NAMESPACE: {ns_filter.upper()})' if ns_filter else ''}"
+
+    if fmt == "json":
+        emit_output(json.dumps(data, indent=2), output_dest)
+        return
+    elif fmt == "csv":
+        import csv
+        import io
+        if isinstance(data, dict):
+            rows = data.get("namespaces", [])
+        else:
+            rows = data
+        if not rows:
+            emit_output("No records found\n", output_dest)
+            return
+        output = io.StringIO()
+        fieldnames = [k for k in rows[0].keys() if k != "yaml_diff"]
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+        emit_output(output.getvalue(), output_dest)
+        return
+    elif fmt in ("markdown", "md"):
+        lines = [f"# {title}", ""]
+        if is_efficiency:
+            lines.append(f"- **Overall Cluster Efficiency:** {data['overall_efficiency_pct']}%")
+            lines.append(f"- **Monthly Requested Spend:** {data['formatted_requested_cost']}/mo")
+            lines.append(f"- **Monthly Utilized Cost:** {data['formatted_utilized_cost']}/mo")
+            lines.append(f"- **Recoverable Idle Waste:** {data['formatted_idle_waste']}/mo ({data['formatted_annual_idle_waste']}/yr)")
+            lines.append("")
+            lines.append("## Namespace Cost Breakdown")
+            lines.append("| Namespace | Workloads | Requested Cost | Idle Waste | Efficiency |")
+            lines.append("| --- | --- | --- | --- | --- |")
+            for ns in data.get("namespaces", []):
+                lines.append(f"| {ns['namespace']} | {ns['workload_count']} | {ns['cost_formatted']} | {ns['idle_formatted']} | {ns['efficiency_pct']}% |")
+        elif is_recommend:
+            for r in data:
+                lines.append(f"### {r['namespace']}/{r['workload']} ({r['kind']})")
+                lines.append(f"- **Efficiency:** {r['current_efficiency_pct']}% | **Monthly Savings:** {r['formatted_monthly_savings']}")
+                lines.append(f"- **CPU:** `{r['current_cpu']}` ➔ `{r['recommended_cpu']}` | **RAM:** `{r['current_memory']}` ➔ `{r['recommended_memory']}`")
+                lines.append("```diff")
+                lines.append(r["yaml_diff"].strip())
+                lines.append("```")
+        else:
+            lines.append("| Namespace | Workload | Kind | Req CPU | Ut CPU | Req RAM | Ut RAM | Cost/Mo | Idle Waste | Efficiency |")
+            lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+            for w in data:
+                lines.append(f"| {w['namespace']} | {w['workload']} | {w['kind']} | {w['requested_cpu_cores']:.2f} | {w['utilized_cpu_cores']:.2f} | {w['requested_ram_gib']:.1f}G | {w['utilized_ram_gib']:.1f}G | {w['formatted_cost']} | {w['formatted_idle']} | {w['overall_efficiency_pct']}% |")
+        emit_output("\n".join(lines) + "\n", output_dest)
+        return
+
+    # Table Mode
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 96)
+    out.append(f"  ☸️  CLOUDPULSE KUBERNETES OPENCOST ENGINE: {title}")
+    out.append("=" * 96)
+
+    if is_efficiency:
+        out.append(f"  • Total Clusters Monitored : {data['cluster_count']}")
+        out.append(f"  • Total Active Workloads   : {data['total_workloads']}")
+        out.append(f"  • Overall Cluster Efficiency: {CYAN}{BOLD}{data['overall_efficiency_pct']}%{RESET}")
+        out.append(f"  • Monthly Requested Spend  : {data['formatted_requested_cost']}/mo")
+        out.append(f"  • Monthly Utilized Spend   : {data['formatted_utilized_cost']}/mo")
+        out.append(f"  • Recoverable Idle Waste   : {RED}{BOLD}{data['formatted_idle_waste']}/mo{RESET} ({data['formatted_annual_idle_waste']}/yr)")
+        out.append("-" * 96)
+        out.append(f"  {'NAMESPACE':<16} {'WORKLOADS':<10} {'REQUESTED SPEND':<22} {'IDLE WASTE':<22} {'EFFICIENCY'}")
+        out.append("  " + "-" * 92)
+        for ns in data.get("namespaces", []):
+            eff_color = GREEN if ns['efficiency_pct'] >= 60 else YELLOW if ns['efficiency_pct'] >= 30 else RED
+            out.append(f"  {ns['namespace']:<16} {ns['workload_count']:<10} {ns['cost_formatted']:<22} {ns['idle_formatted']:<22} {eff_color}{ns['efficiency_pct']:.1f}%{RESET}")
+
+    elif is_recommend:
+        out.append(f"  Identified {BOLD}{len(data)}{RESET} over-provisioned workloads below {threshold}% efficiency threshold.")
+        out.append("-" * 96)
+        for r in data:
+            out.append(f"  📦 {BOLD}{r['namespace']}/{r['workload']}{RESET} ({r['kind']} - {r['replicas']} replicas)")
+            out.append(f"     Efficiency: {RED}{r['current_efficiency_pct']}%{RESET} | Projected Savings: {GREEN}{BOLD}+{r['formatted_monthly_savings']}/mo{RESET} ({r['formatted_annual_savings']}/yr)")
+            out.append(f"     Target CPU: {r['current_cpu']} ➔ {BOLD}{r['recommended_cpu']}{RESET} | Target Memory: {r['current_memory']} ➔ {BOLD}{r['recommended_memory']}{RESET}")
+            out.append("     " + "-" * 88)
+            diff_lines = r["yaml_diff"].splitlines()
+            for dl in diff_lines:
+                if dl.startswith("+"):
+                    out.append(f"       {GREEN}{dl}{RESET}")
+                elif dl.startswith("-"):
+                    out.append(f"       {RED}{dl}{RESET}")
+                else:
+                    out.append(f"       {dl}")
+            out.append("")
+
+    else:
+        out.append(f"  {'NAMESPACE':<14} {'WORKLOAD':<20} {'KIND':<12} {'REQ CPU':<9} {'UT CPU':<8} {'REQ RAM':<9} {'UT RAM':<8} {'SPEND/MO':<16} {'EFF %'}")
+        out.append("  " + "-" * 92)
+        for w in data:
+            eff_color = GREEN if w['overall_efficiency_pct'] >= 60 else YELLOW if w['overall_efficiency_pct'] >= 30 else RED
+            out.append(f"  {w['namespace']:<14} {w['workload']:<20} {w['kind']:<12} {w['requested_cpu_cores']:<9.2f} {w['utilized_cpu_cores']:<8.2f} {w['requested_ram_gib']:<8.1f}G {w['utilized_ram_gib']:<8.1f}G {w['formatted_cost']:<16} {eff_color}{w['overall_efficiency_pct']:.1f}%{RESET}")
+
+    out.append("=" * 96 + "\n")
+    emit_output("\n".join(out), output_dest)
+
+
+# ==========================================
 # COMMAND: notify (Multi-Channel Escalation, WhatsApp, Slack & Teams)
 # ==========================================
 def cmd_notify(args):
@@ -2861,6 +2990,16 @@ def main():
     p_notify.add_argument("--batch", "-b", action="store_true", help="Generate fleet-wide batch optimization digest with interactive remediation actions")
     p_notify.add_argument("--dry-run", "-d", action="store_true", help="Print card JSON payload preview without sending HTTP POST")
 
+    # k8s (Kubernetes OpenCost & Workload FinOps)
+    p_k8s = subparsers.add_parser("k8s", parents=[common_parser], help="Kubernetes OpenCost workload allocation, efficiency & rightsizing")
+    p_k8s.add_argument("--namespace", "-n", default=None, help="Filter workloads by Kubernetes namespace")
+    p_k8s.add_argument("--efficiency", "-e", action="store_true", help="Display cluster-wide efficiency metrics and idle capacity waste")
+    p_k8s.add_argument("--recommend", "-r", action="store_true", help="Display 1-click YAML rightsizing recommendations for over-provisioned pods")
+    p_k8s.add_argument("--threshold", "-t", type=float, default=40.0, help="Efficiency threshold percentage for rightsizing (default: 40.0)")
+    p_k8s.add_argument("--format", "-m", choices=["table", "json", "csv", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_k8s.add_argument("--output", "-o", default=None, help="File path to save output")
+    p_k8s.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -2882,6 +3021,7 @@ def main():
         "pov": cmd_pov,
         "notify": cmd_notify,
         "query": cmd_query,
+        "k8s": cmd_k8s,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,
