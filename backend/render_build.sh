@@ -9,10 +9,9 @@ pip install -r backend/requirements.txt
 echo "💾 Checking database connectivity & initializing schema..."
 PYTHONPATH=backend python -c "
 import os
-from database.init_db import initialize_database, seed_demo_data
+from database.init_db import initialize_database
 try:
     initialize_database()
-    seed_demo_data()
     print('✅ Render database initialization completed successfully.')
 except Exception as e:
     print(f'⚠️ Notice during build-time DB init (DB may not be reachable until runtime): {e}')

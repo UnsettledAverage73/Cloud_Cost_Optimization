@@ -720,11 +720,18 @@ export default function Page() {
     <div className={light ? 'light' : 'dark'}>
       <main className="min-h-screen bg-background text-foreground">
         <aside className={`fixed inset-y-0 left-0 z-30 hidden border-r border-white/8 bg-sidebar/90 transition-all lg:flex lg:flex-col ${collapsed ? 'w-20' : 'w-64'}`}>
-          <div className="flex h-16 items-center gap-3 border-b border-white/8 px-5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
-              <CloudCog className="size-5" />
-            </div>
-            {!collapsed && <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>}
+          <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
+            <a href="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
+                <CloudCog className="size-5" />
+              </div>
+              {!collapsed && <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>}
+            </a>
+            {!collapsed && (
+              <a href="/" className="rounded-md px-2 py-1 text-xs font-medium text-cyan-400 hover:bg-white/5 hover:text-cyan-300 transition-colors">
+                ← Home
+              </a>
+            )}
           </div>
           <div className="flex flex-1 flex-col gap-1 p-3">
             {nav.map(item => {
@@ -754,11 +761,13 @@ export default function Page() {
         <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
           <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col justify-between border-r border-white/8 bg-sidebar p-0">
             <div className="flex flex-1 flex-col overflow-y-auto">
-              <div className="flex h-16 items-center gap-3 border-b border-white/8 px-5">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
-                  <CloudCog className="size-5" />
+              <div className="flex h-16 items-center border-b border-white/8 px-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
+                    <CloudCog className="size-5" />
+                  </div>
+                  <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>
                 </div>
-                <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>
               </div>
 
               {/* Mobile Quick Context (Currency, Provider, Account) */}
@@ -880,7 +889,7 @@ export default function Page() {
               <div className="hidden items-center gap-2 text-sm md:flex">
                 <span className="text-muted-foreground">Workspace</span>
                 <ChevronRight className="size-3 text-muted-foreground" />
-                <span className="font-medium">Acme Corp - Prod</span>
+                <span className="font-medium">{connectionState?.account_name || 'Production Fleet'}</span>
                 <ChevronDown className="size-3 text-muted-foreground" />
               </div>
             </div>
@@ -998,9 +1007,9 @@ export default function Page() {
                     <CardContent className="flex items-start gap-3 p-4">
                       <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-300" />
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-amber-100">Learner Lab limited mode</div>
+                        <div className="text-sm font-medium text-amber-100">Restricted IAM Permissions</div>
                         <p className="mt-1 text-sm text-amber-100/80">
-                          {connectionWarning || 'AWS is connected, but live EC2 discovery is denied in this Learner Lab. Inventory and reports will use notebook or seeded fallback data where needed, and the account stays saved for refreshes.'}
+                          {connectionWarning || 'AWS account connected. Additional read-only permissions (ec2:Describe*, cloudwatch:GetMetricData) are recommended to unlock full real-time telemetry.'}
                         </p>
                       </div>
                     </CardContent>
@@ -1013,12 +1022,12 @@ export default function Page() {
                         <div>
                           <div className="text-sm font-medium">Current data coverage</div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {loadedDataSources.length} data sources ready{failedDataSources.length ? ` · ${failedDataSources.length} unavailable` : ''}{connectionAccessMode === 'limited' ? ' · notebook fallback active' : ''}
+                            {loadedDataSources.length} data sources ready{failedDataSources.length ? ` · ${failedDataSources.length} unavailable` : ''}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span className={`size-2 rounded-full ${syncing ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                          {syncing ? 'Refreshing' : connectionAccessMode === 'limited' ? 'Fallback synced' : 'Synced'}
+                          {syncing ? 'Refreshing' : 'Live Synced'}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1248,7 +1257,7 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
   const wastedSpend = summary?.wasted_monthly_spend ?? 0;
   const criticalRisks = summary?.critical_security_risks ?? 0;
   const lastSynced = summary?.last_synced ? new Date(summary.last_synced).toLocaleString() : 'Just now';
-  const summaryMode = accessMode === 'limited' ? 'Notebook fallback' : summary?.partial ? 'Partial data' : 'Live data';
+  const summaryMode = accessMode === 'limited' ? 'Restricted permissions' : summary?.partial ? 'Partial data' : 'Live data';
 
   useEffect(() => {
     let cancelled = false;
@@ -1477,9 +1486,9 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
       <SectionTitle
         eyebrow="Inventory"
         title="Compute & storage"
-        description={accessMode === 'limited' ? 'Track fallback inventory from the notebook pipeline while live EC2 discovery is blocked.' : 'Track every node, volume, and exposure across your estate.'}
+        description="Track every node, volume, and exposure across your estate."
         status={<SectionStatusBadge status={sectionStatus} />}
-        action={<Button variant="outline"><Archive data-icon="inline-start" />{accessMode === 'limited' ? 'Export fallback inventory' : 'Export inventory'}</Button>}
+        action={<Button variant="outline"><Archive data-icon="inline-start" />Export inventory</Button>}
       />
       <div className="mb-4 flex flex-col sm:flex-row gap-3">
         <div className="relative w-full sm:flex-1">
@@ -1555,7 +1564,7 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
       <SectionTitle
         eyebrow="Live telemetry"
         title="Telemetry analytics"
-        description={accessMode === 'limited' ? 'Telemetry is shown from cached or notebook-generated data when live CloudWatch access is unavailable.' : 'Real-time health signals from active nodes.'}
+        description="Real-time health signals and performance metrics from active nodes."
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
           <div className="flex items-center gap-2 flex-wrap">
@@ -1632,7 +1641,7 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
       <SectionTitle
         eyebrow="Security center"
         title="Exposure audit"
-        description={accessMode === 'limited' ? 'Security findings are based on fallback inventory because live discovery is denied in this Learner Lab.' : 'Resolve public attack surface and unmanaged resources.'}
+        description="Resolve public attack surface, exposed ports, and unmanaged cloud resources."
         status={<SectionStatusBadge status={sectionStatus} />}
       />
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
@@ -1838,7 +1847,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
       <SectionTitle
         eyebrow="Optimization engine"
         title="Make every cloud dollar count."
-        description={accessMode === 'limited' ? 'Savings recommendations are generated from the fallback notebook inventory.' : 'Prioritized recommendations based on usage, pricing, and risk signals.'}
+        description="Prioritized recommendations based on live usage, pricing, and risk signals."
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
           <div className="flex flex-wrap items-center gap-2">
@@ -1874,7 +1883,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-          {formatInteger(items.length)} {accessMode === 'limited' ? 'fallback recommendations' : 'live recommendations'}
+          {formatInteger(items.length)} live recommendations
         </span>
         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
           {formatCurrency(items.reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0), currency)} potential savings

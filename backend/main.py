@@ -112,15 +112,14 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database tables and seed demo data on startup if reachable
+    # Initialize database tables on startup if reachable (clean production schema)
     try:
         try:
-            from database.init_db import initialize_database, seed_demo_data
+            from database.init_db import initialize_database
         except ImportError:
-            from backend.database.init_db import initialize_database, seed_demo_data
+            from backend.database.init_db import initialize_database
         initialize_database()
-        seed_demo_data()
-        print("✅ Database schema and seed data initialized successfully.")
+        print("✅ Database schema initialized successfully.")
     except Exception as e:
         print(f"⚠️ Startup database initialization notice: {e}")
     yield
@@ -477,7 +476,7 @@ def _refresh_live_aws_state(force: bool = False):
         db["metadata"]["region"] = region
         db["metadata"]["timestamp"] = datetime.now(timezone.utc).isoformat()
         saved = _saved_credentials() or {}
-        db["metadata"]["organization"] = saved.get("account_name", db["metadata"].get("organization", "Acme Corp"))
+        db["metadata"]["organization"] = saved.get("account_name", db["metadata"].get("organization", "CloudPulse Fleet"))
         _last_live_refresh_time = time.time()
         return True
     except (ClientError, BotoCoreError) as error:

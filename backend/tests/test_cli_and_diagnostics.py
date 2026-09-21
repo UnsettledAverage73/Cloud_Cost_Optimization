@@ -507,7 +507,7 @@ def test_cli_notify_whatsapp_and_slack(capsys):
     # 3. Slack Dispatch
     with patch("cli_main.resolve_cli_inventory", return_value={"summary": {"estimated_monthly_spend": 100.0}}), \
          patch("services.notifier.finops_notifier.send_slack_alert", return_value=True) as mock_slack:
-        args = argparse.Namespace(channel="slack", to=None, title="Slack Alert", message="Test Slack")
+        args = argparse.Namespace(channel="slack", to=None, title="Slack Alert", message="Test Slack", webhook="https://hooks.slack.com/services/valid/token/123")
         cmd_notify(args)
         out = capsys.readouterr().out
         assert "Slack webhook alert dispatched successfully" in out
