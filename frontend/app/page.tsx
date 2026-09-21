@@ -43,20 +43,20 @@ const nav = [
 function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: any) {
   return (
     <Card className="border-white/8 bg-card/70 shadow-lg shadow-black/10 backdrop-blur">
-      <CardContent className="p-5">
+      <CardContent className="p-4 sm:p-5">
         <div className="flex items-start justify-between">
-          <div className={`flex size-10 items-center justify-center rounded-xl bg-${tone}-500/10 text-${tone}-400`}>
-            <Icon className="size-5" />
+          <div className={`flex size-9 sm:size-10 items-center justify-center rounded-xl bg-${tone}-500/10 text-${tone}-400 shrink-0`}>
+            <Icon className="size-4 sm:size-5" />
           </div>
           {trend && (
-            <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+            <span className="flex items-center gap-1 text-[11px] sm:text-xs font-medium text-emerald-400">
               <ArrowUpRight className="size-3" />{trend}
             </span>
           )}
         </div>
-        <div className="mt-5 text-xs text-muted-foreground">{label}</div>
-        <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
-        <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+        <div className="mt-4 sm:mt-5 text-xs text-muted-foreground">{label}</div>
+        <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight truncate">{value}</div>
+        <div className="mt-1 text-xs text-muted-foreground truncate">{detail}</div>
       </CardContent>
     </Card>
   )
@@ -64,18 +64,20 @@ function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: 
 
 function SectionTitle({ eyebrow, title, description, action, status }: any) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-cyan-400">
+    <div className="mb-4 sm:mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-cyan-400">
           <span className="size-1.5 rounded-full bg-cyan-400" />{eyebrow}
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance break-words">{title}</h1>
+        {description && <p className="mt-1 text-xs sm:text-sm text-muted-foreground">{description}</p>}
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        {status}
-        {action}
-      </div>
+      {(status || action) && (
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
+          {status}
+          {action}
+        </div>
+      )}
     </div>
   )
 }
@@ -239,6 +241,7 @@ function connectionKey(account: any) {
 export default function Page() {
   const [view, setView] = useState('overview');
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [provider, setProvider] = useState('all');
   const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
   const [light, setLight] = useState(false);
@@ -747,10 +750,132 @@ export default function Page() {
           </div>
         </aside>
 
+        {/* Mobile Navigation Drawer */}
+        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col justify-between border-r border-white/8 bg-sidebar p-0">
+            <div className="flex flex-1 flex-col overflow-y-auto">
+              <div className="flex h-16 items-center gap-3 border-b border-white/8 px-5">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
+                  <CloudCog className="size-5" />
+                </div>
+                <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>
+              </div>
+
+              {/* Mobile Quick Context (Currency, Provider, Account) */}
+              <div className="border-b border-white/8 bg-white/[0.02] p-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quick Filters</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Provider</label>
+                    <Select value={provider} onValueChange={(value) => setProvider(value ?? 'all')}>
+                      <SelectTrigger className="h-8 w-full border-white/10 bg-white/5 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="aws">AWS</SelectItem>
+                        <SelectItem value="gcp">GCP</SelectItem>
+                        <SelectItem value="azure">Azure</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Currency</label>
+                    <Select value={currency} onValueChange={(value) => setCurrency((value as 'USD' | 'INR') || 'USD')}>
+                      <SelectTrigger className="h-8 w-full border-white/10 bg-white/5 text-xs font-medium">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD ($)</SelectItem>
+                        <SelectItem value="INR">INR (₹)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {connectionState?.connected && Array.isArray(connectedAccounts) && connectedAccounts.length > 0 && (
+                  <div className="mt-2">
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Account</label>
+                    <Select
+                      value={selectedAccountKey || connectionKey(connectionState)}
+                      onValueChange={(value) => {
+                        const next = connectedAccounts.find(account => connectionKey(account) === value);
+                        if (next) {
+                          switchAccount(next);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-full border-white/10 bg-white/5 text-xs truncate">
+                        <SelectValue placeholder="Switch account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {connectedAccounts.map((account: any) => (
+                          <SelectItem key={connectionKey(account)} value={connectionKey(account)}>
+                            {account.account_name || 'Connected account'} · {account.region || 'us-east-1'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Navigation Items */}
+              <div className="flex flex-1 flex-col gap-1 p-3">
+                {nav.map(item => {
+                  const Icon = item.icon;
+                  const isActive = view === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setView(item.id);
+                        setMobileNavOpen(false);
+                      }}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${isActive ? 'bg-cyan-400/10 text-cyan-300 font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    >
+                      <Icon className="size-4 shrink-0" />
+                      <span className="truncate flex-1">{item.label}</span>
+                      {item.id === 'security' && <span className="size-1.5 rounded-full bg-red-400" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-white/8 p-3 flex flex-col gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setConnectOpen(true);
+                  setMobileNavOpen(false);
+                }}
+                className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium"
+              >
+                <Plus className="mr-1.5 size-4" /> Connect Cloud Account
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+
         <div className={`transition-all ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-white/8 bg-background/80 px-4 backdrop-blur-xl lg:px-8">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation"><Menu /></Button>
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-white/8 bg-background/80 px-3 sm:px-4 backdrop-blur-xl lg:px-8">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden shrink-0"
+                aria-label="Open navigation"
+                onClick={() => setMobileNavOpen(true)}
+              >
+                <Menu className="size-5" />
+              </Button>
+              <div className="flex items-center gap-2 lg:hidden min-w-0">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
+                  <CloudCog className="size-4" />
+                </div>
+                <span className="text-base font-semibold tracking-tight truncate">Cloud<span className="text-cyan-400">Pulse</span></span>
+              </div>
               <Button variant="ghost" size="icon" className="hidden lg:inline-flex" onClick={() => setCollapsed(!collapsed)} aria-label="Collapse sidebar"><PanelLeft /></Button>
               <div className="hidden items-center gap-2 text-sm md:flex">
                 <span className="text-muted-foreground">Workspace</span>
@@ -759,7 +884,7 @@ export default function Page() {
                 <ChevronDown className="size-3 text-muted-foreground" />
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300') : 'border-white/10 bg-white/5 text-muted-foreground'}`}>
                 <span className={`size-2 rounded-full ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-slate-500'}`} />
                 {connectionState?.connected
@@ -810,23 +935,34 @@ export default function Page() {
                   <SelectItem value="INR">INR (₹ Lakhs)</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs font-semibold sm:hidden border-white/10 bg-white/5"
+                onClick={() => setCurrency(currency === 'USD' ? 'INR' : 'USD')}
+                title="Toggle Currency"
+              >
+                {currency === 'USD' ? '$' : '₹'}
+              </Button>
               <div className="hidden items-center gap-2 border-l border-white/10 pl-3 text-xs text-muted-foreground md:flex">
                 <span className={`size-1.5 rounded-full ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                {connectionAccessMode === 'limited' ? 'Limited access / sample inventory' : 'Live Dynamic Data'}
+                {connectionAccessMode === 'limited' ? 'Limited access' : 'Live Data'}
               </div>
-              <Button variant="ghost" size="icon" onClick={fetchData} aria-label="Refresh data">
-                <RefreshCw className={syncing ? 'animate-spin' : ''} />
+              <Button variant="ghost" size="icon" onClick={fetchData} aria-label="Refresh data" className="size-8 sm:size-9">
+                <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setLight(!light)} aria-label="Toggle theme">
-                {light ? <Moon /> : <Sun />}
+              <Button variant="ghost" size="icon" onClick={() => setLight(!light)} aria-label="Toggle theme" className="size-8 sm:size-9">
+                {light ? <Moon className="size-4" /> : <Sun className="size-4" />}
               </Button>
-              <Button size="sm" onClick={() => setConnectOpen(true)} className="bg-cyan-400 text-slate-950 hover:bg-cyan-300">
-                <Plus data-icon="inline-start" />Connect Account
+              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-cyan-400 text-slate-950 hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm">
+                <Plus className="size-4 shrink-0" />
+                <span className="hidden sm:inline ml-1">Connect Account</span>
+                <span className="sm:hidden ml-1">Connect</span>
               </Button>
             </div>
           </header>
 
-          <div className="p-4 lg:p-8">
+          <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-full">
             {loading ? (
               <Card className="border-cyan-400/20 bg-cyan-400/5">
                 <CardContent className="flex min-h-96 flex-col items-center justify-center gap-4 p-8 text-center">
@@ -1163,14 +1299,14 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <Card className="border-white/8 bg-card/70">
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div>
               <CardTitle className="text-base">30-day spend by provider</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">Daily run-rate · USD thousands</p>
             </div>
             <Badge variant="outline" className="border-white/10 text-muted-foreground">{summaryMode}</Badge>
           </CardHeader>
-          <CardContent className="h-72">
+          <CardContent className="h-60 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={spend}>
                 <defs>
@@ -1184,8 +1320,8 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={36} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area type="monotone" dataKey="aws" name="AWS" stackId="1" stroke="var(--chart-1)" fill="url(#aws)" />
                 <Area type="monotone" dataKey="gcp" name="GCP" stackId="1" stroke="var(--chart-2)" fill="url(#gcp)" />
@@ -1211,7 +1347,7 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
                   <div className="mt-0.5 truncate text-xs text-muted-foreground">{alert.desc || alert.description || ''}</div>
                 </div>
                 {alert.tag && (
-                  <Badge variant="outline" className="border-white/10 text-[10px]">{alert.tag}</Badge>
+                  <Badge variant="outline" className="border-white/10 text-[10px] shrink-0">{alert.tag}</Badge>
                 )}
               </div>
             ))}
@@ -1221,13 +1357,13 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
 
       {/* Proof-of-Value Highlight Dossier Card */}
       <Card className="mt-6 border-cyan-400/20 bg-gradient-to-r from-cyan-950/40 via-card/70 to-card/70">
-        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <CardContent className="flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge className="bg-cyan-500 text-slate-950 font-semibold text-[11px]">48-Hour PoV Audit</Badge>
               <span className="text-xs text-cyan-300 font-mono">Account {povData?.account_id || '582812122408'}</span>
             </div>
-            <div className="text-lg font-semibold text-foreground">
+            <div className="text-base sm:text-lg font-semibold text-foreground">
               Enterprise FinOps Proof-of-Value Audit Ready
             </div>
             <p className="max-w-xl text-xs text-muted-foreground">
@@ -1262,7 +1398,7 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
 
       {/* PoV Executive Modal */}
       <Dialog open={povOpen} onOpenChange={setPovOpen}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <FileText className="size-4 text-cyan-400" />
@@ -1276,25 +1412,25 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-lg border border-white/8 bg-white/5 p-3">
                 <span className="text-[11px] text-muted-foreground">Annual Run Rate</span>
-                <div className="mt-1 text-base font-bold text-foreground">
+                <div className="mt-1 text-sm sm:text-base font-bold text-foreground">
                   {povData?.gross_annual_spend_formatted || formatCurrency(totalSpend * 12, currency)}
                 </div>
               </div>
               <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
                 <span className="text-[11px] text-emerald-300">Recoverable / Year</span>
-                <div className="mt-1 text-base font-bold text-emerald-300">
+                <div className="mt-1 text-sm sm:text-base font-bold text-emerald-300">
                   {povData?.recoverable_annual_savings_formatted || formatCurrency(wastedSpend * 12, currency)}
                 </div>
               </div>
               <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3">
                 <span className="text-[11px] text-amber-300">Actionable Waste</span>
-                <div className="mt-1 text-base font-bold text-amber-300">
+                <div className="mt-1 text-sm sm:text-base font-bold text-amber-300">
                   {povData?.waste_percentage ?? 40.0}%
                 </div>
               </div>
               <div className="rounded-lg border border-white/8 bg-white/5 p-3">
                 <span className="text-[11px] text-muted-foreground">Security Posture</span>
-                <div className="mt-1 text-base font-bold text-cyan-300">98.2% CIS</div>
+                <div className="mt-1 text-sm sm:text-base font-bold text-cyan-300">98.2% CIS</div>
               </div>
             </div>
 
@@ -1320,10 +1456,10 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)}>Close</Button>
               <a href={apiUrl('/api/v2/analytics/pov/report.html')} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300">
+                <Button size="sm" className="w-full sm:w-auto bg-cyan-400 text-slate-950 hover:bg-cyan-300">
                   <ExternalLink className="mr-1.5 size-3.5" />Open Interactive HTML Audit
                 </Button>
               </a>
@@ -1345,13 +1481,13 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
         status={<SectionStatusBadge status={sectionStatus} />}
         action={<Button variant="outline"><Archive data-icon="inline-start" />{accessMode === 'limited' ? 'Export fallback inventory' : 'Export inventory'}</Button>}
       />
-      <div className="mb-4 flex flex-wrap gap-3">
-        <div className="relative min-w-64 flex-1">
+      <div className="mb-4 flex flex-col sm:flex-row gap-3">
+        <div className="relative w-full sm:flex-1">
           <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search instances, IDs, IPs..." className="border-white/10 bg-white/5 pl-9" />
         </div>
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-36 border-white/10 bg-white/5">
+          <SelectTrigger className="w-full sm:w-36 border-white/10 bg-white/5">
             <SlidersHorizontal data-icon="inline-start" />
             <SelectValue />
           </SelectTrigger>
@@ -1422,7 +1558,7 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
         description={accessMode === 'limited' ? 'Telemetry is shown from cached or notebook-generated data when live CloudWatch access is unavailable.' : 'Real-time health signals from active nodes.'}
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <ToggleGroup value={[timeframe]} onValueChange={v => setTimeframe(v[0] ?? timeframe)}>
               <ToggleGroupItem value="1h">1H</ToggleGroupItem>
               <ToggleGroupItem value="6h">6H</ToggleGroupItem>
@@ -1452,8 +1588,8 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
                 {kind === 'bar' ? (
                   <BarChart data={telemetry}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                    <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={30} />
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="read" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="write" fill="var(--chart-2)" radius={[3, 3, 0, 0]} />
@@ -1461,8 +1597,8 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
                 ) : (
                   <LineChart data={telemetry}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                    <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={30} />
                     <Tooltip content={<ChartTooltip />} />
                     {key === 'cpu' && <ReferenceLine y={80} stroke="var(--destructive)" strokeDasharray="4 4" />}
                     <Line type="monotone" dataKey={key === 'network' ? 'netIn' : key} stroke="var(--chart-1)" strokeWidth={2} dot={false} />
@@ -1523,7 +1659,7 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
         />
       </div>
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-4 bg-white/5">
+        <TabsList className="mb-4 bg-white/5 w-full sm:w-auto overflow-x-auto justify-start max-w-full">
           <TabsTrigger value="groups">Security groups</TabsTrigger>
           <TabsTrigger value="ips">Elastic IPs & NAT</TabsTrigger>
           <TabsTrigger value="logs">CloudWatch logs</TabsTrigger>
@@ -1744,7 +1880,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
           {formatCurrency(items.reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0), currency)} potential savings
         </span>
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item: any) => {
           const done = applied.includes(item.id);
           return (
@@ -1763,11 +1899,11 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
                     {item.ai_rationale}
                   </div>
                 )}
-                <div className="mt-5 flex items-center justify-between">
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
+                    <div className="text-lg sm:text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <Button size="sm" variant="ghost" className="text-xs text-cyan-300 hover:bg-cyan-400/10 px-2" onClick={() => handleSingleGitopsPr(item)}>
                       <GitPullRequest className="mr-1 size-3" />PR
                     </Button>
@@ -1784,7 +1920,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
 
       {/* GitOps PR Synthesis Modal */}
       <Dialog open={gitopsOpen} onOpenChange={setGitopsOpen}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <GitBranch className="size-4 text-cyan-400" />
@@ -1801,7 +1937,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
             </div>
           ) : gitopsPackage ? (
             <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-lg border border-white/8 bg-white/5 p-3">
                   <span className="text-[11px] text-muted-foreground">Branch</span>
                   <div className="mt-1 font-mono text-xs font-semibold text-cyan-300 truncate">
@@ -1844,7 +1980,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
                 </pre>
               </div>
 
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
                 <span className="text-xs text-muted-foreground">
                   Target: <span className="font-mono text-foreground">{gitopsPackage.target_branch || 'main'}</span>
                 </span>
@@ -1855,7 +1991,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium">
+                    <Button size="sm" className="w-full sm:w-auto bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium">
                       <ExternalLink className="mr-1.5 size-3.5" />View on GitHub
                     </Button>
                   </a>
@@ -1871,7 +2007,7 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
       </Dialog>
 
       <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
-        <DialogContent className="border-white/10 bg-slate-950 text-foreground sm:max-w-md">
+        <DialogContent className="border-white/10 bg-slate-950 text-foreground sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Bell className="size-4 text-cyan-400" />
@@ -2080,13 +2216,13 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
       </div>
 
       <div className="mb-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">Overprovisioned Workloads & Rightsizing Recommendations</h2>
-          <Badge variant="outline" className="border-emerald-400/30 text-emerald-300">
+        <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-base sm:text-lg font-semibold tracking-tight">Overprovisioned Workloads & Rightsizing Recommendations</h2>
+          <Badge variant="outline" className="border-emerald-400/30 text-emerald-300 w-fit">
             {recommendations.length} Actionable Rightsizing Diffs
           </Badge>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {recommendations.map((rec: any, idx: number) => (
             <Card key={`${rec.workload}-${idx}`} className="border-white/8 bg-card/70">
               <CardHeader className="pb-3">
@@ -2127,7 +2263,7 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
       </div>
 
       <Card className="border-white/8 bg-card/70">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="text-base font-semibold">Workload Allocations by Namespace</CardTitle>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Filter Namespace:</span>
@@ -2197,7 +2333,7 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
       </Card>
 
       <Dialog open={!!activeYamlDiff} onOpenChange={() => setActiveYamlDiff(null)}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <FileCode className="size-4 text-cyan-400" />
@@ -2384,7 +2520,7 @@ function LakehouseView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; 
 
         <Card className="border-white/8 bg-card/70 lg:col-span-2">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Terminal className="size-4 text-cyan-400" />
                 DuckDB FOCUS 1.0 SQL Query Runner
@@ -2793,7 +2929,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="text-xs text-muted-foreground">
                 Slack Bot Token (Optional)
                 <Input
@@ -3191,18 +3327,24 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
       </div>
 
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
-        <TabsList className="mb-4 bg-white/5">
-          <TabsTrigger value="watchdog" className="flex items-center gap-1.5 text-xs">
-            <Activity className="size-3.5" /> 60-Minute SLA Watchdog Tracker ({watches.length})
+        <TabsList className="mb-4 bg-white/5 w-full sm:w-auto overflow-x-auto justify-start max-w-full">
+          <TabsTrigger value="watchdog" className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+            <Activity className="size-3.5" />
+            <span className="hidden sm:inline">60-Minute SLA Watchdog Tracker</span>
+            <span className="sm:hidden">SLA Watchdog</span>
+            <span>({watches.length})</span>
           </TabsTrigger>
-          <TabsTrigger value="audit" className="flex items-center gap-1.5 text-xs">
-            <History className="size-3.5" /> GitOps Pull Request Audit Trail ({auditLog.length})
+          <TabsTrigger value="audit" className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+            <History className="size-3.5" />
+            <span className="hidden sm:inline">GitOps Pull Request Audit Trail</span>
+            <span className="sm:hidden">PR Audit</span>
+            <span>({auditLog.length})</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="watchdog">
           <Card className="border-white/8 bg-card/70">
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
               <div>
                 <CardTitle className="text-base">CloudWatch Post-Remediation Telemetry Watchdog</CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -3423,7 +3565,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
 
       {/* Manual Rollback Trigger Dialog */}
       <Dialog open={!!rollbackWatch} onOpenChange={() => setRollbackWatch(null)}>
-        <DialogContent className="max-w-md border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base text-red-300">
               <RotateCcw className="size-4" /> Trigger Safe Rollback PR
@@ -3437,7 +3579,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
               CloudPulse will immediately open a Git revert Pull Request to restore the workload configuration from <span className="text-emerald-300 font-mono">{rollbackWatch?.applied_config?.instance_type}</span> back to <span className="text-cyan-300 font-mono">{rollbackWatch?.previous_config?.instance_type}</span>.
             </p>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
             <Button variant="ghost" size="sm" onClick={() => setRollbackWatch(null)}>Cancel</Button>
             <Button
               size="sm"
@@ -3459,7 +3601,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
 
       {/* Rollback Details Modal */}
       <Dialog open={!!rollbackPackage} onOpenChange={() => setRollbackPackage(null)}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base text-purple-300">
               <RotateCcw className="size-4" /> Automated Safe Revert Pull Request Ready
@@ -3470,7 +3612,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
           </DialogHeader>
           {rollbackPackage && (
             <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="rounded-lg border border-white/8 bg-white/5 p-3">
                   <span className="text-[11px] text-muted-foreground">Rollback Branch</span>
                   <div className="mt-1 font-mono text-xs font-semibold text-purple-300 truncate">
@@ -3492,7 +3634,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
                 </pre>
               </div>
 
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
                 <span className="text-xs text-muted-foreground">
                   Target: <span className="font-mono text-foreground">main</span>
                 </span>
@@ -3503,7 +3645,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button size="sm" className="bg-purple-600 hover:bg-purple-500 text-white font-medium">
+                    <Button size="sm" className="w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-medium">
                       <ExternalLink className="mr-1.5 size-3.5" /> View Rollback on GitHub
                     </Button>
                   </a>
@@ -3516,7 +3658,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
 
       {/* Batch GitOps PR Modal */}
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base text-indigo-300">
               <GitBranch className="size-4" /> Multi-Resource Batch GitOps Pull Request
@@ -3532,7 +3674,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
             </div>
           ) : batchResult ? (
             <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-lg border border-white/8 bg-white/5 p-3">
                   <span className="text-[11px] text-muted-foreground">Branch</span>
                   <div className="mt-1 font-mono text-xs font-semibold text-cyan-300 truncate">
@@ -3575,7 +3717,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
                 </pre>
               </div>
 
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
                 <span className="text-xs text-muted-foreground">
                   Target: <span className="font-mono text-foreground">{batchResult.target_branch || 'main'}</span>
                 </span>
@@ -3586,7 +3728,7 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
+                    <Button size="sm" className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
                       <ExternalLink className="mr-1.5 size-3.5" /> View Batch PR on GitHub
                     </Button>
                   </a>
@@ -3965,7 +4107,7 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
 
       {/* Enroll Account Modal */}
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
-        <DialogContent className="max-w-md border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Plus className="size-4 text-cyan-400" /> Enroll AWS Account into Fleet
@@ -4024,7 +4166,7 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
                 Mark as AWS Organizations Management (Payer) Account
               </label>
             </div>
-            <div className="flex justify-end gap-2 pt-3">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEnrollOpen(false)}>Cancel</Button>
               <Button type="submit" size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" disabled={enrolling}>
                 {enrolling ? <Loader2 className="mr-1 size-3 animate-spin" /> : null} Enroll Account
@@ -4285,7 +4427,7 @@ function CiCdGuardrailView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'IN
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className={`p-4 rounded-lg border text-xs flex items-center justify-between ${
+              className={`p-4 rounded-lg border text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
                 checkStatus === 'failure'
                   ? 'border-red-400/30 bg-red-400/10 text-red-200'
                   : checkStatus === 'action_required'
@@ -4314,7 +4456,7 @@ function CiCdGuardrailView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'IN
                   </div>
                 </div>
               </div>
-              <div className="text-right shrink-0 font-mono">
+              <div className="text-left sm:text-right shrink-0 font-mono pt-1 sm:pt-0 border-t sm:border-t-0 border-white/10">
                 <div className="text-xs text-muted-foreground">Monthly Net Delta</div>
                 <div className={`text-base font-bold ${monthlyDelta > 0 ? 'text-red-400' : 'text-emerald-300'}`}>
                   {monthlyDelta > 0 ? `+${formatCurrency(monthlyDelta, currency)}` : formatCurrency(monthlyDelta, currency)}/mo
@@ -4404,7 +4546,7 @@ function ConnectModal({ open, onOpenChange, onSuccess, initialProfile }: any) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-white/10 bg-card sm:max-w-lg">
+      <DialogContent className="border-white/10 bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Connect a cloud account</DialogTitle>
           <DialogDescription>Give CloudPulse read-only access to start syncing your infrastructure.</DialogDescription>
