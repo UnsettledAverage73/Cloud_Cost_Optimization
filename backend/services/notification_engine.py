@@ -368,6 +368,12 @@ class FinOpsNotificationEngine:
     @staticmethod
     def dispatch_webhook(webhook_url: str, payload: Dict[str, Any], timeout: float = 5.0) -> bool:
         """Dispatches notification payload to Slack or Teams webhook."""
+        if not webhook_url:
+            return False
+        if "XXXXX" in webhook_url or "YOUR_WEBHOOK" in webhook_url:
+            logger.warning(f"Detected placeholder in webhook URL: {webhook_url}")
+            print(f"⚠️ [NOTIFIER] Detected placeholder in webhook URL ({webhook_url[:35]}...). Use a live incoming webhook URL.")
+            return False
         try:
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -376,10 +382,50 @@ class FinOpsNotificationEngine:
                 headers={"Content-Type": "application/json"}
             )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.status in [200, 204]
+                return resp.status in [200, 201, 202, 204]
+        except urllib.error.HTTPError as he:
+            logger.error(f"Webhook rejected by remote endpoint: HTTP {he.code} ({he.reason})")
+            print(f"❌ [NOTIFIER] Webhook rejected by remote endpoint: HTTP {he.code} ({he.reason})")
+            return False
         except Exception as e:
             logger.error(f"Failed to dispatch webhook to {webhook_url}: {e}")
+            print(f"❌ [NOTIFIER] Failed to dispatch webhook: {e}")
             return False
+
+    @staticmethod
+    def dispatch_slack_api(token: str, channel: str, payload: Dict[str, Any], timeout: float = 5.0) -> bool:
+        """Dispatches Block Kit payload via Slack Web API (chat.postMessage) using Bot or User token."""
+        if not token:
+            return False
+        try:
+            req_data = {
+                "channel": channel,
+                "text": payload.get("text", "CloudPulse FinOps Alert"),
+                "blocks": payload.get("blocks", [])
+            }
+            data = json.dumps(req_data).encode("utf-8")
+            req = urllib.request.Request(
+                "https://slack.com/api/chat.postMessage",
+                data=data,
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Authorization": f"Bearer {token}"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                res_json = json.loads(resp.read().decode("utf-8"))
+                if not res_json.get("ok"):
+                    err_msg = res_json.get("error", "unknown_error")
+                    logger.error(f"Slack API error: {err_msg}")
+                    print(f"❌ [NOTIFIER] Slack API error: {err_msg}")
+                    return False
+                return True
+        except Exception as e:
+            logger.error(f"Failed to post to Slack Web API: {e}")
+            print(f"❌ [NOTIFIER] Failed to post to Slack API: {e}")
+            return False
+
+
 
 
 # Global Singleton

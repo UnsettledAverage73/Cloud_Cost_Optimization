@@ -48,7 +48,9 @@ class FOCUSLakehouse:
                     ProviderName VARCHAR,
                     RegionName VARCHAR,
                     ServiceName VARCHAR,
+                    ServiceCategory VARCHAR,
                     ResourceID VARCHAR,
+                    ResourceName VARCHAR,
                     ResourceType VARCHAR,
                     EffectiveCost DOUBLE,
                     ListCost DOUBLE,
@@ -62,6 +64,7 @@ class FOCUSLakehouse:
             """)
             try:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_service ON focus_costs(ServiceName)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_category ON focus_costs(ServiceCategory)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_account ON focus_costs(BillingAccountId)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_provider ON focus_costs(ProviderName)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_resource ON focus_costs(ResourceID)")
@@ -78,7 +81,9 @@ class FOCUSLakehouse:
                     ProviderName TEXT,
                     RegionName TEXT,
                     ServiceName TEXT,
+                    ServiceCategory TEXT,
                     ResourceID TEXT,
+                    ResourceName TEXT,
                     ResourceType TEXT,
                     EffectiveCost REAL,
                     ListCost REAL,
@@ -91,6 +96,7 @@ class FOCUSLakehouse:
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_service ON focus_costs(ServiceName)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_category ON focus_costs(ServiceCategory)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_account ON focus_costs(BillingAccountId)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_provider ON focus_costs(ProviderName)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_focus_resource ON focus_costs(ResourceID)")
@@ -104,6 +110,15 @@ class FOCUSLakehouse:
 
         rows = []
         for r in records:
+            service_name = r.get("ServiceName") or r.get("Service", "Compute")
+            service_cat = r.get("ServiceCategory") or r.get("Category")
+            if not service_cat:
+                try:
+                    from engines.focus_spec import FOCUSNormalizer
+                    service_cat = FOCUSNormalizer._map_service_category(service_name)
+                except Exception:
+                    service_cat = "Compute" if "compute" in service_name.lower() or "ec2" in service_name.lower() else "Other"
+
             rows.append((
                 r.get("ChargePeriodStart"),
                 r.get("ChargePeriodEnd"),
@@ -111,8 +126,10 @@ class FOCUSLakehouse:
                 r.get("SubAccountId") or r.get("BillingAccountId"),
                 r.get("ProviderName", "AWS"),
                 r.get("RegionName") or r.get("Region", "us-east-1"),
-                r.get("ServiceName") or r.get("Service", "Compute"),
+                service_name,
+                service_cat,
                 r.get("ResourceID") or r.get("ResourceId", "unknown"),
+                r.get("ResourceName") or r.get("ResourceID") or r.get("ResourceId", "unknown"),
                 r.get("ResourceType", "Instance"),
                 float(r.get("EffectiveCost", r.get("Cost", 0.0)) or 0.0),
                 float(r.get("ListCost", r.get("EffectiveCost", 0.0)) or 0.0),
@@ -127,10 +144,11 @@ class FOCUSLakehouse:
         cursor.executemany("""
             INSERT INTO focus_costs (
                 ChargePeriodStart, ChargePeriodEnd, BillingAccountId, SubAccountId,
-                ProviderName, RegionName, ServiceName, ResourceID, ResourceType,
+                ProviderName, RegionName, ServiceName, ServiceCategory, ResourceID,
+                ResourceName, ResourceType,
                 EffectiveCost, ListCost, BilledCost, UsageQuantity, UsageUnit,
                 PricingQuantity, PricingUnit, Currency
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
         if hasattr(self.conn, "commit"):
             try:
@@ -160,7 +178,27 @@ class FOCUSLakehouse:
 
         if "EffectiveCost" in col_names and "ServiceName" in col_names and "ResourceID" in col_names:
             # Native FOCUS 1.0 parquet schema
-            cursor.execute(f"INSERT INTO focus_costs SELECT * FROM read_parquet('{path_str}')")
+            if "ServiceCategory" in col_names and "ResourceName" in col_names:
+                cursor.execute(f"INSERT INTO focus_costs SELECT * FROM read_parquet('{path_str}')")
+            else:
+                cat_expr = '"ServiceCategory"' if "ServiceCategory" in col_names else "'Compute' as ServiceCategory"
+                name_expr = '"ResourceName"' if "ResourceName" in col_names else '"ResourceID" as ResourceName'
+                cursor.execute(f"""
+                    INSERT INTO focus_costs (
+                        ChargePeriodStart, ChargePeriodEnd, BillingAccountId, SubAccountId,
+                        ProviderName, RegionName, ServiceName, ServiceCategory, ResourceID,
+                        ResourceName, ResourceType,
+                        EffectiveCost, ListCost, BilledCost, UsageQuantity, UsageUnit,
+                        PricingQuantity, PricingUnit, Currency
+                    )
+                    SELECT
+                        ChargePeriodStart, ChargePeriodEnd, BillingAccountId, SubAccountId,
+                        ProviderName, RegionName, ServiceName, {cat_expr}, ResourceID,
+                        {name_expr}, ResourceType,
+                        EffectiveCost, ListCost, BilledCost, UsageQuantity, UsageUnit,
+                        PricingQuantity, PricingUnit, Currency
+                    FROM read_parquet('{path_str}')
+                """)
         else:
             # Map AWS CUR 2.0 schema
             cost_col = next((c for c in ["EffectiveCost", "lineItem/UnblendedCost", "lineItem/NetUnblendedCost", "BilledCost", "cost"] if c in col_names), None)
@@ -176,7 +214,8 @@ class FOCUSLakehouse:
             query = f"""
                 INSERT INTO focus_costs (
                     ChargePeriodStart, ChargePeriodEnd, BillingAccountId, SubAccountId,
-                    ProviderName, RegionName, ServiceName, ResourceID, ResourceType,
+                    ProviderName, RegionName, ServiceName, ServiceCategory, ResourceID,
+                    ResourceName, ResourceType,
                     EffectiveCost, ListCost, BilledCost, UsageQuantity, UsageUnit,
                     PricingQuantity, PricingUnit, Currency
                 )
@@ -188,7 +227,9 @@ class FOCUSLakehouse:
                     'AWS' as ProviderName,
                     'us-east-1' as RegionName,
                     {prod_expr} as ServiceName,
+                    'Compute' as ServiceCategory,
                     {res_expr} as ResourceID,
+                    {res_expr} as ResourceName,
                     {type_expr} as ResourceType,
                     {cost_expr} as EffectiveCost,
                     {cost_expr} as ListCost,

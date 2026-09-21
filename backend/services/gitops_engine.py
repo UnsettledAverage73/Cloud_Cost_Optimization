@@ -90,16 +90,26 @@ class GitOpsRemediationEngine:
         # Determine target file and code diff based on action and resource prefix
         if resource_id.startswith("i-"):
             file_path = "terraform/compute.tf"
-            from_t = from_type or "t3.micro"
-            to_t = to_type or ("t4g.micro" if "graviton" in action.lower() else "t3.nano")
-            diff = (
-                f"--- a/{file_path}\n"
-                f"+++ b/{file_path}\n"
-                f"@@ -14,7 +14,7 @@ resource \"aws_instance\" \"workload_{resource_id.replace('-', '_')}\" {{\n"
-                f"-  instance_type = \"{from_t}\"\n"
-                f"+  instance_type = \"{to_t}\" # Automated FinOps rightsizing: Save ${monthly_savings:.2f}/mo\n"
-            )
-            title = f"fix(finops): rightsize {resource_id} from {from_t} to {to_t}"
+            from_t = from_type or "t3.large"
+            to_t = to_type or ("t4g.large" if "graviton" in action.lower() else "t3.medium")
+            if action.lower() in ("stop", "stop_instance"):
+                diff = (
+                    f"--- a/{file_path}\n"
+                    f"+++ b/{file_path}\n"
+                    f"@@ -14,7 +14,7 @@ resource \"aws_instance\" \"workload_{resource_id.replace('-', '_')}\" {{\n"
+                    f"-  instance_state = \"running\"\n"
+                    f"+  instance_state = \"stopped\" # Automated FinOps: Stopped idle compute (Save ${monthly_savings:.2f}/mo)\n"
+                )
+                title = f"fix(finops): stop idle compute instance {resource_id}"
+            else:
+                diff = (
+                    f"--- a/{file_path}\n"
+                    f"+++ b/{file_path}\n"
+                    f"@@ -14,7 +14,7 @@ resource \"aws_instance\" \"workload_{resource_id.replace('-', '_')}\" {{\n"
+                    f"-  instance_type = \"{from_t}\"\n"
+                    f"+  instance_type = \"{to_t}\" # Automated FinOps rightsizing: Save ${monthly_savings:.2f}/mo\n"
+                )
+                title = f"fix(finops): rightsize {resource_id} from {from_t} to {to_t}"
         elif resource_id.startswith("vol-"):
             file_path = "terraform/storage.tf"
             from_t = from_type or "gp2"

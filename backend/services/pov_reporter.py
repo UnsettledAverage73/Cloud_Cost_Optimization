@@ -7,8 +7,10 @@ Includes dual-currency financial modeling (USD & INR ₹ Lakhs/Crores), waste pe
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from services.currency_converter import currency_converter
+try:
+    from services.currency_converter import currency_converter
+except ImportError:
+    from backend.services.currency_converter import currency_converter
 
 
 class PoVReporter:

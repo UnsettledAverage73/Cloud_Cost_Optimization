@@ -52,7 +52,7 @@ class FinOpsNotifier:
 
         return None
 
-    def format_slack_payload(self, findings: List[Dict[str, Any]], monthly_cost: float, health_score: float) -> Dict[str, Any]:
+    def format_slack_payload(self, findings: List[Dict[str, Any]], monthly_cost: float = 0.0, health_score: float = 85.0) -> Dict[str, Any]:
         """Formats findings into a rich Slack Block Kit layout."""
         critical_count = sum(1 for f in findings if f.get("severity") == "CRITICAL")
         total_savings = sum(float(f.get("savings", f.get("monthly_savings", 0))) for f in findings)
@@ -88,9 +88,23 @@ class FinOpsNotifier:
 
         return {"blocks": blocks}
 
+    def format_whatsapp_body(self, title: str, message: str) -> str:
+        """Formats alert into an enterprise WhatsApp markdown payload."""
+        return (
+            f"⚡ *CloudPulse AI FinOps Autopilot*\n\n"
+            f"🚨 *{title}*\n"
+            f"{message}\n\n"
+            f"👉 Run `./bin/cloudpulse apply --dry-run` to generate Terraform PR."
+        )
+
     def send_slack_alert(self, findings: List[Dict[str, Any]], monthly_cost: float = 0.0, health_score: float = 85.0) -> bool:
         if not self.slack_webhook_url:
             print("⚠️ [NOTIFIER] Slack webhook URL not configured.")
+            return False
+
+        if "XXXXX" in self.slack_webhook_url or "YOUR_WEBHOOK" in self.slack_webhook_url:
+            print("⚠️ [NOTIFIER] Detected placeholder in Slack webhook URL.")
+            print("   Please provide a live Slack Incoming Webhook (e.g. --webhook https://hooks.slack.com/services/T.../B.../...).")
             return False
 
         payload = self.format_slack_payload(findings, monthly_cost, health_score)
@@ -102,6 +116,11 @@ class FinOpsNotifier:
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status in (200, 204)
+        except urllib.error.HTTPError as err:
+            print(f"❌ [NOTIFIER] Slack webhook rejected request: HTTP {err.code} ({err.reason})")
+            if err.code == 404:
+                print("💡 [SLACK HINT] The Slack webhook URL was not found (404). Verify that the Incoming Webhook is active in your Slack workspace.")
+            return False
         except Exception as e:
             print(f"❌ [NOTIFIER] Failed to send Slack alert: {e}")
             return False
@@ -126,12 +145,7 @@ class FinOpsNotifier:
         else:
             target_to = clean_num
 
-        body = (
-            f"⚡ *CloudPulse AI FinOps Autopilot*\n\n"
-            f"🚨 *{title}*\n"
-            f"{message}\n\n"
-            f"👉 Run `./bin/cloudpulse apply --dry-run` to generate Terraform PR."
-        )
+        body = self.format_whatsapp_body(title, message)
 
         try:
             msg = client.messages.create(
@@ -144,14 +158,17 @@ class FinOpsNotifier:
         except Exception as e:
             err_str = str(e)
             print(f"❌ [NOTIFIER] Failed to dispatch WhatsApp alert: {err_str}")
-            if "21654" in err_str or "ContentSid Required" in err_str:
-                print("💡 [TWILIO SANDBOX HINT] Your phone has not joined the WhatsApp Sandbox yet.")
-                print("   1. Open WhatsApp on your phone (+91 9637843011).")
-                print("   2. Go to Twilio Console -> Messaging -> Try it out -> Send a WhatsApp message.")
-                print("   3. Send the unique code (e.g. 'join <keyword>') to +1 415 523 8886.")
-                print("   4. Once Twilio replies 'You are all set!', re-run the notification command.")
+            if "21654" in err_str or "ContentSid Required" in err_str or "63016" in err_str:
+                print("💡 [TWILIO WHATSAPP SANDBOX ACTIVATION STEPS]")
+                print(f"   Meta/Twilio requires the recipient phone number ({clean_num}) to opt into your Twilio Sandbox first:")
+                print("   1. Open WhatsApp on your phone.")
+                print("   2. In your Twilio Console -> Messaging -> Try it out -> Send a WhatsApp message, find your join code (e.g. 'join <keyword>').")
+                print("   3. Send that code to the Twilio Sandbox number (+1 415 523 8886).")
+                print("   4. Once Twilio replies 'You are all set!', re-run your notification command.")
+                print("   (Tip: You can preview the message anytime using: bin/cloudpulse notify --channel whatsapp --dry-run)")
             return False
 
 
 # Global singleton
 finops_notifier = FinOpsNotifier()
+

@@ -59,29 +59,70 @@ class RightsizingEngine:
             avg_cpu = metrics.get("cpu_utilization_avg", 50.0)
             max_cpu = metrics.get("cpu_utilization_max", 70.0)
 
+            avg_mem = metrics.get("mem_utilization_avg")
+            max_mem = metrics.get("mem_utilization_max")
+            has_mem = metrics.get("has_memory_metrics", False)
+            asg_name = node.get("asg_name") or node.get("tags", {}).get("aws:autoscaling:groupName")
+            is_asg = bool(asg_name)
+
             # 1. Tier Downsizing for underutilized instances (5% <= avg CPU < 25%, max CPU < 40%)
             if 5.0 <= avg_cpu < 25.0 and max_cpu < 40.0:
-                if current_type in DOWNSIZING_MAP:
+                # Check memory guardrail: Block downsizing if guest memory is saturated
+                if (max_mem is not None and max_mem > 65.0) or (avg_mem is not None and avg_mem > 55.0):
+                    recommendations.append({
+                        "id": f"rightsize-memory-bound-{inst_id}",
+                        "resource_id": inst_id,
+                        "resource_type": "EC2 Instance",
+                        "category": "Compute Rightsizing",
+                        "type": "Memory-Constrained Guardrail",
+                        "title": f"Retain or Switch {name} ({current_type}) to Memory-Optimized (OOM Prevention)",
+                        "description": (
+                            f"Instance has low CPU ({avg_cpu}%), but peak RAM utilization is high ({max_mem}%). "
+                            f"Downsizing is BLOCKED by memory guardrail to prevent Out-Of-Memory (OOM) kernel crashes. "
+                            f"Consider maintaining current size or migrating to an r5/r6g memory-optimized instance."
+                        ),
+                        "monthly_savings": 0.0,
+                        "savings": 0.0,
+                        "effort": "Low",
+                        "action": "blocked_memory_headroom",
+                        "action_type": "blocked_memory_headroom",
+                        "severity": "INFO",
+                        "risk": "HIGH_IF_MODIFIED",
+                        "memory_guardrail_status": "BLOCKED_HIGH_MEMORY",
+                    })
+                elif current_type in DOWNSIZING_MAP:
                     target_type, monthly_savings = DOWNSIZING_MAP[current_type]
+                    mem_status = "VERIFIED_SAFE" if has_mem else "CAUTION_NO_MEMORY_METRICS"
+                    action_key = "update_launch_template" if is_asg else "modify_instance_type"
+                    title = f"Update ASG '{asg_name}' Launch Template from {current_type} to {target_type}" if is_asg else f"Rightsize {name} from {current_type} to {target_type}"
+                    desc = (
+                        f"Average CPU is {avg_cpu}% (Peak {max_cpu}%). Downsizing to "
+                        f"{target_type} matches actual workload requirements and cuts compute cost."
+                    )
+                    if not has_mem:
+                        desc += " (Caution: In-guest memory metrics not found. Verify RAM headroom prior to downsizing)."
+                    else:
+                        desc += f" (RAM verified safe: peak {max_mem}%)."
+
                     recommendations.append({
                         "id": f"rightsize-downsize-{inst_id}",
                         "resource_id": inst_id,
                         "resource_type": "EC2 Instance",
                         "category": "Compute Rightsizing",
                         "type": "Downsizing",
-                        "title": f"Rightsize {name} from {current_type} to {target_type}",
-                        "description": (
-                            f"Average CPU is {avg_cpu}% (Peak {max_cpu}%). Downsizing to "
-                            f"{target_type} matches actual workload requirements and cuts compute cost."
-                        ),
+                        "title": title,
+                        "description": desc,
                         "monthly_savings": monthly_savings,
                         "savings": monthly_savings,
                         "effort": "Medium",
-                        "action": "modify_instance_type",
-                        "action_type": "modify_instance_type",
+                        "action": action_key,
+                        "action_type": action_key,
                         "target_type": target_type,
                         "severity": "HIGH",
                         "risk": "LOW",
+                        "is_asg": is_asg,
+                        "asg_name": asg_name,
+                        "memory_guardrail_status": mem_status,
                     })
 
             # 2. Graviton Migration (Linux x86 -> ARM64 Graviton)

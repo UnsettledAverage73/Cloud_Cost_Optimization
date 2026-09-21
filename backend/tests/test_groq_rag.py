@@ -191,7 +191,8 @@ def test_cli_recommend_and_rag_test(capsys, tmp_path):
     assert "POTENTIAL MONTHLY RECOVERY" in content
 
     # 2. CLI rag-test
-    cmd_rag_test(argparse.Namespace())
+    with patch.object(finops_rag_pipeline.engine, "chat_completion", return_value="The biggest waste is unattached EBS volume vol-orphan123 costing $5.00/mo."):
+        cmd_rag_test(argparse.Namespace())
     out = capsys.readouterr().out
     assert "GROQ FINOPS RAG END-TO-END VERIFICATION" in out
     assert "100% OPERATIONAL" in out

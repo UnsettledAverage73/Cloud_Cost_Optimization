@@ -7,7 +7,10 @@ Calculates container efficiency, idle capacity waste, and provides 1-click YAML 
 import json
 import logging
 from typing import Dict, List, Any, Optional
-from services.currency_converter import currency_converter
+try:
+    from services.currency_converter import currency_converter
+except ImportError:
+    from backend.services.currency_converter import currency_converter
 
 logger = logging.getLogger("cloudpulse.k8s.opencost")
 

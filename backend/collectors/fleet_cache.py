@@ -66,6 +66,18 @@ class FleetStateCache:
                 return True
             return time.time() > entry.get("expires_at", 0)
 
+    def get_entry(self, key: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._cache.get(key)
+
+    def clear(self, key: Optional[str] = None):
+        with self._lock:
+            if key:
+                self._cache.pop(key, None)
+            else:
+                self._cache.clear()
+            self._save_to_disk()
+
     def set(self, key: str, data: Any, ttl_seconds: Optional[int] = None):
         ttl = ttl_seconds or self.default_ttl
         with self._lock:

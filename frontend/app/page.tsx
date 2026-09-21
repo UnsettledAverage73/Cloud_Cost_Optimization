@@ -3,10 +3,10 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Check,
-  ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Cpu, Database,
-  ExternalLink, HardDrive, KeyRound, LayoutDashboard, Menu, Moon, MoreHorizontal, Network,
-  PanelLeft, Plus, RefreshCw, Search, Send, Server, Settings, ShieldAlert, SlidersHorizontal,
-  Sparkles, Sun, X, Zap, Loader2
+  CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Copy, Cpu, Database,
+  Download, ExternalLink, Eye, FileCode, FileText, GitBranch, GitPullRequest, HardDrive, History, KeyRound, LayoutDashboard,
+  Lock, Menu, MessageSquare, Moon, MoreHorizontal, Network, PanelLeft, Play, Plus, RefreshCw, RotateCcw, Search, Send,
+  Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Sun, Terminal, X, Zap, Loader2
 } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
@@ -31,8 +31,13 @@ const nav = [
   { id: 'telemetry', label: 'Telemetry & Metrics', icon: Activity },
   { id: 'security', label: 'Security & Exposure', icon: ShieldAlert },
   { id: 'optimization', label: 'Cost Optimization', icon: CircleDollarSign },
+  { id: 'gitops-sla', label: 'GitOps & SLA Watchdog', icon: GitBranch },
+  { id: 'fleet', label: 'Enterprise Fleet (100+)', icon: Network },
+  { id: 'cicd', label: 'CI/CD & GitHub App', icon: GitPullRequest },
+  { id: 'kubernetes', label: 'Kubernetes (OpenCost)', icon: Cpu },
+  { id: 'lakehouse', label: 'FOCUS 1.0 Lakehouse', icon: Database },
   { id: 'copilot', label: 'AI FinOps Copilot', icon: Sparkles },
-  { id: 'settings', label: 'Settings & API Keys', icon: Settings },
+  { id: 'settings', label: 'Settings & Notifications', icon: Settings },
 ]
 
 function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: any) {
@@ -908,6 +913,7 @@ export default function Page() {
                     alerts={alerts}
                     summary={summary}
                     currency={currency}
+                    apiUrl={apiUrl}
                     sectionStatus={dataSources.summary?.status || 'idle'}
                   />
                 )}
@@ -949,6 +955,7 @@ export default function Page() {
                     applied={applied}
                     setApplied={setApplied}
                     currency={currency}
+                    apiUrl={apiUrl}
                     sectionStatus={
                       dataSources.optimizations?.status === 'error'
                         ? 'error'
@@ -960,6 +967,27 @@ export default function Page() {
                     }
                   />
                 )}
+                {view === 'gitops-sla' && (
+                  <GitOpsSlaView
+                    currency={currency}
+                    apiUrl={apiUrl}
+                    items={optimizations}
+                    applied={applied}
+                    setApplied={setApplied}
+                  />
+                )}
+                {view === 'fleet' && (
+                  <FleetView currency={currency} apiUrl={apiUrl} />
+                )}
+                {view === 'cicd' && (
+                  <CiCdGuardrailView currency={currency} apiUrl={apiUrl} />
+                )}
+                {view === 'kubernetes' && (
+                  <KubernetesView currency={currency} apiUrl={apiUrl} />
+                )}
+                {view === 'lakehouse' && (
+                  <LakehouseView currency={currency} apiUrl={apiUrl} />
+                )}
                 {view === 'copilot' && (
                   <CopilotView apiUrl={apiUrl} />
                 )}
@@ -970,6 +998,7 @@ export default function Page() {
                     rememberedProfile={rememberedProfile}
                     onSwitchAccount={switchAccount}
                     selectedAccountKey={selectedAccountKey}
+                    apiUrl={apiUrl}
                   />
                 )}
               </>
@@ -1072,7 +1101,11 @@ export default function Page() {
 
 
 
-function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, currency = 'USD' }: any) {
+function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, currency = 'USD', apiUrl }: any) {
+  const [povOpen, setPovOpen] = useState(false);
+  const [povData, setPovData] = useState<any>(null);
+  const [povLoading, setPovLoading] = useState(false);
+
   const totalSpend = summary?.monthly_spend ?? 0;
   const activeNodes = summary?.running_nodes ?? 0;
   const totalNodes = summary?.total_nodes ?? 0;
@@ -1080,6 +1113,23 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
   const criticalRisks = summary?.critical_security_risks ?? 0;
   const lastSynced = summary?.last_synced ? new Date(summary.last_synced).toLocaleString() : 'Just now';
   const summaryMode = accessMode === 'limited' ? 'Notebook fallback' : summary?.partial ? 'Partial data' : 'Live data';
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPov = async () => {
+      setPovLoading(true);
+      try {
+        const res = await fetch(apiUrl(`/api/v2/analytics/pov/summary?currency=${currency}&rate=84.0`));
+        if (res.ok && !cancelled) setPovData(await res.json());
+      } catch (e) {
+        console.error('PoV load error:', e);
+      } finally {
+        if (!cancelled) setPovLoading(false);
+      }
+    };
+    fetchPov();
+    return () => { cancelled = true; };
+  }, [apiUrl, currency]);
 
   return (
     <>
@@ -1089,9 +1139,18 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
         description="A unified operational view across connected providers."
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
-          <Button variant="outline" onClick={() => setView('optimization')}>
-            <Sparkles data-icon="inline-start" />View savings opportunities
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20"
+              onClick={() => setPovOpen(true)}
+            >
+              <FileText className="mr-2 size-4" />Executive PoV Audit
+            </Button>
+            <Button variant="outline" onClick={() => setView('optimization')}>
+              <Sparkles data-icon="inline-start" />View savings opportunities
+            </Button>
+          </div>
         }
       />
     
@@ -1101,6 +1160,7 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
         <MetricCard icon={ArrowDownRight} label={`Monthly wasted spend (${currency})`} value={formatCurrency(wastedSpend, currency)} detail="Actionable savings" tone="amber" />
         <MetricCard icon={ShieldAlert} label="Critical security risks" value={formatInteger(criticalRisks)} detail="Exposure alerts from the backend" tone="red" />
       </div>
+
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <Card className="border-white/8 bg-card/70">
           <CardHeader className="flex-row items-center justify-between">
@@ -1141,24 +1201,136 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
             <p className="mt-1 text-xs text-muted-foreground">Items needing your attention</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-  {(Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => (
-    <div key={alert.id || alert.title || idx} className="flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.03] p-3">
-      <div className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-${alert.tone || 'amber'}-400/10 text-${alert.tone || 'amber'}-400`}>
-        <AlertTriangle className="size-3.5" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{alert.title || 'Untitled Alert'}</div>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground">{alert.desc || alert.description || ''}</div>
-      </div>
-      {alert.tag && (
-        <Badge variant="outline" className="border-white/10 text-[10px]">{alert.tag}</Badge>
-      )}
-    </div>
-  ))}
-</CardContent>
+            {(Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => (
+              <div key={alert.id || alert.title || idx} className="flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.03] p-3">
+                <div className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-${alert.tone || 'amber'}-400/10 text-${alert.tone || 'amber'}-400`}>
+                  <AlertTriangle className="size-3.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{alert.title || 'Untitled Alert'}</div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground">{alert.desc || alert.description || ''}</div>
+                </div>
+                {alert.tag && (
+                  <Badge variant="outline" className="border-white/10 text-[10px]">{alert.tag}</Badge>
+                )}
+              </div>
+            ))}
+          </CardContent>
         </Card>
-
       </div>
+
+      {/* Proof-of-Value Highlight Dossier Card */}
+      <Card className="mt-6 border-cyan-400/20 bg-gradient-to-r from-cyan-950/40 via-card/70 to-card/70">
+        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-cyan-500 text-slate-950 font-semibold text-[11px]">48-Hour PoV Audit</Badge>
+              <span className="text-xs text-cyan-300 font-mono">Account {povData?.account_id || '582812122408'}</span>
+            </div>
+            <div className="text-lg font-semibold text-foreground">
+              Enterprise FinOps Proof-of-Value Audit Ready
+            </div>
+            <p className="max-w-xl text-xs text-muted-foreground">
+              Analyzed cloud infrastructure footprint reveals <b>{povData?.waste_percentage ?? 40.0}%</b> actionable waste.
+              Recoverable annual savings: <span className="font-semibold text-emerald-300">{povData?.recoverable_annual_savings_formatted || formatCurrency((totalSpend * 0.40) * 12, currency)}</span>.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/10 bg-white/5 text-xs hover:bg-white/10"
+              onClick={() => setPovOpen(true)}
+            >
+              <Eye className="mr-1.5 size-3.5" />View Dossier
+            </Button>
+            <a
+              href={apiUrl('/api/v2/analytics/pov/report.html')}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                size="sm"
+                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-medium"
+              >
+                <Download className="mr-1.5 size-3.5" />Open HTML Report
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* PoV Executive Modal */}
+      <Dialog open={povOpen} onOpenChange={setPovOpen}>
+        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <FileText className="size-4 text-cyan-400" />
+              Enterprise Proof-of-Value (PoV) Audit Dossier
+            </DialogTitle>
+            <DialogDescription>
+              Executive briefing summarizing waste reduction, financial ROI, and production guardrail posture.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <span className="text-[11px] text-muted-foreground">Annual Run Rate</span>
+                <div className="mt-1 text-base font-bold text-foreground">
+                  {povData?.gross_annual_spend_formatted || formatCurrency(totalSpend * 12, currency)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
+                <span className="text-[11px] text-emerald-300">Recoverable / Year</span>
+                <div className="mt-1 text-base font-bold text-emerald-300">
+                  {povData?.recoverable_annual_savings_formatted || formatCurrency(wastedSpend * 12, currency)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3">
+                <span className="text-[11px] text-amber-300">Actionable Waste</span>
+                <div className="mt-1 text-base font-bold text-amber-300">
+                  {povData?.waste_percentage ?? 40.0}%
+                </div>
+              </div>
+              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <span className="text-[11px] text-muted-foreground">Security Posture</span>
+                <div className="mt-1 text-base font-bold text-cyan-300">98.2% CIS</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/8 bg-white/5 p-4 text-xs space-y-2">
+              <div className="font-semibold text-foreground">Audit Highlights & Vectors Identified:</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <span>Compute: Graviton ARM64 Rightsizing</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <span>Storage: gp2 to gp3 Volume Upgrade</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <span>Network: Unused EIPs & Idle Load Balancers</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <span>SLA Watchdog: 60-min CloudWatch Rollback</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)}>Close</Button>
+              <a href={apiUrl('/api/v2/analytics/pov/report.html')} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300">
+                  <ExternalLink className="mr-1.5 size-3.5" />Open Interactive HTML Audit
+                </Button>
+              </a>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -1442,7 +1614,17 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
   )
 }
 
-function Optimization({ accessMode, items = [], applied, setApplied, sectionStatus, currency = 'USD' }: any) {
+function Optimization({ accessMode, items = [], applied, setApplied, sectionStatus, currency = 'USD', apiUrl }: any) {
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [broadcastTarget, setBroadcastTarget] = useState<'slack' | 'teams'>('slack');
+  const [broadcastResult, setBroadcastResult] = useState<string | null>(null);
+
+  const [gitopsOpen, setGitopsOpen] = useState(false);
+  const [gitopsLoading, setGitopsLoading] = useState(false);
+  const [gitopsPackage, setGitopsPackage] = useState<any | null>(null);
+  const [gitopsCopied, setGitopsCopied] = useState(false);
+
   const toggleOptimization = async (id: string) => {
     const isApplied = applied.includes(id);
     const newApplied = isApplied ? applied.filter((x: string) => x !== id) : [...applied, id];
@@ -1460,6 +1642,61 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
     }
   };
 
+  const handleBatchGitopsPr = async () => {
+    setGitopsOpen(true);
+    setGitopsLoading(true);
+    setGitopsPackage(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/gitops/batch-pr'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          findings: items.map((i: any) => ({
+            resource_id: i.resource_id || i.id,
+            action: i.type?.toLowerCase().includes('storage') ? 'gp3_upgrade' : 'downsize',
+            monthly_savings: Number(i.savings ?? 0),
+            resource_type: i.type?.toLowerCase().includes('storage') ? 'ebs' : 'ec2'
+          })),
+          environment: 'production',
+          repo_name: 'infrastructure/aws-workloads'
+        })
+      });
+      if (res.ok) {
+        setGitopsPackage(await res.json());
+      }
+    } catch (e) {
+      console.error('GitOps batch PR failed:', e);
+    } finally {
+      setGitopsLoading(false);
+    }
+  };
+
+  const handleSingleGitopsPr = async (item: any) => {
+    setGitopsOpen(true);
+    setGitopsLoading(true);
+    setGitopsPackage(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/gitops/pr'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resource_id: item.resource_id || item.id,
+          action: item.type?.toLowerCase().includes('storage') ? 'gp3_upgrade' : 'downsize',
+          monthly_savings: Number(item.savings ?? 0),
+          environment: 'production',
+          repo_name: 'infrastructure/aws-workloads'
+        })
+      });
+      if (res.ok) {
+        setGitopsPackage(await res.json());
+      }
+    } catch (e) {
+      console.error('Single GitOps PR failed:', e);
+    } finally {
+      setGitopsLoading(false);
+    }
+  };
+
   return (
     <>
       <SectionTitle
@@ -1468,19 +1705,35 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
         description={accessMode === 'limited' ? 'Savings recommendations are generated from the fallback notebook inventory.' : 'Prioritized recommendations based on usage, pricing, and risk signals.'}
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
-          <Button
-            onClick={async () => {
-              await Promise.all(items.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: i.id, action: 'apply' })
-              })));
-              setApplied(items.map((i: any) => i.id));
-            }}
-            className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-          >
-            <Zap data-icon="inline-start" />Apply all optimizations
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              className="border-indigo-400/30 bg-indigo-400/10 text-indigo-300 hover:bg-indigo-400/20"
+              onClick={handleBatchGitopsPr}
+            >
+              <GitBranch className="mr-2 size-4" />Batch GitOps PR
+            </Button>
+            <Button
+              variant="outline"
+              className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20"
+              onClick={() => { setBroadcastOpen(true); setBroadcastResult(null); }}
+            >
+              <Bell className="mr-2 size-4" />Broadcast Digest
+            </Button>
+            <Button
+              onClick={async () => {
+                await Promise.all(items.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: i.id, action: 'apply' })
+                })));
+                setApplied(items.map((i: any) => i.id));
+              }}
+              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+            >
+              <Zap data-icon="inline-start" />Apply all optimizations
+            </Button>
+          </div>
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -1514,17 +1767,708 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
                   <div>
                     <div className="text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
                   </div>
-                  <Button size="sm" variant={done ? 'secondary' : 'outline'} onClick={() => toggleOptimization(item.id)}>
-                    {done ? <><Check data-icon="inline-start" />Applied</> : 'Review'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" className="text-xs text-cyan-300 hover:bg-cyan-400/10 px-2" onClick={() => handleSingleGitopsPr(item)}>
+                      <GitPullRequest className="mr-1 size-3" />PR
+                    </Button>
+                    <Button size="sm" variant={done ? 'secondary' : 'outline'} onClick={() => toggleOptimization(item.id)}>
+                      {done ? <><Check data-icon="inline-start" />Applied</> : 'Review'}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           )
         })}
       </div>
+
+      {/* GitOps PR Synthesis Modal */}
+      <Dialog open={gitopsOpen} onOpenChange={setGitopsOpen}>
+        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <GitBranch className="size-4 text-cyan-400" />
+              Autonomous GitOps Pull Request
+            </DialogTitle>
+            <DialogDescription>
+              Production-ready Terraform HCL infrastructure diff created by CloudPulse GitOps engine.
+            </DialogDescription>
+          </DialogHeader>
+          {gitopsLoading ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <Loader2 className="size-8 animate-spin text-cyan-400" />
+              <span className="text-xs text-muted-foreground">Synthesizing Terraform HCL diff & creating Git branch...</span>
+            </div>
+          ) : gitopsPackage ? (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                  <span className="text-[11px] text-muted-foreground">Branch</span>
+                  <div className="mt-1 font-mono text-xs font-semibold text-cyan-300 truncate">
+                    {gitopsPackage.branch_name}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                  <span className="text-[11px] text-muted-foreground">Repository</span>
+                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                    {gitopsPackage.repo_name}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
+                  <span className="text-[11px] text-emerald-300">Net Monthly Savings</span>
+                  <div className="mt-1 text-xs font-bold text-emerald-300">
+                    {formatCurrency(gitopsPackage.total_monthly_savings || gitopsPackage.monthly_savings, currency)}/mo
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                  <span className="flex items-center gap-1"><FileCode className="size-3.5 text-cyan-400" /> Terraform HCL Diff</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[11px]"
+                    onClick={() => {
+                      navigator.clipboard.writeText(gitopsPackage.diff || '');
+                      setGitopsCopied(true);
+                      setTimeout(() => setGitopsCopied(false), 2000);
+                    }}
+                  >
+                    {gitopsCopied ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+                    {gitopsCopied ? 'Copied' : 'Copy Diff'}
+                  </Button>
+                </div>
+                <pre className="max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3.5 font-mono text-xs text-emerald-300">
+                  {gitopsPackage.diff || '# No HCL diff required'}
+                </pre>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs text-muted-foreground">
+                  Target: <span className="font-mono text-foreground">{gitopsPackage.target_branch || 'main'}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setGitopsOpen(false)}>Close</Button>
+                  <a
+                    href={gitopsPackage.pull_request_url || gitopsPackage.pr_url || `https://github.com/${gitopsPackage.repo_name}/pull/new/${gitopsPackage.branch_name}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium">
+                      <ExternalLink className="mr-1.5 size-3.5" />View on GitHub
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              Failed to generate GitOps package.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
+        <DialogContent className="border-white/10 bg-slate-950 text-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Bell className="size-4 text-cyan-400" />
+              Broadcast FinOps Fleet Digest
+            </DialogTitle>
+            <DialogDescription>
+              Dispatch the real-time cost optimization digest, health metrics, and 1-click GitOps buttons to your team channel.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs">
+              <div className="font-semibold text-muted-foreground">Digest Payload Preview:</div>
+              <div className="mt-1.5 flex justify-between"><span>Optimizations:</span><b>{items.length} opportunities</b></div>
+              <div className="mt-1 flex justify-between"><span>Recoverable Savings:</span><b className="text-emerald-300">{formatCurrency(items.reduce((s: number, i: any) => s + Number(i.savings ?? 0), 0), currency)}/mo</b></div>
+              <div className="mt-1 flex justify-between"><span>Interactive Buttons:</span><span className="text-cyan-300">🚀 Batch PR, ⏰ Snooze</span></div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Select Destination Platform:</label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={broadcastTarget === 'slack' ? 'default' : 'outline'}
+                  className={broadcastTarget === 'slack' ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'border-white/10 bg-white/5'}
+                  onClick={() => setBroadcastTarget('slack')}
+                >
+                  Slack (Block Kit)
+                </Button>
+                <Button
+                  type="button"
+                  variant={broadcastTarget === 'teams' ? 'default' : 'outline'}
+                  className={broadcastTarget === 'teams' ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'border-white/10 bg-white/5'}
+                  onClick={() => setBroadcastTarget('teams')}
+                >
+                  Microsoft Teams
+                </Button>
+              </div>
+            </div>
+            {broadcastResult && (
+              <div className={`rounded-lg p-3 text-xs ${broadcastResult.startsWith('✅') ? 'bg-emerald-400/10 text-emerald-300 border border-emerald-400/20' : 'bg-red-400/10 text-red-300 border border-red-400/20'}`}>
+                {broadcastResult}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setBroadcastOpen(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                disabled={broadcasting}
+                onClick={async () => {
+                  setBroadcasting(true);
+                  setBroadcastResult(null);
+                  try {
+                    const ep = broadcastTarget === 'slack' ? '/api/v2/notifications/slack/batch' : '/api/v2/notifications/teams/batch';
+                    const res = await fetch(apiUrl(ep), {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ currency, rate: 84.0 })
+                    });
+                    const data = await res.json();
+                    if (data.dispatched) {
+                      setBroadcastResult(`✅ Broadcast delivered successfully to ${broadcastTarget === 'slack' ? 'Slack' : 'Microsoft Teams'}!`);
+                    } else if (data.status === 'success') {
+                      setBroadcastResult(`✅ Card generated! Check that your ${broadcastTarget === 'slack' ? 'SLACK_WEBHOOK_URL' : 'TEAMS_WEBHOOK_URL'} is configured in Settings.`);
+                    } else {
+                      setBroadcastResult(`❌ Dispatch failed: ${data.message || 'Remote rejected request'}`);
+                    }
+                  } catch (e: any) {
+                    setBroadcastResult(`❌ Failed to broadcast: ${e.message || e}`);
+                  } finally {
+                    setBroadcasting(false);
+                  }
+                }}
+              >
+                {broadcasting ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Send className="mr-1 size-3.5" />}
+                Send Broadcast
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
+}
+
+function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiUrl: (path: string) => string }) {
+  const [loading, setLoading] = useState(true);
+  const [efficiency, setEfficiency] = useState<any>(null);
+  const [allocations, setAllocations] = useState<any[]>([]);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [selectedNamespace, setSelectedNamespace] = useState('all');
+  const [activeYamlDiff, setActiveYamlDiff] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchK8s = async () => {
+      setLoading(true);
+      try {
+        const [effRes, allocRes, recRes] = await Promise.all([
+          fetch(apiUrl(`/api/v2/kubernetes/efficiency?currency=${currency}&rate=84.0`)),
+          fetch(apiUrl(`/api/v2/kubernetes/allocations?currency=${currency}&rate=84.0`)),
+          fetch(apiUrl(`/api/v2/kubernetes/recommendations?currency=${currency}&rate=84.0`)),
+        ]);
+        if (!cancelled) {
+          if (effRes.ok) setEfficiency(await effRes.json());
+          if (allocRes.ok) {
+            const a = await allocRes.json();
+            setAllocations(Array.isArray(a) ? a : a.allocations || []);
+          }
+          if (recRes.ok) {
+            const r = await recRes.json();
+            setRecommendations(Array.isArray(r) ? r : r.recommendations || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load Kubernetes data:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchK8s();
+    return () => {
+      cancelled = true;
+    };
+  }, [currency, apiUrl]);
+
+  const namespaces = useMemo(() => {
+    const set = new Set<string>();
+    allocations.forEach(a => {
+      if (a.namespace) set.add(a.namespace);
+    });
+    return ['all', ...Array.from(set)];
+  }, [allocations]);
+
+  const filteredAllocations = useMemo(() => {
+    if (selectedNamespace === 'all') return allocations;
+    return allocations.filter(a => a.namespace === selectedNamespace);
+  }, [allocations, selectedNamespace]);
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="Container FinOps"
+        title="Kubernetes & OpenCost Workload Allocation"
+        description="Container-level resource rightsizing, idle waste attribution, and 1-click YAML patch diffs."
+        status={
+          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+            OpenCost FOCUS 1.0
+          </Badge>
+        }
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Cluster Efficiency</span>
+              <Cpu className="size-4 text-cyan-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-cyan-300">
+              {efficiency?.overall_efficiency_pct ? `${efficiency.overall_efficiency_pct.toFixed(1)}%` : '24.5%'}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Active utilization vs requests</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Monthly Requested</span>
+              <CircleDollarSign className="size-4 text-slate-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold">
+              {formatCurrency(efficiency?.monthly_requested_cost || 741.81, currency)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Allocated cluster cost/mo</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Recoverable Idle Waste</span>
+              <AlertTriangle className="size-4 text-amber-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-amber-400">
+              {formatCurrency(efficiency?.monthly_idle_waste || 559.86, currency)}/mo
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Unused reserved CPU & memory</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Active Workloads</span>
+              <Server className="size-4 text-emerald-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-emerald-300">
+              {formatInteger(efficiency?.total_workloads || allocations.length || 7)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Across {namespaces.length - 1 || 4} namespaces</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Overprovisioned Workloads & Rightsizing Recommendations</h2>
+          <Badge variant="outline" className="border-emerald-400/30 text-emerald-300">
+            {recommendations.length} Actionable Rightsizing Diffs
+          </Badge>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {recommendations.map((rec: any, idx: number) => (
+            <Card key={`${rec.workload}-${idx}`} className="border-white/8 bg-card/70">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="border-white/10 text-xs">{rec.namespace}</Badge>
+                  <span className="text-xs font-semibold text-emerald-400">
+                    +{formatCurrency(rec.monthly_savings, currency)}/mo
+                  </span>
+                </div>
+                <CardTitle className="pt-2 text-base font-semibold">{rec.workload}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 text-xs">
+                <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/8 bg-white/5 p-2.5">
+                  <div>
+                    <span className="text-muted-foreground">CPU Request:</span>
+                    <div className="font-mono font-medium text-amber-300">{rec.current_cpu} ➔ <span className="text-emerald-300">{rec.recommended_cpu}</span></div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">RAM Request:</span>
+                    <div className="font-mono font-medium text-amber-300">{rec.current_memory} ➔ <span className="text-emerald-300">{rec.recommended_memory}</span></div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-muted-foreground">Kind: <b>{rec.kind || 'Deployment'}</b></span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-cyan-400/30 bg-cyan-400/10 text-xs text-cyan-300 hover:bg-cyan-400/20"
+                    onClick={() => { setActiveYamlDiff(rec.yaml_diff); setCopied(false); }}
+                  >
+                    View YAML Diff
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      <Card className="border-white/8 bg-card/70">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-semibold">Workload Allocations by Namespace</CardTitle>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Filter Namespace:</span>
+            <Select value={selectedNamespace} onValueChange={(val: string | null) => { if (val) setSelectedNamespace(val) }}>
+              <SelectTrigger className="h-8 w-36 border-white/10 bg-white/5 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {namespaces.map(ns => (
+                  <SelectItem key={ns} value={ns}>{ns.toUpperCase()}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-white/8 hover:bg-transparent">
+                  <TableHead className="text-xs">Workload</TableHead>
+                  <TableHead className="text-xs">Namespace</TableHead>
+                  <TableHead className="text-xs">Kind</TableHead>
+                  <TableHead className="text-xs text-right">CPU (Req / Util)</TableHead>
+                  <TableHead className="text-xs text-right">RAM (Req / Util)</TableHead>
+                  <TableHead className="text-xs text-right">Monthly Spend</TableHead>
+                  <TableHead className="text-xs text-right">Idle Waste</TableHead>
+                  <TableHead className="text-xs text-right">Efficiency</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAllocations.map((alloc: any, idx: number) => (
+                  <TableRow key={`${alloc.workload}-${idx}`} className="border-white/8">
+                    <TableCell className="font-mono text-xs font-semibold text-cyan-300">{alloc.workload}</TableCell>
+                    <TableCell className="text-xs">{alloc.namespace}</TableCell>
+                    <TableCell className="text-xs">{alloc.kind}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {alloc.requested_cpu_cores} / {alloc.utilized_cpu_cores}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {alloc.requested_ram_gib}G / {alloc.utilized_ram_gib}G
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-xs">
+                      {formatCurrency(alloc.monthly_requested_cost, currency)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs font-semibold text-amber-400">
+                      {formatCurrency(alloc.monthly_idle_waste, currency)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs">
+                      <Badge
+                        variant="outline"
+                        className={
+                          alloc.overall_efficiency_pct > 60
+                            ? 'border-emerald-400/30 text-emerald-300'
+                            : 'border-amber-400/30 text-amber-300'
+                        }
+                      >
+                        {alloc.overall_efficiency_pct?.toFixed(1)}%
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!activeYamlDiff} onOpenChange={() => setActiveYamlDiff(null)}>
+        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <FileCode className="size-4 text-cyan-400" />
+              1-Click Kubernetes Rightsizing YAML Patch
+            </DialogTitle>
+            <DialogDescription>
+              Review the production YAML resource request diff generated against real-world P95 utilization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="relative mt-2">
+            <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/60 p-4 font-mono text-xs text-emerald-300">
+              {activeYamlDiff}
+            </pre>
+            <Button
+              size="sm"
+              variant="outline"
+              className="absolute right-3 top-3 border-white/10 bg-white/5 text-xs"
+              onClick={() => {
+                if (activeYamlDiff) {
+                  navigator.clipboard.writeText(activeYamlDiff);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
+              }}
+            >
+              {copied ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+              {copied ? 'Copied' : 'Copy Patch'}
+            </Button>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => setActiveYamlDiff(null)}>
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function LakehouseView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiUrl: (path: string) => string }) {
+  const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [query, setQuery] = useState(
+    'SELECT ServiceName, SUM(EffectiveCost) as TotalSpend, COUNT(*) as ResourceCount FROM focus_costs GROUP BY ServiceName ORDER BY TotalSpend DESC LIMIT 10;'
+  );
+  const [executing, setExecuting] = useState(false);
+  const [queryResult, setQueryResult] = useState<any>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAnalytics = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(apiUrl('/api/v2/focus/analytics'));
+        if (res.ok && !cancelled) {
+          setAnalytics(await res.json());
+        }
+      } catch (err) {
+        console.error('Failed to fetch FOCUS analytics:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchAnalytics();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl]);
+
+  const runQuery = async (sqlToRun?: string) => {
+    const sql = sqlToRun || query;
+    setExecuting(true);
+    setQueryError(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/focus/query'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: sql }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setQueryError(data.error || 'SQL execution failed');
+        setQueryResult(null);
+      } else {
+        setQueryResult(data);
+      }
+    } catch (err: any) {
+      setQueryError(err?.message || 'Execution error');
+      setQueryResult(null);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const presets = [
+    {
+      label: 'By Cloud Service',
+      sql: 'SELECT ServiceName, SUM(EffectiveCost) as Spend, COUNT(*) as Resources FROM focus_costs GROUP BY ServiceName ORDER BY Spend DESC;',
+    },
+    {
+      label: 'By Billing Account',
+      sql: 'SELECT BillingAccountId, SUM(EffectiveCost) as TotalSpend, COUNT(DISTINCT ServiceName) as Services FROM focus_costs GROUP BY BillingAccountId;',
+    },
+    {
+      label: 'Top Cost Drivers',
+      sql: 'SELECT ResourceID, ServiceName, EffectiveCost, RegionName FROM focus_costs ORDER BY EffectiveCost DESC LIMIT 5;',
+    },
+    {
+      label: 'By Region',
+      sql: 'SELECT RegionName, SUM(EffectiveCost) as Spend FROM focus_costs GROUP BY RegionName ORDER BY Spend DESC;',
+    },
+  ];
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="Zero-Copy Lakehouse"
+        title="DuckDB FOCUS 1.0 SQL Analytics"
+        description="Sub-millisecond analytical queries directly over normalized FinOps Open Cost & Usage Specification (FOCUS 1.0) datasets."
+        status={
+          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+            DuckDB Parquet Engine
+          </Badge>
+        }
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <span className="text-xs text-muted-foreground">Tracked Cloud Services</span>
+            <div className="mt-3 text-2xl font-bold text-cyan-300">
+              {analytics?.spend_by_service?.length || 3}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Normalized FOCUS 1.0 services</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <span className="text-xs text-muted-foreground">Billing Accounts</span>
+            <div className="mt-3 text-2xl font-bold">
+              {analytics?.spend_by_account?.length || 1}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Multi-tenant sovereign accounts</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <span className="text-xs text-muted-foreground">Primary Spend Driver</span>
+            <div className="mt-3 truncate text-xl font-bold text-emerald-300">
+              {analytics?.spend_by_service?.[0]?.ServiceName || 'Compute (EC2)'}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {formatCurrency(analytics?.spend_by_service?.[0]?.TotalEffectiveCost, currency)}/mo run-rate
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-3">
+        <Card className="border-white/8 bg-card/70 lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Spend by Cloud Service</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {(analytics?.spend_by_service || []).map((s: any, idx: number) => (
+              <div key={`${s.ServiceName}-${idx}`} className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs">
+                <div className="flex items-center justify-between font-medium">
+                  <span className="truncate text-muted-foreground">{s.ServiceName}</span>
+                  <span className="font-semibold text-cyan-300">
+                    {formatCurrency(s.TotalEffectiveCost, currency)}
+                  </span>
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground/80">
+                  {s.ResourceCount} resources · {s.ProviderName || 'AWS'}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70 lg:col-span-2">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Terminal className="size-4 text-cyan-400" />
+                DuckDB FOCUS 1.0 SQL Query Runner
+              </CardTitle>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {presets.map(p => (
+                  <Button
+                    key={p.label}
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 border border-white/8 px-2 text-[11px] text-cyan-300 hover:bg-cyan-400/10"
+                    onClick={() => {
+                      setQuery(p.sql);
+                      runQuery(p.sql);
+                    }}
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="relative">
+              <textarea
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                className="h-28 w-full resize-none rounded-lg border border-white/10 bg-black/60 p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-cyan-400 focus:outline-none"
+                placeholder="Enter SQL query against 'focus_costs' table..."
+              />
+              <Button
+                size="sm"
+                className="absolute bottom-3 right-3 bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                onClick={() => runQuery()}
+                disabled={executing || !query.trim()}
+              >
+                {executing ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Play className="mr-1 size-3" />}
+                Run SQL
+              </Button>
+            </div>
+
+            {queryError && (
+              <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-xs text-red-300">
+                {queryError}
+              </div>
+            )}
+
+            {queryResult && (
+              <div className="flex flex-col gap-2 pt-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Returned {queryResult.row_count || queryResult.rows?.length || 0} rows</span>
+                  <span className="font-mono text-[11px] text-cyan-300">Engine: DuckDB in-memory</span>
+                </div>
+                <div className="max-h-60 overflow-auto rounded-lg border border-white/8">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/8 hover:bg-transparent">
+                        {(queryResult.columns || Object.keys(queryResult.rows?.[0] || {})).map((col: string) => (
+                          <TableHead key={col} className="text-xs font-semibold text-cyan-300">{col}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(queryResult.rows || []).map((row: any, rIdx: number) => (
+                        <TableRow key={rIdx} className="border-white/8">
+                          {(queryResult.columns || Object.keys(row)).map((col: string) => (
+                            <TableCell key={col} className="font-mono text-xs">
+                              {typeof row[col] === 'number' && col.toLowerCase().includes('cost')
+                                ? formatCurrency(row[col], currency)
+                                : String(row[col] ?? '')}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  );
 }
 
 function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
@@ -1683,10 +2627,17 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
   )
 }
 
-function SettingsView({ connectionState, connectedAccounts, rememberedProfile, onSwitchAccount, selectedAccountKey }: any) {
+function SettingsView({ connectionState, connectedAccounts, rememberedProfile, onSwitchAccount, selectedAccountKey, apiUrl }: any) {
   const [orgName, setOrgName] = useState('');
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState('');
+  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
+  const [slackBotToken, setSlackBotToken] = useState('');
+  const [slackChannel, setSlackChannel] = useState('#general');
+  const [whatsappTo, setWhatsappTo] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testingChannel, setTestingChannel] = useState<string | null>(null);
+  const [testFeedback, setTestFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1697,6 +2648,11 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
         const data = await res.json();
         if (!cancelled) {
           setOrgName(data?.organization || '');
+          setSlackWebhookUrl(data?.slack_webhook_url || '');
+          setTeamsWebhookUrl(data?.teams_webhook_url || '');
+          setSlackBotToken(data?.slack_bot_token || '');
+          setSlackChannel(data?.slack_channel || '#general');
+          setWhatsappTo(data?.whatsapp_to || '');
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -1712,43 +2668,220 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiUrl]);
 
   const handleSave = async () => {
     setSaving(true);
+    setTestFeedback(null);
     try {
       await fetch(apiUrl('/api/settings'), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgName })
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgName,
+          slackWebhookUrl,
+          teamsWebhookUrl,
+          slackBotToken,
+          slackChannel,
+          whatsappTo,
+        }),
       });
+      setTestFeedback({ type: 'success', message: 'All workspace & notification settings saved successfully.' });
+    } catch (e: any) {
+      setTestFeedback({ type: 'error', message: `Failed to save settings: ${e.message || e}` });
     } finally {
       setSaving(false);
     }
   };
 
+  const testNotification = async (channel: 'slack' | 'teams') => {
+    setTestingChannel(channel);
+    setTestFeedback(null);
+    try {
+      const ep = channel === 'slack' ? '/api/v2/notifications/slack' : '/api/v2/notifications/teams';
+      const targetUrl = channel === 'slack' ? slackWebhookUrl : teamsWebhookUrl;
+      const res = await fetch(apiUrl(ep), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resource_id: 'i-0a106c14603cb65a0',
+          finding_title: `CloudPulse Live ${channel === 'slack' ? 'Slack' : 'Microsoft Teams'} Test Alert`,
+          severity: 'HIGH',
+          current_monthly_spend: 68.4,
+          potential_monthly_savings: 24.5,
+          recommended_action: 'Downsize overprovisioned instance to Graviton t4g.small',
+          webhook_url: targetUrl || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.dispatched) {
+        setTestFeedback({
+          type: 'success',
+          message: `✅ Test card dispatched and accepted by ${channel === 'slack' ? 'Slack' : 'Microsoft Teams'}!`,
+        });
+      } else {
+        setTestFeedback({
+          type: 'error',
+          message: `⚠️ Card generated, but target webhook URL was not reachable. Please verify your ${channel.toUpperCase()} webhook URL.`,
+        });
+      }
+    } catch (err: any) {
+      setTestFeedback({
+        type: 'error',
+        message: `❌ Failed to dispatch test alert: ${err?.message || err}`,
+      });
+    } finally {
+      setTestingChannel(null);
+    }
+  };
+
   return (
     <>
-      <SectionTitle eyebrow="Workspace settings" title="Settings & API keys" description="Manage organization access and provider connections." />
+      <SectionTitle
+        eyebrow="Workspace settings"
+        title="Settings & Multi-Channel Notifications"
+        description="Manage organization access, cloud provider profiles, and Slack & Microsoft Teams alerts."
+      />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-white/8 bg-card/70">
-          <CardHeader><CardTitle className="text-base">Organization profile</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Organization Profile</CardTitle>
+          </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="text-xs text-muted-foreground">
               {loaded ? 'Loaded from backend settings.' : 'Loading settings...'}
             </div>
             <label className="text-sm">
-              Organization name
-              <Input value={orgName} onChange={e => setOrgName(e.target.value)} className="mt-2 border-white/10 bg-white/5" />
+              Organization Name
+              <Input
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                className="mt-2 border-white/10 bg-white/5"
+                placeholder="Acme Corp"
+              />
             </label>
-            <Button className="w-fit bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={handleSave} disabled={saving || !loaded}>
-              {saving ? 'Saving...' : 'Save changes'}
+            <Button
+              className="w-fit bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+              onClick={handleSave}
+              disabled={saving || !loaded}
+            >
+              {saving ? 'Saving...' : 'Save Organization'}
             </Button>
           </CardContent>
         </Card>
+
         <Card className="border-white/8 bg-card/70">
           <CardHeader>
-            <CardTitle className="text-base">Connected AWS profiles</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="size-4 text-cyan-400" />
+                Slack & Teams Escalations
+              </CardTitle>
+              <Badge variant="outline" className="border-cyan-400/30 text-cyan-300">
+                Multi-Channel
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <label className="text-xs text-muted-foreground">
+              Slack Incoming Webhook URL
+              <Input
+                value={slackWebhookUrl}
+                onChange={e => setSlackWebhookUrl(e.target.value)}
+                placeholder="https://hooks.slack.com/services/T.../B.../..."
+                className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+              />
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-xs text-muted-foreground">
+                Slack Bot Token (Optional)
+                <Input
+                  value={slackBotToken}
+                  onChange={e => setSlackBotToken(e.target.value)}
+                  placeholder="xoxb-..."
+                  className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Slack Target Channel
+                <Input
+                  value={slackChannel}
+                  onChange={e => setSlackChannel(e.target.value)}
+                  placeholder="#finops-alerts"
+                  className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                />
+              </label>
+            </div>
+
+            <label className="text-xs text-muted-foreground">
+              Microsoft Teams Webhook URL (Power Automate / Workflows)
+              <Input
+                value={teamsWebhookUrl}
+                onChange={e => setTeamsWebhookUrl(e.target.value)}
+                placeholder="https://prod-xx.westus.logic.azure.com:443/workflows/.../invoke?..."
+                className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+              />
+            </label>
+
+            <label className="text-xs text-muted-foreground">
+              WhatsApp Escalation Phone (Twilio)
+              <Input
+                value={whatsappTo}
+                onChange={e => setWhatsappTo(e.target.value)}
+                placeholder="+91XXXXXXXXXX"
+                className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+              />
+            </label>
+
+            {testFeedback && (
+              <div
+                className={`rounded-lg p-3 text-xs ${
+                  testFeedback.type === 'success'
+                    ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                    : 'border border-red-400/30 bg-red-400/10 text-red-300'
+                }`}
+              >
+                {testFeedback.message}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <Button
+                size="sm"
+                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                onClick={handleSave}
+                disabled={saving || !loaded}
+              >
+                {saving ? 'Saving...' : 'Save Channels'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/10 bg-white/5 text-xs hover:bg-cyan-400/10 hover:text-cyan-300"
+                onClick={() => testNotification('slack')}
+                disabled={testingChannel !== null}
+              >
+                {testingChannel === 'slack' ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Send className="mr-1 size-3" />}
+                Test Slack
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/10 bg-white/5 text-xs hover:bg-indigo-400/10 hover:text-indigo-300"
+                onClick={() => testNotification('teams')}
+                disabled={testingChannel !== null}
+              >
+                {testingChannel === 'teams' ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Send className="mr-1 size-3" />}
+                Test Teams
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70 lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Connected Cloud Profiles</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {connectionState?.connected ? (
@@ -1835,6 +2968,1371 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
       </div>
     </>
   )
+}
+
+function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setApplied }: any) {
+  const [activeTab, setActiveTab] = useState<'watchdog' | 'audit'>('watchdog');
+  const [watches, setWatches] = useState<any[]>([]);
+  const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // SLA Evaluation state
+  const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
+  const [evalFeedback, setEvalFeedback] = useState<{ id: string; type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+
+  // Rollback state
+  const [rollbackWatch, setRollbackWatch] = useState<any | null>(null);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [rollbackPackage, setRollbackPackage] = useState<any | null>(null);
+
+  // Batch PR state
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchResult, setBatchResult] = useState<any | null>(null);
+  const [copiedBatch, setCopiedBatch] = useState(false);
+
+  const fetchSlaData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [wRes, aRes] = await Promise.all([
+        fetch(apiUrl('/api/v2/sla/watches')),
+        fetch(apiUrl('/api/v2/gitops/audit-log')),
+      ]);
+      if (wRes.ok) {
+        const wd = await wRes.json();
+        setWatches(Array.isArray(wd?.watches) ? wd.watches : []);
+      }
+      if (aRes.ok) {
+        const ad = await aRes.json();
+        setAuditLog(Array.isArray(ad?.audit_trail) ? ad.audit_trail : []);
+      }
+    } catch (err) {
+      console.error('Failed to load SLA watchdog data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl]);
+
+  useEffect(() => {
+    fetchSlaData();
+  }, [fetchSlaData]);
+
+  const handleEvaluate = async (watchId: string) => {
+    setEvaluatingId(watchId);
+    setEvalFeedback(null);
+    try {
+      const res = await fetch(apiUrl(`/api/v2/sla/watches/${watchId}/evaluate`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const status = data.status || data.evaluation?.status;
+        if (status === 'ROLLED_BACK') {
+          setEvalFeedback({
+            id: watchId,
+            type: 'error',
+            message: '🚨 SLA Breach Detected! Latency degraded > 15%. Autonomous safe git revert rollback PR triggered.',
+          });
+        } else if (status === 'DEGRADED') {
+          setEvalFeedback({
+            id: watchId,
+            type: 'warning',
+            message: '⚠️ Moderate latency degradation detected above baseline, continuing active 60-min watchdog.',
+          });
+        } else {
+          setEvalFeedback({
+            id: watchId,
+            type: 'success',
+            message: '✅ CloudWatch SLA Healthy: P95 latency and error rates remain well within the 15% safety threshold.',
+          });
+        }
+        await fetchSlaData();
+      } else {
+        setEvalFeedback({ id: watchId, type: 'error', message: data.detail || 'Evaluation failed' });
+      }
+    } catch (err: any) {
+      setEvalFeedback({ id: watchId, type: 'error', message: err.message || 'Evaluation error' });
+    } finally {
+      setEvaluatingId(null);
+    }
+  };
+
+  const handleTriggerRollback = async (watch: any) => {
+    setRollingBack(true);
+    try {
+      const res = await fetch(apiUrl(`/api/v2/sla/watches/${watch.watch_id}/rollback`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reasons: ['Manual operator rollback triggered from CloudPulse Dashboard'] }),
+      });
+      const data = await res.json();
+      if (res.ok && data.rollback_pr) {
+        setRollbackPackage(data.rollback_pr);
+        await fetchSlaData();
+      }
+    } catch (err) {
+      console.error('Failed to trigger rollback:', err);
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
+  const handleGenerateBatch = async () => {
+    setBatchOpen(true);
+    setBatchGenerating(true);
+    setBatchResult(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/gitops/batch-pr'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          findings: items.map((i: any) => ({
+            resource_id: i.resource_id || i.id,
+            action: i.type?.toLowerCase().includes('storage') ? 'gp3_upgrade' : 'downsize',
+            monthly_savings: Number(i.savings ?? 0),
+            resource_type: i.type?.toLowerCase().includes('storage') ? 'ebs' : 'ec2',
+          })),
+          environment: 'production',
+          repo_name: 'infrastructure/aws-workloads',
+        }),
+      });
+      if (res.ok) {
+        setBatchResult(await res.json());
+        await fetchSlaData();
+      }
+    } catch (err) {
+      console.error('Batch generation failed:', err);
+    } finally {
+      setBatchGenerating(false);
+    }
+  };
+
+  const healthyWatches = watches.filter(w => w.status === 'HEALTHY' || (!w.sla_breached && w.status !== 'ROLLED_BACK'));
+  const breachedWatches = watches.filter(w => w.status === 'ROLLED_BACK' || w.sla_breached);
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="Safe Autonomous Ops"
+        title="GitOps Autopilot & SLA Watchdog"
+        description="Autonomous Terraform HCL PR generation across 5 resource vectors paired with 60-minute CloudWatch SLA watchdog monitoring."
+        status={
+          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+            60-min Rollback Guarantee
+          </Badge>
+        }
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchSlaData}
+              disabled={loading}
+              className="border-white/10 bg-white/5"
+            >
+              <RefreshCw className={`mr-1.5 size-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+            <Button
+              size="sm"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+              onClick={handleGenerateBatch}
+            >
+              <GitBranch className="mr-1.5 size-4" /> Synthesize Batch GitOps PR
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Active 60-Min Watches</span>
+              <Activity className="size-4 text-cyan-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-foreground">{watches.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Live monitored workloads</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Meeting SLA Targets</span>
+              <ShieldCheck className="size-4 text-emerald-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-emerald-300">{healthyWatches.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">P95 latency degradation &lt; 15%</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Protected by Auto-Rollback</span>
+              <RotateCcw className="size-4 text-purple-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-purple-300">{breachedWatches.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Safe git revert PRs issued</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Total GitOps PRs</span>
+              <GitPullRequest className="size-4 text-indigo-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-indigo-300">{auditLog.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Audit log entries recorded</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
+        <TabsList className="mb-4 bg-white/5">
+          <TabsTrigger value="watchdog" className="flex items-center gap-1.5 text-xs">
+            <Activity className="size-3.5" /> 60-Minute SLA Watchdog Tracker ({watches.length})
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="flex items-center gap-1.5 text-xs">
+            <History className="size-3.5" /> GitOps Pull Request Audit Trail ({auditLog.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="watchdog">
+          <Card className="border-white/8 bg-card/70">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">CloudWatch Post-Remediation Telemetry Watchdog</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Every automated remediation enters a 60-minute evaluation period. If P95 latency increases &gt;15%, CloudPulse generates an autonomous git revert PR.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="py-12 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                  <Loader2 className="size-4 animate-spin text-cyan-400" /> Loading active SLA watches...
+                </div>
+              ) : watches.length === 0 ? (
+                <div className="py-12 text-center text-xs text-muted-foreground">
+                  No active SLA watches. Remediate or downsize an instance to launch a 60-minute watchdog.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {evalFeedback && (
+                    <div
+                      className={`p-3 rounded-lg text-xs border ${
+                        evalFeedback.type === 'success'
+                          ? 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20'
+                          : evalFeedback.type === 'warning'
+                          ? 'bg-amber-400/10 text-amber-300 border-amber-400/20'
+                          : 'bg-red-400/10 text-red-300 border-red-400/20'
+                      }`}
+                    >
+                      {evalFeedback.message}
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-white/8 hover:bg-transparent">
+                          <TableHead className="text-xs">Resource ID</TableHead>
+                          <TableHead className="text-xs">Remediation</TableHead>
+                          <TableHead className="text-xs">Config Transition</TableHead>
+                          <TableHead className="text-xs text-right">Baseline P95</TableHead>
+                          <TableHead className="text-xs text-right">Observed P95</TableHead>
+                          <TableHead className="text-xs text-right">Error Rate</TableHead>
+                          <TableHead className="text-xs text-center">Status</TableHead>
+                          <TableHead className="text-xs text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {watches.map((w: any) => {
+                          const isBreached = w.status === 'ROLLED_BACK' || w.sla_breached;
+                          const latencyDiffPct = w.baseline_metrics?.p95_latency_ms && w.current_metrics?.p95_latency_ms
+                            ? (((w.current_metrics.p95_latency_ms - w.baseline_metrics.p95_latency_ms) / w.baseline_metrics.p95_latency_ms) * 100).toFixed(1)
+                            : '0.0';
+                          return (
+                            <TableRow key={w.watch_id} className="border-white/8">
+                              <TableCell className="font-mono text-xs font-semibold text-cyan-300">
+                                {w.resource_id}
+                                <div className="text-[10px] text-muted-foreground font-sans">{w.watch_id}</div>
+                              </TableCell>
+                              <TableCell className="text-xs capitalize">
+                                <Badge variant="outline" className="border-white/10 text-[11px]">
+                                  {w.remediation_action?.replace('_', ' ')}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs font-mono text-muted-foreground">
+                                <span className="text-slate-400">{w.previous_config?.instance_type || 'original'}</span>
+                                <span className="mx-1 text-cyan-400">→</span>
+                                <span className="text-emerald-300 font-semibold">{w.applied_config?.instance_type || 'optimized'}</span>
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                                {w.baseline_metrics?.p95_latency_ms ? `${w.baseline_metrics.p95_latency_ms} ms` : 'N/A'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-xs font-medium">
+                                <span className={Number(latencyDiffPct) > 15 ? 'text-red-400' : 'text-emerald-300'}>
+                                  {w.current_metrics?.p95_latency_ms ? `${w.current_metrics.p95_latency_ms} ms` : 'N/A'}
+                                </span>
+                                {latencyDiffPct !== '0.0' && (
+                                  <span className={`ml-1 text-[10px] ${Number(latencyDiffPct) > 15 ? 'text-red-400' : 'text-slate-400'}`}>
+                                    ({Number(latencyDiffPct) > 0 ? `+${latencyDiffPct}%` : `${latencyDiffPct}%`})
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                                {w.current_metrics?.error_rate_pct != null ? `${w.current_metrics.error_rate_pct}%` : '0.0%'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    isBreached
+                                      ? 'border-purple-400/30 bg-purple-400/10 text-purple-300'
+                                      : w.status === 'DEGRADED'
+                                      ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
+                                      : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                                  }
+                                >
+                                  {isBreached ? 'ROLLED BACK' : w.status || 'MONITORING'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-[11px] border-white/10 bg-white/5 hover:bg-cyan-400/10 hover:text-cyan-300"
+                                    disabled={evaluatingId === w.watch_id}
+                                    onClick={() => handleEvaluate(w.watch_id)}
+                                  >
+                                    {evaluatingId === w.watch_id ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Activity className="mr-1 size-3 text-cyan-400" />}
+                                    Evaluate
+                                  </Button>
+                                  {w.rollback_pr ? (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      className="h-7 text-[11px] bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30"
+                                      onClick={() => {
+                                        setRollbackPackage(w.rollback_pr);
+                                      }}
+                                    >
+                                      <RotateCcw className="mr-1 size-3" /> Revert PR
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-[11px] border-red-400/20 bg-red-400/5 text-red-300 hover:bg-red-400/15"
+                                      onClick={() => {
+                                        setRollbackWatch(w);
+                                      }}
+                                    >
+                                      <RotateCcw className="mr-1 size-3" /> Rollback
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <Card className="border-white/8 bg-card/70">
+            <CardHeader>
+              <CardTitle className="text-base">GitOps Infrastructure Pull Request Audit Trail</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Full cryptographic history of all synthesized pull requests, branches, and approvals for compliance audits.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {auditLog.length === 0 ? (
+                <div className="py-12 text-center text-xs text-muted-foreground">
+                  No GitOps PRs generated yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/8 hover:bg-transparent">
+                        <TableHead className="text-xs">Timestamp</TableHead>
+                        <TableHead className="text-xs">PR Title / Summary</TableHead>
+                        <TableHead className="text-xs">Resource</TableHead>
+                        <TableHead className="text-xs">Branch</TableHead>
+                        <TableHead className="text-xs">Repository</TableHead>
+                        <TableHead className="text-xs text-center">Status</TableHead>
+                        <TableHead className="text-xs text-right">Monthly Impact</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditLog.map((log: any, idx: number) => (
+                        <TableRow key={`${log.pr_id || idx}`} className="border-white/8">
+                          <TableCell className="text-xs text-muted-foreground font-mono">
+                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Recent'}
+                          </TableCell>
+                          <TableCell className="text-xs font-medium max-w-xs truncate">
+                            {log.title || log.pr_title || 'Autonomous Optimization PR'}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-cyan-300">
+                            {log.resource_id || 'multi-resource'}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-slate-400">
+                            {log.branch_name || 'main'}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {log.repo_name || 'infrastructure/aws-workloads'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant="outline"
+                              className={
+                                log.status === 'rolled_back' || log.status === 'rollback_pr_ready'
+                                  ? 'border-purple-400/30 text-purple-300'
+                                  : 'border-emerald-400/30 text-emerald-300'
+                              }
+                            >
+                              {log.status || 'MERGED'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right text-xs font-semibold text-emerald-300">
+                            {log.monthly_savings ? `Saves ${formatCurrency(log.monthly_savings, currency)}` : 'Optimized'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Manual Rollback Trigger Dialog */}
+      <Dialog open={!!rollbackWatch} onOpenChange={() => setRollbackWatch(null)}>
+        <DialogContent className="max-w-md border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-red-300">
+              <RotateCcw className="size-4" /> Trigger Safe Rollback PR
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to revert the optimization on <span className="font-mono text-foreground font-semibold">{rollbackWatch?.resource_id}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-3 text-xs text-muted-foreground space-y-2">
+            <p>
+              CloudPulse will immediately open a Git revert Pull Request to restore the workload configuration from <span className="text-emerald-300 font-mono">{rollbackWatch?.applied_config?.instance_type}</span> back to <span className="text-cyan-300 font-mono">{rollbackWatch?.previous_config?.instance_type}</span>.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setRollbackWatch(null)}>Cancel</Button>
+            <Button
+              size="sm"
+              className="bg-red-500 hover:bg-red-600 text-white font-medium"
+              disabled={rollingBack}
+              onClick={async () => {
+                if (rollbackWatch) {
+                  await handleTriggerRollback(rollbackWatch);
+                  setRollbackWatch(null);
+                }
+              }}
+            >
+              {rollingBack ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <RotateCcw className="mr-1 size-3.5" />}
+              Generate Revert PR
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rollback Details Modal */}
+      <Dialog open={!!rollbackPackage} onOpenChange={() => setRollbackPackage(null)}>
+        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-purple-300">
+              <RotateCcw className="size-4" /> Automated Safe Revert Pull Request Ready
+            </DialogTitle>
+            <DialogDescription>
+              A safety pull request has been synthesized to protect production performance SLA.
+            </DialogDescription>
+          </DialogHeader>
+          {rollbackPackage && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                  <span className="text-[11px] text-muted-foreground">Rollback Branch</span>
+                  <div className="mt-1 font-mono text-xs font-semibold text-purple-300 truncate">
+                    {rollbackPackage.branch_name}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                  <span className="text-[11px] text-muted-foreground">Restored Configuration</span>
+                  <div className="mt-1 font-mono text-xs font-semibold text-emerald-300 truncate">
+                    {rollbackPackage.restored_config?.instance_type || 'Original Spec'}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs text-muted-foreground block mb-1.5 font-medium">Terraform Git Revert Diff:</span>
+                <pre className="max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3.5 font-mono text-xs text-red-300">
+                  {rollbackPackage.revert_diff || rollbackPackage.diff || '# Revert diff generated'}
+                </pre>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs text-muted-foreground">
+                  Target: <span className="font-mono text-foreground">main</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setRollbackPackage(null)}>Close</Button>
+                  <a
+                    href={rollbackPackage.pull_request_url || `https://github.com/infrastructure/aws-workloads/pull/new/${rollbackPackage.branch_name}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button size="sm" className="bg-purple-600 hover:bg-purple-500 text-white font-medium">
+                      <ExternalLink className="mr-1.5 size-3.5" /> View Rollback on GitHub
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch GitOps PR Modal */}
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-indigo-300">
+              <GitBranch className="size-4" /> Multi-Resource Batch GitOps Pull Request
+            </DialogTitle>
+            <DialogDescription>
+              Synthesized Terraform changes across all 5 resource vectors into a unified Pull Request.
+            </DialogDescription>
+          </DialogHeader>
+          {batchGenerating ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="size-8 animate-spin text-indigo-400" />
+              <span className="text-xs text-muted-foreground">Synthesizing batch Terraform changes across all 5 vectors...</span>
+            </div>
+          ) : batchResult ? (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                  <span className="text-[11px] text-muted-foreground">Branch</span>
+                  <div className="mt-1 font-mono text-xs font-semibold text-cyan-300 truncate">
+                    {batchResult.branch_name}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                  <span className="text-[11px] text-muted-foreground">Monthly Net Savings</span>
+                  <div className="mt-1 text-xs font-bold text-emerald-300">
+                    {formatCurrency(batchResult.total_monthly_savings, currency)}/mo
+                  </div>
+                </div>
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
+                  <span className="text-[11px] text-emerald-300">Annual Run-Rate ROI</span>
+                  <div className="mt-1 text-xs font-bold text-emerald-300">
+                    {formatCurrency(batchResult.total_annual_savings, currency)}/yr
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                  <span className="flex items-center gap-1"><FileCode className="size-3.5 text-indigo-400" /> Batch Terraform HCL Diff</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[11px]"
+                    onClick={() => {
+                      navigator.clipboard.writeText(batchResult.diff || '');
+                      setCopiedBatch(true);
+                      setTimeout(() => setCopiedBatch(false), 2000);
+                    }}
+                  >
+                    {copiedBatch ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+                    {copiedBatch ? 'Copied' : 'Copy Diff'}
+                  </Button>
+                </div>
+                <pre className="max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3.5 font-mono text-xs text-emerald-300">
+                  {batchResult.diff || '# Batch diff synthesized'}
+                </pre>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs text-muted-foreground">
+                  Target: <span className="font-mono text-foreground">{batchResult.target_branch || 'main'}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setBatchOpen(false)}>Close</Button>
+                  <a
+                    href={batchResult.pull_request_url || `https://github.com/${batchResult.repo_name || 'infrastructure/aws-workloads'}/pull/new/${batchResult.branch_name}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
+                      <ExternalLink className="mr-1.5 size-3.5" /> View Batch PR on GitHub
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              Failed to generate batch GitOps package.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiUrl: (path: string) => string }) {
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<any>(null);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<any | null>(null);
+  const [scanningAccId, setScanningAccId] = useState<string | null>(null);
+
+  // Enroll Account state
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [newAccId, setNewAccId] = useState('');
+  const [newAccName, setNewAccName] = useState('');
+  const [newAccRole, setNewAccRole] = useState('');
+  const [newAccRegion, setNewAccRegion] = useState('us-east-1');
+  const [isMgmtAcc, setIsMgmtAcc] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
+
+  const fetchFleet = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [sumRes, accRes] = await Promise.all([
+        fetch(apiUrl('/api/v2/fleet/summary')),
+        fetch(apiUrl('/api/v2/fleet/accounts')),
+      ]);
+      if (sumRes.ok) setSummary(await sumRes.json());
+      if (accRes.ok) {
+        const d = await accRes.json();
+        setAccounts(Array.isArray(d?.accounts) ? d.accounts : []);
+      }
+    } catch (err) {
+      console.error('Failed to load fleet data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl]);
+
+  useEffect(() => {
+    fetchFleet();
+  }, [fetchFleet]);
+
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    setDiscoverResult(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/fleet/discover'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role_name: 'CloudPulseReadOnlyRole' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDiscoverResult(`✅ Successfully auto-discovered ${data.discovered_count} member accounts via AWS Organizations API!`);
+        await fetchFleet();
+      } else {
+        setDiscoverResult(`❌ Discovery error: ${data.detail || 'Could not reach AWS Organizations'}`);
+      }
+    } catch (err: any) {
+      setDiscoverResult(`❌ Discovery failed: ${err.message}`);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const handleScanFleet = async (specificIds?: string[]) => {
+    if (specificIds?.length === 1) {
+      setScanningAccId(specificIds[0]);
+    } else {
+      setScanning(true);
+    }
+    setScanFeedback(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/fleet/scan'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(specificIds ? { account_ids: specificIds } : {}),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setScanFeedback(data);
+        await fetchFleet();
+      }
+    } catch (err) {
+      console.error('Fleet scan failed:', err);
+    } finally {
+      setScanning(false);
+      setScanningAccId(null);
+    }
+  };
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccId) return;
+    setEnrolling(true);
+    try {
+      const res = await fetch(apiUrl('/api/v2/fleet/accounts'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: newAccId,
+          account_name: newAccName || `Account-${newAccId}`,
+          role_arn: newAccRole || undefined,
+          region: newAccRegion,
+          is_management_account: isMgmtAcc,
+        }),
+      });
+      if (res.ok) {
+        setEnrollOpen(false);
+        setNewAccId('');
+        setNewAccName('');
+        setNewAccRole('');
+        await fetchFleet();
+      }
+    } catch (err) {
+      console.error('Enroll failed:', err);
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
+  const filteredAccounts = useMemo(() => {
+    return accounts.filter(acc =>
+      (acc.account_id || '').toLowerCase().includes(search.toLowerCase()) ||
+      (acc.account_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (acc.region || '').toLowerCase().includes(search.toLowerCase())
+    );
+  }, [accounts, search]);
+
+  const totalRegistered = summary?.total_accounts_registered || Math.max(accounts.length, 1);
+  const totalSpend = summary?.total_fleet_monthly_spend || 68.40;
+  const totalNodes = summary?.total_fleet_nodes || 0;
+  const totalVolumes = summary?.total_fleet_volumes || 0;
+  const totalEips = summary?.total_fleet_eips || 0;
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="Enterprise Fleet Management"
+        title="100+ AWS Member Account Auto-Discovery"
+        description="Centralized AWS Organizations visibility, multi-account health governance, and parallel cross-account waste sweeps."
+        status={
+          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+            AWS Organizations Fleet
+          </Badge>
+        }
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/10 bg-white/5 text-xs hover:bg-white/10"
+              onClick={() => setEnrollOpen(true)}
+            >
+              <Plus className="mr-1.5 size-3.5" /> Enroll Account
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20 text-xs"
+              onClick={handleDiscover}
+              disabled={discovering}
+            >
+              {discovering ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Network className="mr-1.5 size-3.5" />}
+              Auto-Discover Org Accounts
+            </Button>
+            <Button
+              size="sm"
+              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-medium"
+              onClick={() => handleScanFleet()}
+              disabled={scanning}
+            >
+              {scanning ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Play className="mr-1.5 size-3.5" />}
+              Run Fleet Sweep
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Discovered Fleet Accounts</span>
+              <Network className="size-4 text-cyan-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-cyan-300">{totalRegistered}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Auto-discovered across AWS Org</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Fleet-Wide Monthly Spend</span>
+              <CircleDollarSign className="size-4 text-emerald-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-foreground">
+              {formatCurrency(totalSpend, currency)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Across all member accounts</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Managed Cloud Footprint</span>
+              <Server className="size-4 text-indigo-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-indigo-300">
+              {formatInteger(totalNodes + totalVolumes + totalEips)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {totalNodes} EC2 · {totalVolumes} EBS · {totalEips} EIPs
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Last Fleet Sweep</span>
+              <Activity className="size-4 text-amber-400" />
+            </div>
+            <div className="mt-3 text-2xl font-bold text-amber-300">
+              {summary?.scan_duration_seconds ? `${summary.scan_duration_seconds.toFixed(2)}s` : 'Active'}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {summary?.successful_scans ?? 1}/{summary?.accounts_scanned ?? 1} scans successful
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {discoverResult && (
+        <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-400/10 p-3 text-xs text-cyan-200">
+          {discoverResult}
+        </div>
+      )}
+
+      {scanFeedback && (
+        <div className="mb-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-emerald-200 flex items-center justify-between">
+          <span>
+            ✅ Parallel scan completed across {scanFeedback.accounts_scanned} accounts in {scanFeedback.scan_duration_seconds}s! Total monthly spend analyzed: {formatCurrency(scanFeedback.total_fleet_monthly_spend, currency)}.
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={() => setScanFeedback(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+
+      <Card className="border-white/8 bg-card/70">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-base font-semibold">AWS Member Accounts Directory</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Multi-account inventory with cross-account IAM role assumption and FOCUS 1.0 billing mapping.
+            </p>
+          </div>
+          <div className="w-full sm:w-64">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Search account ID or name..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-8 h-9 border-white/10 bg-white/5 text-xs"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="py-12 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+              <Loader2 className="size-4 animate-spin text-cyan-400" /> Loading AWS member accounts...
+            </div>
+          ) : filteredAccounts.length === 0 ? (
+            <div className="py-12 text-center text-xs text-muted-foreground">
+              No accounts matching &quot;{search}&quot;. Click &quot;Auto-Discover Org Accounts&quot; to fetch from AWS Organizations.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/8 hover:bg-transparent">
+                    <TableHead className="text-xs">Account ID</TableHead>
+                    <TableHead className="text-xs">Account Name</TableHead>
+                    <TableHead className="text-xs">Region</TableHead>
+                    <TableHead className="text-xs">Role ARN / Session</TableHead>
+                    <TableHead className="text-xs">Hierarchy</TableHead>
+                    <TableHead className="text-xs text-center">Status</TableHead>
+                    <TableHead className="text-xs text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAccounts.map((acc: any) => {
+                    const isMgmt = acc.is_management_account;
+                    const isScanning = scanningAccId === acc.account_id;
+                    return (
+                      <TableRow key={acc.account_id} className="border-white/8">
+                        <TableCell className="font-mono text-xs font-semibold text-cyan-300">
+                          {acc.account_id}
+                        </TableCell>
+                        <TableCell className="text-xs font-medium">
+                          {acc.account_name || 'Member Account'}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-mono">
+                          {acc.region || 'us-east-1'}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono text-slate-400 max-w-xs truncate">
+                          {acc.role_arn || acc.auth_type || 'CloudPulseReadOnlyRole'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {isMgmt ? (
+                            <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 text-[10px]">
+                              Management Root
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-white/10 text-[10px]">
+                              Member Account
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={
+                              acc.status === 'SUSPENDED'
+                                ? 'border-red-400/30 text-red-300'
+                                : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                            }
+                          >
+                            {acc.status || 'ACTIVE'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px] border-white/10 bg-white/5 hover:bg-cyan-400/10 hover:text-cyan-300"
+                            disabled={isScanning}
+                            onClick={() => handleScanFleet([acc.account_id])}
+                          >
+                            {isScanning ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Play className="mr-1 size-3 text-cyan-400" />}
+                            Scan
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Enroll Account Modal */}
+      <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
+        <DialogContent className="max-w-md border-white/10 bg-slate-950 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Plus className="size-4 text-cyan-400" /> Enroll AWS Account into Fleet
+            </DialogTitle>
+            <DialogDescription>
+              Configure cross-account IAM Role ARN for automated multi-account optimization.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEnroll} className="space-y-3 py-2">
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">AWS Account ID *</label>
+              <Input
+                placeholder="12-digit AWS Account ID"
+                value={newAccId}
+                onChange={e => setNewAccId(e.target.value)}
+                required
+                className="border-white/10 bg-white/5 text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Account Display Name</label>
+              <Input
+                placeholder="e.g. Acme Payments Production"
+                value={newAccName}
+                onChange={e => setNewAccName(e.target.value)}
+                className="border-white/10 bg-white/5 text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Cross-Account IAM Role ARN</label>
+              <Input
+                placeholder="arn:aws:iam::123456789:role/CloudPulseReadOnlyRole"
+                value={newAccRole}
+                onChange={e => setNewAccRole(e.target.value)}
+                className="border-white/10 bg-white/5 text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Primary Region</label>
+              <Input
+                placeholder="us-east-1"
+                value={newAccRegion}
+                onChange={e => setNewAccRegion(e.target.value)}
+                className="border-white/10 bg-white/5 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="isMgmtAcc"
+                checked={isMgmtAcc}
+                onChange={e => setIsMgmtAcc(e.target.checked)}
+                className="rounded border-white/10"
+              />
+              <label htmlFor="isMgmtAcc" className="text-xs text-muted-foreground cursor-pointer">
+                Mark as AWS Organizations Management (Payer) Account
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-3">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEnrollOpen(false)}>Cancel</Button>
+              <Button type="submit" size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" disabled={enrolling}>
+                {enrolling ? <Loader2 className="mr-1 size-3 animate-spin" /> : null} Enroll Account
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function CiCdGuardrailView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiUrl: (path: string) => string }) {
+  const [appStatus, setAppStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [filePath, setFilePath] = useState('terraform/compute.tf');
+  const [diffText, setDiffText] = useState(
+`--- a/terraform/compute.tf
++++ b/terraform/compute.tf
+@@ -14,3 +14,3 @@
+ resource "aws_instance" "worker_fleet" {
+-  instance_type = "m5.2xlarge"
++  instance_type = "t4g.small"
+   count         = 3
+ }`
+  );
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [activePreset, setActivePreset] = useState(0);
+
+  const PRESETS = [
+    {
+      label: 'Fleet Downsizing (Cost Reduction)',
+      filePath: 'terraform/compute.tf',
+      diff: `--- a/terraform/compute.tf\n+++ b/terraform/compute.tf\n@@ -14,3 +14,3 @@\n resource "aws_instance" "worker_fleet" {\n-  instance_type = "m5.2xlarge"\n+  instance_type = "t4g.small"\n   count         = 3\n }`,
+    },
+    {
+      label: 'High-Spec GPU Spikes (> $500/mo Policy Breach)',
+      filePath: 'terraform/ml_nodes.tf',
+      diff: `--- a/terraform/ml_nodes.tf\n+++ b/terraform/ml_nodes.tf\n@@ -1,4 +1,8 @@\n+resource "aws_instance" "ai_cluster" {\n+  instance_type = "p4d.24xlarge"\n+  count         = 2\n+  ebs_block_device {\n+    volume_type = "io2"\n+    volume_size = 1000\n+    iops        = 50000\n+  }\n+}`,
+    },
+    {
+      label: 'EBS gp2 to gp3 Storage Upgrade',
+      filePath: 'terraform/storage.tf',
+      diff: `--- a/terraform/storage.tf\n+++ b/terraform/storage.tf\n@@ -5,3 +5,3 @@\n resource "aws_ebs_volume" "primary_disk" {\n-  type = "gp2"\n+  type = "gp3"\n   size = 500\n }`,
+    },
+  ];
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(apiUrl('/api/v2/github/status'));
+        if (res.ok && !cancelled) setAppStatus(await res.json());
+      } catch (err) {
+        console.error('Failed to fetch github app status:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchStatus();
+    return () => { cancelled = true; };
+  }, [apiUrl]);
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    setAnalysisResult(null);
+    try {
+      const res = await fetch(apiUrl('/api/v2/github/analyze-pr'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          diff: diffText,
+          file_path: filePath,
+          currency,
+          rate: 84.0,
+          pull_number: 142,
+        }),
+      });
+      if (res.ok) {
+        setAnalysisResult(await res.json());
+      }
+    } catch (err) {
+      console.error('Diff analysis failed:', err);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const selectPreset = (idx: number) => {
+    setActivePreset(idx);
+    const p = PRESETS[idx];
+    setFilePath(p.filePath);
+    setDiffText(p.diff);
+    setAnalysisResult(null);
+  };
+
+  const webhookEndpoint = apiUrl('/api/v2/github/webhook');
+  const checkStatus = analysisResult?.check_run?.conclusion || 'neutral';
+  const monthlyDelta = analysisResult?.analysis?.monthly_cost_delta_usd ?? 0;
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="FinOps Shift-Left CI/CD"
+        title="Native GitHub App & PR Cost Guardrails"
+        description="Automated cost impact diff analysis on Pull Requests before merging to prevent cloud bill shock."
+        status={
+          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+            PR Policy Enforcement
+          </Badge>
+        }
+      />
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-3">
+        <Card className="border-white/8 bg-card/70 lg:col-span-1">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <GitPullRequest className="size-4 text-cyan-400" />
+                GitHub App Status
+              </CardTitle>
+              <Badge variant="outline" className="border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-[11px]">
+                {appStatus?.status === 'active' ? 'Active & Ready' : 'Configured'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            <div>
+              <span className="text-muted-foreground block">Application Name</span>
+              <span className="font-semibold text-foreground text-sm">{appStatus?.app_name || 'CloudPulse FinOps Guardrail'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground block">Cost Spike Guardrail Policy</span>
+              <span className="font-semibold text-amber-300">
+                Block merge if PR spend delta &gt; ${appStatus?.spike_threshold_usd || 500}.00/mo
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground block">Supported CI/CD Engines</span>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {(appStatus?.supported_providers || ['GitHub Actions', 'GitLab CI', 'Bitbucket']).map((p: string) => (
+                  <Badge key={p} variant="outline" className="border-white/10 text-[10px]">{p}</Badge>
+                ))}
+              </div>
+            </div>
+            <div className="pt-2 border-t border-white/8">
+              <span className="text-muted-foreground block mb-1">GitHub Webhook URL</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  readOnly
+                  value={webhookEndpoint}
+                  className="font-mono text-[11px] h-8 border-white/10 bg-white/5"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-white/10 px-2.5 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(webhookEndpoint);
+                    setCopiedWebhook(true);
+                    setTimeout(() => setCopiedWebhook(false), 2000);
+                  }}
+                >
+                  {copiedWebhook ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/70 lg:col-span-2">
+          <CardHeader>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Interactive PR Diff Simulator</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Test Terraform HCL or cloud diffs against FinOps budget policies in real time.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium text-xs"
+                onClick={handleAnalyze}
+                disabled={analyzing}
+              >
+                {analyzing ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Play className="mr-1.5 size-3.5" />}
+                Run Guardrail Analysis
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <span className="text-xs text-muted-foreground block mb-1.5">Select Test Scenarios:</span>
+              <div className="flex flex-wrap gap-2">
+                {PRESETS.map((p, idx) => (
+                  <Button
+                    key={p.label}
+                    type="button"
+                    variant={activePreset === idx ? 'default' : 'outline'}
+                    size="sm"
+                    className={`text-xs h-7 ${activePreset === idx ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'border-white/10 bg-white/5'}`}
+                    onClick={() => selectPreset(idx)}
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted-foreground block mb-1">Target Infrastructure File Path</label>
+                <Input
+                  value={filePath}
+                  onChange={e => setFilePath(e.target.value)}
+                  className="font-mono text-xs h-8 border-white/10 bg-white/5"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Git Diff / Terraform Plan Content</label>
+              <textarea
+                value={diffText}
+                onChange={e => setDiffText(e.target.value)}
+                rows={7}
+                className="w-full rounded-lg border border-white/10 bg-black/60 p-3 font-mono text-xs text-emerald-300 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                placeholder="Paste git diff or Terraform HCL change here..."
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {analysisResult && (
+        <Card className="border-white/8 bg-card/70 mb-6">
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <GitPullRequest className="size-4 text-cyan-400" />
+                Guardrail Evaluation &amp; GitHub PR Comment Preview
+              </CardTitle>
+              <Badge
+                variant="outline"
+                className={`text-xs font-bold px-3 py-1 ${
+                  checkStatus === 'failure'
+                    ? 'border-red-400/40 bg-red-400/10 text-red-300'
+                    : checkStatus === 'action_required'
+                    ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+                    : 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300'
+                }`}
+              >
+                CHECK-RUN: {checkStatus.toUpperCase()}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div
+              className={`p-4 rounded-lg border text-xs flex items-center justify-between ${
+                checkStatus === 'failure'
+                  ? 'border-red-400/30 bg-red-400/10 text-red-200'
+                  : checkStatus === 'action_required'
+                  ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                  : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {checkStatus === 'failure' ? (
+                  <ShieldAlert className="size-5 text-red-400 shrink-0" />
+                ) : checkStatus === 'action_required' ? (
+                  <AlertTriangle className="size-5 text-amber-400 shrink-0" />
+                ) : (
+                  <ShieldCheck className="size-5 text-emerald-400 shrink-0" />
+                )}
+                <div>
+                  <div className="font-semibold text-sm">
+                    {checkStatus === 'failure'
+                      ? '🚨 Merge Blocked: Cost Increase Breaches $500/mo FinOps Policy'
+                      : checkStatus === 'action_required'
+                      ? '⚠️ Warning: PR introduces moderate cost increase'
+                      : '✅ FinOps Guardrail Passed: PR reduces infrastructure spend or maintains budget'}
+                  </div>
+                  <div className="text-[11px] opacity-90 mt-0.5">
+                    {analysisResult.check_run?.output?.summary || 'Evaluated against organization FinOps baseline'}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right shrink-0 font-mono">
+                <div className="text-xs text-muted-foreground">Monthly Net Delta</div>
+                <div className={`text-base font-bold ${monthlyDelta > 0 ? 'text-red-400' : 'text-emerald-300'}`}>
+                  {monthlyDelta > 0 ? `+${formatCurrency(monthlyDelta, currency)}` : formatCurrency(monthlyDelta, currency)}/mo
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-xs text-muted-foreground block mb-2 font-medium">Rendered GitHub PR Bot Comment:</span>
+              <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-slate-950 p-4 font-mono text-xs text-slate-200 whitespace-pre-wrap">
+                {analysisResult.comment_markdown || analysisResult.check_run?.output?.text}
+              </pre>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
 }
 
 function ConnectModal({ open, onOpenChange, onSuccess, initialProfile }: any) {

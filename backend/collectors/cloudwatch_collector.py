@@ -53,10 +53,10 @@ class CloudWatchCollector(AWSBaseCollector):
         return log_groups
 
     def enrich_instances_with_metrics(
-        self, instances: List[Dict[str, Any]], days: int = 7
+        self, instances: List[Dict[str, Any]], days: int = 14
     ) -> List[Dict[str, Any]]:
         """
-        Enriches running EC2 instances with 7-day average and peak CPU utilization.
+        Enriches running EC2 instances with 14-day average/peak CPU and CWAgent guest memory metrics.
         """
         cw = self.get_client("cloudwatch")
         end_time = datetime.now(timezone.utc)
@@ -68,12 +68,18 @@ class CloudWatchCollector(AWSBaseCollector):
                 inst["metrics"] = {
                     "cpu_utilization_avg": 0.0,
                     "cpu_utilization_max": 0.0,
+                    "mem_utilization_avg": 0.0,
+                    "mem_utilization_max": 0.0,
+                    "has_memory_metrics": False,
+                    "observation_days": days,
                     "net_in_mb": 0.0,
                     "net_out_mb": 0.0,
                 }
                 continue
 
             inst_id = inst.get("instance_id")
+            avg_cpu = 15.0
+            max_cpu = 30.0
             try:
                 cpu_resp = cw.get_metric_statistics(
                     Namespace="AWS/EC2",
@@ -88,20 +94,39 @@ class CloudWatchCollector(AWSBaseCollector):
                 if datapoints:
                     avg_cpu = sum(p.get("Average", 0) for p in datapoints) / len(datapoints)
                     max_cpu = max(p.get("Maximum", 0) for p in datapoints)
-                else:
-                    avg_cpu = 15.0  # Default heuristic baseline
-                    max_cpu = 30.0
-
-                inst["metrics"] = {
-                    "cpu_utilization_avg": round(float(avg_cpu), 2),
-                    "cpu_utilization_max": round(float(max_cpu), 2),
-                }
             except Exception as ex:
-                logger.warning(f"Could not fetch CloudWatch metrics for instance {inst_id}: {ex}")
-                inst["metrics"] = {
-                    "cpu_utilization_avg": 25.0,
-                    "cpu_utilization_max": 50.0,
-                }
+                logger.warning(f"Could not fetch CloudWatch CPU metrics for instance {inst_id}: {ex}")
+
+            # Attempt to fetch in-guest Memory Utilization from CWAgent namespace
+            avg_mem = None
+            max_mem = None
+            has_mem = False
+            try:
+                mem_resp = cw.get_metric_statistics(
+                    Namespace="CWAgent",
+                    MetricName="mem_used_percent",
+                    Dimensions=[{"Name": "InstanceId", "Value": inst_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=period,
+                    Statistics=["Average", "Maximum"],
+                )
+                mem_datapoints = mem_resp.get("Datapoints", [])
+                if mem_datapoints:
+                    avg_mem = sum(p.get("Average", 0) for p in mem_datapoints) / len(mem_datapoints)
+                    max_mem = max(p.get("Maximum", 0) for p in mem_datapoints)
+                    has_mem = True
+            except Exception:
+                pass
+
+            inst["metrics"] = {
+                "cpu_utilization_avg": round(float(avg_cpu), 2),
+                "cpu_utilization_max": round(float(max_cpu), 2),
+                "mem_utilization_avg": round(float(avg_mem), 2) if avg_mem is not None else None,
+                "mem_utilization_max": round(float(max_mem), 2) if max_mem is not None else None,
+                "has_memory_metrics": has_mem,
+                "observation_days": days,
+            }
 
         return instances
 

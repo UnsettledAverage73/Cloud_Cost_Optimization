@@ -81,6 +81,9 @@ class EC2Collector(AWSBaseCollector):
 
                 monthly_cost = round(base_rate, 2)
 
+                asg_name = tags.get("aws:autoscaling:groupName")
+                launch_template = inst.get("LaunchTemplate")
+
                 instances.append({
                     "instance_id": inst_id,
                     "name": name,
@@ -99,6 +102,9 @@ class EC2Collector(AWSBaseCollector):
                     "volumes": len(block_mappings),
                     "attached_volume_ids": attached_vol_ids,
                     "tags": tags,
+                    "asg_name": asg_name,
+                    "is_asg": bool(asg_name),
+                    "launch_template": launch_template,
                     "cost": monthly_cost,
                     "monthly_cost": monthly_cost,
                 })

@@ -79,6 +79,7 @@ try:
     from services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
     from services.opencost_engine import opencost_engine
     from services.github_app_engine import github_app_engine
+    from services.sla_watchdog import sla_watchdog
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -103,6 +104,7 @@ except ImportError:
     from backend.services.rbac_middleware import rbac_manager, FinOpsRole, FinOpsPermission
     from backend.services.opencost_engine import opencost_engine
     from backend.services.github_app_engine import github_app_engine
+    from backend.services.sla_watchdog import sla_watchdog
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -940,20 +942,58 @@ async def apply_optimization(payload: dict):
 @app.put("/api/settings")
 async def update_settings(payload: dict):
     org_name = payload.get("orgName")
-    if not org_name:
-        raise HTTPException(status_code=400, detail="orgName is required")
-    _db()["metadata"]["organization"] = org_name
-    return {"status": "saved", "organization": org_name}
+    if org_name:
+        _db()["metadata"]["organization"] = org_name
+    
+    # Update notification channels if provided
+    meta = _db()["metadata"]
+    if "slackWebhookUrl" in payload:
+        meta["slack_webhook_url"] = payload["slackWebhookUrl"]
+        if payload["slackWebhookUrl"]:
+            os.environ["SLACK_WEBHOOK_URL"] = payload["slackWebhookUrl"]
+    if "teamsWebhookUrl" in payload:
+        meta["teams_webhook_url"] = payload["teamsWebhookUrl"]
+        if payload["teamsWebhookUrl"]:
+            os.environ["TEAMS_WEBHOOK_URL"] = payload["teamsWebhookUrl"]
+    if "slackBotToken" in payload and payload["slackBotToken"] and not payload["slackBotToken"].startswith("••••"):
+        meta["slack_bot_token"] = payload["slackBotToken"]
+        os.environ["SLACK_BOT_TOKEN"] = payload["slackBotToken"]
+    if "slackChannel" in payload:
+        meta["slack_channel"] = payload["slackChannel"]
+        if payload["slackChannel"]:
+            os.environ["SLACK_CHANNEL"] = payload["slackChannel"]
+    if "whatsappTo" in payload:
+        meta["whatsapp_to"] = payload["whatsappTo"]
+        if payload["whatsappTo"]:
+            os.environ["WHATSAPP_ALERT_TO"] = payload["whatsappTo"]
+
+    return {
+        "status": "saved",
+        "organization": meta.get("organization", ""),
+        "slack_webhook_url": meta.get("slack_webhook_url", os.getenv("SLACK_WEBHOOK_URL", "")),
+        "teams_webhook_url": meta.get("teams_webhook_url", os.getenv("TEAMS_WEBHOOK_URL", "")),
+        "slack_channel": meta.get("slack_channel", os.getenv("SLACK_CHANNEL", "#general")),
+        "whatsapp_to": meta.get("whatsapp_to", os.getenv("WHATSAPP_ALERT_TO", ""))
+    }
 
 
 @app.get("/api/settings")
 async def get_settings():
     metadata = _db()["metadata"]
+    raw_token = metadata.get("slack_bot_token") or os.getenv("SLACK_BOT_TOKEN", "")
+    masked_token = f"••••••••{raw_token[-4:]}" if len(raw_token) > 4 else ("••••••••" if raw_token else "")
+
     return {
         "organization": metadata.get("organization", ""),
         "region": metadata.get("region", "us-east-1"),
         "timestamp": metadata.get("timestamp"),
+        "slack_webhook_url": metadata.get("slack_webhook_url") or os.getenv("SLACK_WEBHOOK_URL", ""),
+        "teams_webhook_url": metadata.get("teams_webhook_url") or os.getenv("TEAMS_WEBHOOK_URL", ""),
+        "slack_bot_token": masked_token,
+        "slack_channel": metadata.get("slack_channel") or os.getenv("SLACK_CHANNEL", "#general"),
+        "whatsapp_to": metadata.get("whatsapp_to") or os.getenv("WHATSAPP_ALERT_TO", ""),
     }
+
 
 
 @app.post("/api/accounts/connect")
@@ -1574,6 +1614,33 @@ async def create_gitops_remediation_pr(payload: dict):
     return pr_package
 
 
+@app.post("/api/v2/gitops/batch-pr")
+async def create_gitops_batch_remediation_pr(payload: Optional[dict] = None):
+    """Creates a unified multi-resource batch GitOps Pull Request package across all 5 resource vectors."""
+    payload = payload or {}
+    findings = payload.get("findings")
+    if not findings:
+        inventory = resolve_active_inventory()
+        try:
+            from engines.finops_analyzer import FinOpsAnalyzer
+            eval_res = FinOpsAnalyzer.evaluate(inventory)
+            findings = eval_res.get("findings", [])
+        except Exception:
+            findings = []
+
+    environment = payload.get("environment", "production")
+    repo_name = payload.get("repo_name", "infrastructure/aws-workloads")
+    target_branch = payload.get("target_branch", "main")
+
+    pkg = gitops_engine.create_batch_remediation_pr(
+        findings=findings,
+        environment=environment,
+        repo_name=repo_name,
+        target_branch=target_branch
+    )
+    return pkg
+
+
 @app.get("/api/v2/gitops/audit-log")
 async def get_gitops_audit_log(limit: int = 50):
     """Returns immutable audit trail of all GitOps PRs and remediations."""
@@ -1828,6 +1895,75 @@ async def get_github_app_status():
         "webhook_configured": bool(os.getenv("GITHUB_WEBHOOK_SECRET")),
         "supported_providers": ["GitHub", "GitLab CI", "Bitbucket Pipelines"]
     }
+
+
+
+# =====================================================================
+# ⏱️ CLOUDWATCH SLA WATCHDOG & AUTOMATED ROLLBACK APIS
+# =====================================================================
+
+@app.get("/api/v2/sla/watches")
+async def list_sla_watches():
+    """Returns all active and historical post-remediation SLA watchdog periods."""
+    return {"watches": sla_watchdog.list_watches()}
+
+
+@app.get("/api/v2/sla/watches/{watch_id}")
+async def get_sla_watch(watch_id: str):
+    """Retrieves detailed CloudWatch SLA telemetry and status for a specific watch period."""
+    watch = sla_watchdog.get_watch(watch_id)
+    if not watch:
+        raise HTTPException(status_code=404, detail="Watch period not found")
+    return {"watch": watch, **watch}
+
+
+@app.post("/api/v2/sla/watch")
+async def register_sla_watch(payload: dict):
+    """Registers a new 60-minute post-remediation SLA watchdog monitoring period."""
+    resource_id = payload.get("resource_id")
+    action = payload.get("remediation_action", "optimize")
+    if not resource_id:
+        raise HTTPException(status_code=400, detail="resource_id is required")
+
+    watch = sla_watchdog.register_watch(
+        resource_id=resource_id,
+        remediation_action=action,
+        previous_config=payload.get("previous_config", {}),
+        applied_config=payload.get("applied_config", {}),
+        baseline_metrics=payload.get("baseline_metrics", {"p95_latency_ms": 40.0, "error_rate_pct": 0.01}),
+        file_path=payload.get("file_path", "terraform/compute.tf"),
+        repo_name=payload.get("repo_name", "infrastructure/aws-workloads"),
+        duration_minutes=payload.get("duration_minutes", 60),
+        max_latency_increase_pct=payload.get("max_latency_increase_pct", 15.0)
+    )
+    return {"status": "registered", "watch": watch}
+
+
+@app.post("/api/v2/sla/watches/{watch_id}/evaluate")
+async def evaluate_sla_watch(watch_id: str, payload: Optional[dict] = None):
+    """
+    Evaluates current CloudWatch telemetry against SLA thresholds.
+    If degradation is detected (>15% latency spike), autonomously triggers git revert rollback.
+    """
+    payload = payload or {}
+    metrics = payload.get("current_metrics") or payload.get("metrics")
+    try:
+        res = sla_watchdog.evaluate_health(watch_id, current_metrics=metrics)
+        return {"evaluation": res, **res}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Watch period not found")
+
+
+@app.post("/api/v2/sla/watches/{watch_id}/rollback")
+async def trigger_sla_rollback(watch_id: str, payload: Optional[dict] = None):
+    """Forces an immediate safe git revert rollback PR for a monitored resource."""
+    payload = payload or {}
+    reasons = payload.get("reasons", ["Manual operator rollback triggered via API"])
+    try:
+        pkg = sla_watchdog.trigger_automated_rollback(watch_id, breach_reasons=reasons)
+        return {"status": "rolled_back", "rollback_pr": pkg, "rollback": pkg}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Watch period not found")
 
 
 

@@ -198,10 +198,11 @@ def test_finops_rag_hybrid_retrieval_and_cache():
     assert len(augmented["semantic_policies"]) > 0
 
     # 3. Test ask with query caching
-    res1 = pipeline.ask("How to optimize our gp2 volumes?", inventory=sample_inventory, use_cache=True)
-    assert res1["status"] in ["success", "fallback"]
-    assert res1.get("cached") is False
+    with patch.object(pipeline.engine, "chat_completion", return_value="Migrate gp2 to gp3 for 20% savings."):
+        res1 = pipeline.ask("How to optimize our gp2 volumes?", inventory=sample_inventory, use_cache=True)
+        assert res1["status"] in ["success", "fallback"]
+        assert res1.get("cached") is False
 
-    # Second call should be retrieved from query cache
-    res2 = pipeline.ask("How to optimize our gp2 volumes?", inventory=sample_inventory, use_cache=True)
-    assert res2.get("cached") is True
+        # Second call should be retrieved from query cache
+        res2 = pipeline.ask("How to optimize our gp2 volumes?", inventory=sample_inventory, use_cache=True)
+        assert res2.get("cached") is True

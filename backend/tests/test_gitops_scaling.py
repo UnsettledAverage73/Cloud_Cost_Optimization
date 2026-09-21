@@ -415,6 +415,26 @@ def test_notification_interactive_callbacks():
     assert res_unk["status"] == "ignored"
 
 
+def test_notification_slack_api_dispatch(monkeypatch):
+    """Verifies direct Slack Web API dispatch with bot token."""
+    from unittest.mock import MagicMock
+    import urllib.request
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=5.0: mock_resp)
+
+    card = {"text": "Test alert", "blocks": []}
+    success = notification_engine.dispatch_slack_api("xoxb-test-token", "#finops-alerts", card)
+    assert success is True
+
+    # Test empty token
+    assert notification_engine.dispatch_slack_api("", "#general", card) is False
+
+
+
 def test_api_notifications_slack_batch():
     """Verifies FastAPI POST /api/v2/notifications/slack/batch endpoint."""
     client = TestClient(app)

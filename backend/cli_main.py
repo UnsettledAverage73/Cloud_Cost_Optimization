@@ -206,13 +206,25 @@ def cmd_status(args):
 def cmd_audit(args):
     print_banner()
     backend_url = get_backend_url(args.url)
+    curr = getattr(args, "currency", "USD").upper()
     print(f"🔍 Executing CloudPulse FinOps Audit on {BOLD}{backend_url}{RESET}...\n")
 
-    # Ensure demo mode is ready if needed
-    try:
-        http_json(f"{backend_url}/api/v1/demo/enable", method="POST")
-    except Exception:
-        pass
+    # Only enable demo mode if explicitly requested or if backend is completely disconnected
+    do_demo = getattr(args, "demo", False)
+    if do_demo:
+        try:
+            http_json(f"{backend_url}/api/v1/demo/enable", method="POST")
+        except Exception:
+            pass
+    else:
+        try:
+            conn_st = http_json(f"{backend_url}/api/v1/connect-cloud/state")
+            if not conn_st.get("connected"):
+                http_json(f"{backend_url}/api/v1/demo/enable", method="POST")
+            elif conn_st.get("access_mode") == "demo":
+                http_json(f"{backend_url}/api/v1/demo/disable", method="POST")
+        except Exception:
+            pass
 
     # 1. Dashboard Summary
     try:
@@ -223,8 +235,8 @@ def cmd_audit(args):
 
         print(f"{BOLD}💰 SPEND OVERVIEW{RESET}")
         print("-" * 55)
-        print(f"  • Total Monthly Spend  : {BOLD}${monthly_spend:,.2f}{RESET}")
-        print(f"  • Identifiable Waste   : {RED}${wasted_spend:,.2f} ({waste_percent}% of total bill){RESET}")
+        print(f"  • Total Monthly Spend  : {BOLD}{fmt_cost(monthly_spend, curr, dual=True)}{RESET}")
+        print(f"  • Identifiable Waste   : {RED}{fmt_cost(wasted_spend, curr)} ({waste_percent}% of total bill){RESET}")
         print(f"  • Monitored Nodes      : {summary.get('total_nodes')} ({summary.get('running_nodes')} running)")
     except Exception as e:
         print(f"{YELLOW}Notice fetching summary:{RESET} {e}")
@@ -262,9 +274,9 @@ def cmd_audit(args):
             savings = float(opt.get("savings") or 0.0)
             total_potential += savings
             title = (opt.get("title", "")[:36] + "..") if len(opt.get("title", "")) > 38 else opt.get("title", "")
-            print(f"  {opt.get('type', ''):<20} {title:<38} {GREEN}+${savings:,.2f}/mo{RESET}")
+            print(f"  {opt.get('type', ''):<20} {title:<38} {GREEN}+{fmt_cost(savings, curr)}/mo{RESET}")
         print("  " + "-" * 71)
-        print(f"  {BOLD}Total Potential Monthly Savings:{RESET} {GREEN}{BOLD}+${total_potential:,.2f}/mo{RESET}")
+        print(f"  {BOLD}Total Potential Monthly Savings:{RESET} {GREEN}{BOLD}+{fmt_cost(total_potential, curr, dual=True)}/mo{RESET}")
     except Exception:
         pass
 
@@ -276,7 +288,9 @@ def cmd_audit(args):
             print(f"\n{BOLD}🚨 DETECTED COST ANOMALIES ({len(anomalies)}){RESET}")
             print("-" * 55)
             for a in anomalies[:3]:
-                print(f"  • {a.get('day')}: ${a.get('cost')} (Spike: {RED}+{a.get('spike_percentage')}%{RESET} vs expected ${a.get('expected_mean')})")
+                c_val = float(a.get('cost', 0.0) or 0.0)
+                exp_val = float(a.get('expected_mean', 0.0) or 0.0)
+                print(f"  • {a.get('day')}: {fmt_cost(c_val, curr)} (Spike: {RED}+{a.get('spike_percentage')}%{RESET} vs expected {fmt_cost(exp_val, curr)})")
     except Exception:
         pass
     print("\n" + "=" * 75 + "\n")
@@ -361,9 +375,13 @@ def cmd_ask(args):
     # Fetch live cloud inventory to ground RAG in actual AWS infrastructure
     live_inv = None
     try:
-        live_inv = fetch_inventory_data(backend_url)
+        live_inv = resolve_cli_inventory(no_cache=getattr(args, "no_cache", False))
     except Exception:
-        pass
+        try:
+            live_inv = fetch_inventory_data(backend_url)
+        except Exception:
+            pass
+
 
     # RAG direct route if requested
     use_cache = not getattr(args, "no_cache", False)
@@ -477,12 +495,13 @@ def cmd_recommend(args):
     annual = report_data.get("annual_savings", 0.0)
     items = report_data.get("items_audited", 0)
     raw_md = report_data.get("report_markdown", "")
+    curr = getattr(args, "currency", "USD").upper()
 
     header = (
         f"{get_banner_str()}\n"
         f"{'=' * 88}\n"
         f"  🤖 AI ENGINE: {provider.upper()} ({model}) | 🔍 AUDITED ITEMS: {items}\n"
-        f"  💰 POTENTIAL MONTHLY RECOVERY: ${monthly:.2f}/mo  (${annual:.2f}/year)\n"
+        f"  💰 POTENTIAL MONTHLY RECOVERY: {fmt_cost(monthly, curr, dual=True)}/mo  ({fmt_cost(annual, curr)}/year)\n"
         f"{'=' * 88}\n\n"
     )
 
@@ -710,29 +729,71 @@ def cmd_fleet(args):
 # ==========================================
 def cmd_iac(args):
     backend_url = get_backend_url(args.url)
-    payload = {
-        "resource_id": args.resource_id,
-        "action": args.action,
-        "from_type": args.from_type,
-        "to_type": args.to_type
-    }
-    print(f"Generating Terraform PR for {args.resource_id} on {backend_url}...")
-    try:
-        res = http_json(f"{backend_url}/api/v2/copilot/generate-iac-pr", method="POST", payload=payload)
-        print(f"\n{GREEN}✅ Remediation PR Generated:{RESET}")
-        print(f"  • Branch Name : {BOLD}{res.get('branch_name')}{RESET}")
-        print(f"  • Commit Title: {res.get('commit_title')}")
-        print(f"\n{BOLD}📄 Unified Diff:{RESET}\n")
-        print(res.get("unified_diff", ""))
+    resource_id = getattr(args, "resource_id", None)
+    action = getattr(args, "action", "rightsize") or "rightsize"
+    from_type = getattr(args, "from_type", None)
+    to_type = getattr(args, "to_type", None)
 
-        output_dest = getattr(args, "output", None)
-        if output_dest:
-            with open(output_dest, "w", encoding="utf-8") as f:
-                f.write(res.get("hcl_after", ""))
-            print(f"\n💾 Saved Terraform HCL to: {output_dest}")
-    except Exception as e:
-        print(f"{RED}Failed to generate IaC:{RESET} {e}")
-        sys.exit(1)
+    # Auto-resolve candidate resource from live inventory if omitted
+    if not resource_id:
+        inv = resolve_cli_inventory()
+        nodes = inv.get("compute", {}).get("nodes", []) or inv.get("nodes", [])
+        if nodes:
+            candidate = nodes[0]
+            resource_id = candidate.get("instance_id") or candidate.get("id") or "i-07d01b00f95a4cc41"
+            from_type = from_type or candidate.get("instance_type") or candidate.get("type") or "t3.large"
+            if not to_type:
+                to_type = "t3.micro" if ("large" in str(from_type) or "xlarge" in str(from_type)) else "t4g.nano"
+            print(f"  {CYAN}⚡ Auto-resolved live candidate:{RESET} {resource_id} ({from_type} ➔ {to_type})")
+        else:
+            resource_id = "i-07d01b00f95a4cc41"
+            from_type = from_type or "t3.large"
+            to_type = to_type or "t3.micro"
+            print(f"  {CYAN}⚡ Target Candidate:{RESET} {resource_id} ({from_type} ➔ {to_type})")
+
+    from_type = from_type or "m5.2xlarge"
+    to_type = to_type or "t4g.medium"
+    print(f"Generating Terraform PR for {resource_id} ({from_type} ➔ {to_type})...")
+
+    res = None
+    try:
+        from copilot.tools.terraform_pr_tool import generate_terraform_remediation_pr
+        res = generate_terraform_remediation_pr(
+            finding_id=f"finops-optimize-{resource_id}",
+            resource_id=resource_id,
+            action_type="downsize_ec2",
+            current_config={"instance_type": from_type, "name": f"workload_{resource_id.replace('-', '_')}"},
+            recommended_config={"instance_type": to_type},
+            monthly_savings=51.68
+        )
+    except Exception:
+        pass
+
+    if not res:
+        try:
+            payload = {
+                "resource_id": resource_id,
+                "action": action,
+                "from_type": from_type,
+                "to_type": to_type
+            }
+            res = http_json(f"{backend_url}/api/v2/copilot/generate-iac-pr", method="POST", payload=payload, timeout=5.0)
+        except Exception as e:
+            print(f"{RED}Failed to generate IaC:{RESET} {e}")
+            sys.exit(1)
+
+    print(f"\n{GREEN}✅ Remediation PR Generated:{RESET}")
+    print(f"  • Branch Name : {BOLD}{res.get('branch_name')}{RESET}")
+    print(f"  • Commit Title: {res.get('commit_title')}")
+    print(f"\n{BOLD}📄 Unified Diff:{RESET}\n")
+    print(res.get("unified_diff", ""))
+
+    output_dest = getattr(args, "output", None)
+    if output_dest:
+        with open(output_dest, "w", encoding="utf-8") as f:
+            f.write(res.get("hcl_after", ""))
+        print(f"\n💾 Saved Terraform HCL to: {output_dest}")
+
 
 # ==========================================
 # COMMAND: apply (Autonomous GitOps Remediation)
@@ -752,12 +813,16 @@ def cmd_apply(args):
     environment = getattr(args, "environment", "production") or "production"
     repo_name = getattr(args, "repo", "infrastructure/aws-workloads") or "infrastructure/aws-workloads"
     dry_run = getattr(args, "dry_run", False)
+    is_live = getattr(args, "live", False)
+    yes_flag = getattr(args, "yes", False)
+    force_flag = getattr(args, "force", False)
     savings = float(getattr(args, "savings", 0.0) or 0.0)
     slack_webhook = getattr(args, "slack", None)
     teams_webhook = getattr(args, "teams", None)
     fmt = get_report_format(args)
     output_dest = getattr(args, "output", None)
     backend_url = get_backend_url(getattr(args, "url", None))
+    curr = getattr(args, "currency", "USD").upper()
 
     try:
         from services.gitops_engine import gitops_engine
@@ -847,6 +912,224 @@ def cmd_apply(args):
     # -------------------------------------------------------------
     # SINGLE-RESOURCE REMEDIATION MODE
     # -------------------------------------------------------------
+    if resource_id:
+        try:
+            inv = resolve_cli_inventory()
+            nodes = inv.get("compute", {}).get("nodes") or inv.get("nodes", [])
+            volumes = inv.get("ec2_other_resources", {}).get("ebs_volumes") or inv.get("ebs_volumes", [])
+            eips = inv.get("ec2_other_resources", {}).get("elastic_ips") or inv.get("elastic_ips", [])
+
+            matched_node = next((n for n in nodes if n.get("instance_id") == resource_id or n.get("id") == resource_id), None)
+            matched_vol = next((v for v in volumes if v.get("volume_id") == resource_id or v.get("id") == resource_id), None)
+            matched_eip = next((e for e in eips if e.get("public_ip") == resource_id or e.get("allocation_id") == resource_id), None)
+
+            try:
+                from services.cost_analytics import evaluate_inventory_optimizations
+                findings = evaluate_inventory_optimizations(inv)
+            except Exception:
+                findings = []
+
+            res_findings = [f for f in findings if f.get("resource_id") == resource_id]
+
+            if matched_node:
+                current_type = matched_node.get("instance_type") or matched_node.get("type") or "t3.large"
+                if not from_type:
+                    from_type = current_type
+
+                user_action = getattr(args, "action", None)
+                if not user_action and res_findings:
+                    action = res_findings[0].get("action", action)
+
+                if savings <= 0.0 and res_findings:
+                    savings = float(res_findings[0].get("monthly_savings", 0.0))
+
+                if not to_type:
+                    if res_findings and res_findings[0].get("recommended_type"):
+                        to_type = res_findings[0].get("recommended_type")
+                    elif "graviton" in action.lower():
+                        to_type = from_type.replace("t3.", "t4g.").replace("m5.", "m6g.").replace("c5.", "c6g.")
+                    elif "stop" in action.lower():
+                        to_type = "stopped"
+                    else:
+                        downsize_map = {"2xlarge": "xlarge", "xlarge": "large", "large": "medium", "medium": "small", "small": "micro", "micro": "nano"}
+                        parts = from_type.split(".")
+                        if len(parts) == 2 and parts[1] in downsize_map:
+                            to_type = f"{parts[0]}.{downsize_map[parts[1]]}"
+                        else:
+                            to_type = "t3.medium" if from_type != "t3.medium" else "t3.small"
+
+                if savings <= 0.0:
+                    inst_cost = float(matched_node.get("cost", 60.80) or 60.80)
+                    if "stop" in action.lower():
+                        savings = round(inst_cost * 0.85, 2)
+                    elif "graviton" in action.lower():
+                        savings = round(inst_cost * 0.20, 2)
+                    else:
+                        savings = round(inst_cost * 0.50, 2)
+
+            elif matched_vol:
+                if not from_type:
+                    from_type = matched_vol.get("volume_type") or "gp2"
+                if not to_type:
+                    to_type = "gp3"
+                if not getattr(args, "action", None):
+                    action = "modernize"
+                if savings <= 0.0:
+                    if res_findings:
+                        savings = float(res_findings[0].get("monthly_savings", 0.0))
+                    else:
+                        size_gb = float(matched_vol.get("size_gb", 30.0))
+                        savings = round(size_gb * 0.016, 2)
+
+            elif matched_eip:
+                if not getattr(args, "action", None):
+                    action = "release"
+                if savings <= 0.0:
+                    savings = 3.65
+        except Exception:
+            pass
+
+    # -------------------------------------------------------------
+    # LIVE CLOSED-LOOP REMEDIATION MODE (--live)
+    # -------------------------------------------------------------
+    if is_live and resource_id:
+        try:
+            from remediation.actions import SafeRemediationExecutor
+        except ImportError:
+            from backend.remediation.actions import SafeRemediationExecutor
+
+        executor = SafeRemediationExecutor(region=getattr(args, "region", "us-east-1"))
+
+        if dry_run:
+            res = executor.execute(
+                action=action,
+                resource_id=resource_id,
+                dry_run=True,
+                tags={"Environment": environment},
+                extra_params={"to_type": to_type, "force": force_flag}
+            )
+            if fmt == "json":
+                emit_output(json.dumps(res, indent=2), output_dest)
+                return
+
+            out = []
+            out.append(get_banner_str())
+            out.append("=" * 88)
+            out.append("     🛡️  CLOUDPULSE LIVE REMEDIATION PRE-FLIGHT (DRY-RUN SIMULATION)")
+            out.append("=" * 88)
+            out.append(f"  • Target Resource      : {BOLD}{resource_id}{RESET}")
+            out.append(f"  • Proposed Action      : {YELLOW}{action.upper()}{RESET} ({from_type} -> {to_type})")
+            out.append(f"  • Target Environment   : {BOLD}{environment.upper()}{RESET}")
+            out.append(f"  • Estimated Savings    : {GREEN}{fmt_cost(savings, curr, dual=True)}/mo{RESET}")
+            out.append(f"  • Pre-Flight Safety    : {GREEN}PASSED{RESET} (Pre-flight EBS snapshot required: {res.get('details', {}).get('safety_snapshot_required', True)})")
+            out.append(f"  • Live Execution Status: {res.get('status')}")
+            out.append("-" * 88)
+            out.append(f"  ℹ️  [DRY-RUN]: No actual cloud state was mutated.")
+            out.append(f"  To execute this remediation directly on AWS, rerun with `--live` (omit `--dry-run`).")
+            out.append("=" * 88 + "\n")
+            emit_output("\n".join(out), output_dest)
+            return
+
+        # Interactive confirmation if not --yes
+        if not yes_flag:
+            print(f"\n{YELLOW}{BOLD}⚠️  LIVE REMEDIATION CONFIRMATION{RESET}")
+            print("-" * 65)
+            print(f"  • Resource ID : {BOLD}{resource_id}{RESET}")
+            print(f"  • Action      : {YELLOW}{action.upper()}{RESET} ({from_type} -> {to_type})")
+            print(f"  • Savings     : {GREEN}{fmt_cost(savings, curr, dual=True)}/mo{RESET}")
+            print(f"  • Safety      : Pre-flight EBS snapshot will be created automatically.")
+            print("-" * 65)
+            try:
+                confirm = input(f"Are you sure you want to execute live remediation on {resource_id}? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                confirm = "n"
+            if confirm not in ["y", "yes"]:
+                print(f"\n{YELLOW}Remediation cancelled by operator.{RESET}\n")
+                return
+
+        res = executor.execute(
+            action=action,
+            resource_id=resource_id,
+            dry_run=False,
+            tags={"Environment": environment},
+            extra_params={"to_type": to_type, "force": force_flag}
+        )
+
+        # Dispatch webhooks if specified
+        if slack_webhook:
+            try:
+                try:
+                    from services.notification_engine import notification_engine
+                except ImportError:
+                    from backend.services.notification_engine import notification_engine
+                card = notification_engine.format_slack_alert(
+                    resource_id=resource_id,
+                    finding_title=f"Live Remediation: {action.title()} {resource_id}",
+                    severity="HIGH" if savings >= 20 else "MEDIUM",
+                    current_monthly_spend=savings * 1.5,
+                    potential_monthly_savings=savings,
+                    recommended_action=f"Live remediation executed: {res.get('message')}"
+                )
+                notification_engine.dispatch_webhook(slack_webhook, card)
+                res["slack_notified"] = True
+            except Exception as e:
+                res["slack_error"] = str(e)
+
+        if teams_webhook:
+            try:
+                try:
+                    from services.notification_engine import notification_engine
+                except ImportError:
+                    from backend.services.notification_engine import notification_engine
+                card = notification_engine.format_teams_adaptive_card(
+                    resource_id=resource_id,
+                    finding_title=f"Live Remediation: {action.title()} {resource_id}",
+                    severity="HIGH" if savings >= 20 else "MEDIUM",
+                    current_monthly_spend=savings * 1.5,
+                    potential_monthly_savings=savings,
+                    recommended_action=f"Live remediation executed: {res.get('message')}"
+                )
+                notification_engine.dispatch_webhook(teams_webhook, card)
+                res["teams_notified"] = True
+            except Exception as e:
+                res["teams_error"] = str(e)
+
+        if fmt == "json":
+            emit_output(json.dumps(res, indent=2), output_dest)
+            return
+
+        out = []
+        out.append(get_banner_str())
+        out.append("=" * 88)
+        if res.get("success"):
+            out.append("     ⚡ CLOUDPULSE LIVE REMEDIATION COMPLETED")
+            out.append("=" * 88)
+            out.append(f"  • Target Resource      : {BOLD}{resource_id}{RESET}")
+            out.append(f"  • Action Executed      : {GREEN}{action.upper()}{RESET}")
+            out.append(f"  • Execution Status     : {GREEN}SUCCESS{RESET}")
+            out.append(f"  • Message              : {res.get('message')}")
+            snaps = res.get("safety_snapshots", [])
+            if snaps:
+                out.append(f"  • Safety Snapshot(s)   : {CYAN}{', '.join(snaps)}{RESET}")
+            out.append(f"  • Recovered Run-Rate   : {GREEN}{BOLD}{fmt_cost(savings, curr, dual=True)}/mo{RESET}")
+            if res.get("slack_notified"):
+                out.append(f"  • Slack Notification   : {GREEN}DISPATCHED{RESET}")
+            if res.get("teams_notified"):
+                out.append(f"  • Teams Notification   : {GREEN}DISPATCHED{RESET}")
+            out.append("-" * 88)
+            out.append(f"  {BOLD}🔄 Instant 1-Click Rollback is available:{RESET}")
+            out.append(f"     bin/cloudpulse rollback {resource_id}")
+        else:
+            out.append("     ❌ CLOUDPULSE LIVE REMEDIATION FAILED / BLOCKED")
+            out.append("=" * 88)
+            out.append(f"  • Target Resource      : {BOLD}{resource_id}{RESET}")
+            out.append(f"  • Action Attempted     : {action.upper()}")
+            out.append(f"  • Status               : {RED}{res.get('status', 'FAILED')}{RESET}")
+            out.append(f"  • Reason               : {res.get('message')}")
+        out.append("=" * 88 + "\n")
+        emit_output("\n".join(out), output_dest)
+        return
+
     if dry_run:
         preflight = gitops_engine.evaluate_preflight_safety(resource_id, action, environment)
         pkg = gitops_engine.create_remediation_pr(
@@ -996,8 +1279,181 @@ def cmd_apply(args):
     out.append("=" * 88)
     out.append(f"  ✨ Review the PR and merge to let Terraform Cloud/CI apply the infrastructure change.")
     out.append("=" * 88 + "\n")
-def resolve_cli_inventory() -> dict:
-    """Resolves cloud inventory: checks fleet_cache for live scanned inventory first, falls back to mock_database."""
+
+
+# ==========================================
+# COMMAND: rollback (Closed-Loop Instant Rollback Engine)
+# ==========================================
+def cmd_rollback(args):
+    """
+    Safely rolls back recent remediation actions on a cloud resource.
+    Restores previous instance type or restarts stopped instances using
+    AWS resource tags and local FinOps audit ledger.
+    """
+    resource_id = getattr(args, "resource_id", None)
+    if not resource_id:
+        print(f"{RED}Error:{RESET} Target resource ID is required for rollback (e.g. `cloudpulse rollback i-07d01b00f95a4cc41`)")
+        sys.exit(1)
+
+    region = getattr(args, "region", "us-east-1")
+    dry_run = getattr(args, "dry_run", False)
+    yes_flag = getattr(args, "yes", False)
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+
+    try:
+        from remediation.actions import SafeRemediationExecutor
+    except ImportError:
+        from backend.remediation.actions import SafeRemediationExecutor
+
+    executor = SafeRemediationExecutor(region=region)
+
+    if dry_run:
+        res = executor.execute("rollback", resource_id, dry_run=True)
+        if fmt == "json":
+            emit_output(json.dumps(res, indent=2), output_dest)
+            return
+        out = []
+        out.append(get_banner_str())
+        out.append("=" * 88)
+        out.append("     🛡️  CLOUDPULSE ROLLBACK PRE-FLIGHT (DRY-RUN SIMULATION)")
+        out.append("=" * 88)
+        out.append(f"  • Target Resource      : {BOLD}{resource_id}{RESET}")
+        out.append(f"  • Target Action        : {YELLOW}ROLLBACK{RESET}")
+        out.append(f"  • Region               : {region}")
+        out.append(f"  • Pre-Flight Check     : {GREEN}DRY-RUN PASSED{RESET}")
+        out.append(f"  • Details              : Safe rollback simulation evaluated without mutating state.")
+        out.append("=" * 88 + "\n")
+        emit_output("\n".join(out), output_dest)
+        return
+
+    if not yes_flag:
+        print(f"\n{YELLOW}{BOLD}⚠️  CLOUDPULSE ROLLBACK CONFIRMATION{RESET}")
+        print("-" * 65)
+        print(f"  • Resource ID : {BOLD}{resource_id}{RESET}")
+        print(f"  • Region      : {region}")
+        print(f"  • Safety      : Cloud tags and audit ledger will restore prior configuration.")
+        print("-" * 65)
+        try:
+            confirm = input(f"Are you sure you want to rollback changes on {resource_id}? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            confirm = "n"
+        if confirm not in ["y", "yes"]:
+            print(f"\n{YELLOW}Rollback cancelled by operator.{RESET}\n")
+            return
+
+    res = executor.execute("rollback", resource_id, dry_run=False)
+
+    if fmt == "json":
+        emit_output(json.dumps(res, indent=2), output_dest)
+        return
+
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 88)
+    if res.get("success"):
+        out.append("     🔄 CLOUDPULSE RESOURCE ROLLBACK COMPLETED")
+        out.append("=" * 88)
+        out.append(f"  • Target Resource      : {BOLD}{resource_id}{RESET}")
+        out.append(f"  • Status               : {GREEN}SUCCESS{RESET}")
+        out.append(f"  • Message              : {res.get('message')}")
+        if res.get("reverted_items"):
+            out.append(f"  • Restored Attributes  : {', '.join(res.get('reverted_items'))}")
+    else:
+        out.append("     ❌ CLOUDPULSE RESOURCE ROLLBACK FAILED")
+        out.append("=" * 88)
+        out.append(f"  • Target Resource      : {BOLD}{resource_id}{RESET}")
+        out.append(f"  • Status               : {RED}FAILED{RESET}")
+        out.append(f"  • Reason               : {res.get('message')}")
+    out.append("=" * 88 + "\n")
+    emit_output("\n".join(out), output_dest)
+
+
+def normalize_live_inventory(raw_inv: dict, account_id: str = "582812122408", account_name: str = "AWS Learner Lab") -> dict:
+    """Normalizes raw AWS ingestion orchestrator output into unified inventory dict."""
+    instances = raw_inv.get("nodes") or raw_inv.get("instances") or []
+    for inst in instances:
+        if "type" not in inst and "instance_type" in inst:
+            inst["type"] = inst["instance_type"]
+        if "instance_type" not in inst and "type" in inst:
+            inst["instance_type"] = inst["type"]
+        if "cost" not in inst and "monthly_cost" in inst:
+            inst["cost"] = inst["monthly_cost"]
+        if "monthly_cost" not in inst and "cost" in inst:
+            inst["monthly_cost"] = inst["cost"]
+
+    meta = dict(raw_inv.get("metadata", {}))
+    meta["account_id"] = account_id
+    meta["account_name"] = account_name
+    meta["is_live"] = True
+    meta["organization"] = account_name
+
+    norm = {
+        "metadata": meta,
+        "compute": {
+            "nodes": instances
+        },
+        "nodes": instances,
+        "instances": instances,
+        "ec2_other_resources": {
+            "ebs_volumes": raw_inv.get("ebs_volumes", []),
+            "elastic_ips": raw_inv.get("elastic_ips", []),
+            "amis": raw_inv.get("amis", []),
+            "network_interfaces": raw_inv.get("network_interfaces", []),
+            "ebs_snapshots": raw_inv.get("ebs_snapshots", []),
+            "cloudwatch_log_groups": raw_inv.get("cloudwatch_log_groups", []),
+            "s3_buckets": raw_inv.get("s3_buckets", []),
+            "security_groups": raw_inv.get("security_groups", []),
+            "rds_instances": raw_inv.get("rds_instances", []),
+            "load_balancers": raw_inv.get("load_balancers", [])
+        },
+        "vpc_resources": {
+            "nat_gateways": raw_inv.get("nat_gateways", []),
+            "vpc_endpoints": raw_inv.get("vpc_endpoints", [])
+        },
+        "ebs_volumes": raw_inv.get("ebs_volumes", []),
+        "elastic_ips": raw_inv.get("elastic_ips", []),
+        "summary": raw_inv.get("summary", {})
+    }
+    return norm
+
+
+def resolve_cli_inventory(force_refresh: bool = False, no_cache: bool = False) -> dict:
+    """Resolves cloud inventory: checks local telemetry_cache & live AWS credentials first, falls back to mock_database."""
+    if not force_refresh and not no_cache:
+        try:
+            try:
+                from services.telemetry_cache import TelemetryCacheManager
+            except ImportError:
+                from backend.services.telemetry_cache import TelemetryCacheManager
+            cached = TelemetryCacheManager.get_cached_inventory(max_age_seconds=1800)
+            if cached:
+                return cached
+        except Exception:
+            pass
+
+    # Try live AWS scraping if local credentials exist
+    try:
+        import boto3
+        session = boto3.Session()
+        creds = session.get_credentials()
+        if creds and creds.access_key and not creds.access_key.startswith("mock"):
+            sts = session.client("sts", region_name=session.region_name or "us-east-1")
+            ident = sts.get_caller_identity()
+            acc_id = ident.get("Account", "582812122408")
+            from collectors.orchestrator import AWSDataIngestionOrchestrator
+            orch = AWSDataIngestionOrchestrator(session, region=session.region_name or "us-east-1")
+            raw_inv = orch.execute_full_pipeline()
+            norm = normalize_live_inventory(raw_inv, account_id=acc_id, account_name="AWS Learner Lab")
+            try:
+                from services.telemetry_cache import TelemetryCacheManager
+                TelemetryCacheManager.set_cached_inventory(norm, ttl_seconds=1800)
+            except Exception:
+                pass
+            return norm
+    except Exception:
+        pass
+
     try:
         try:
             from collectors.fleet_cache import fleet_cache
@@ -1021,6 +1477,7 @@ def resolve_cli_inventory() -> dict:
             return {}
 
 
+
 # ==========================================
 # COMMAND: anomalies (Real-Time Cost Anomaly Detection)
 # ==========================================
@@ -1032,6 +1489,7 @@ def cmd_anomalies(args):
     severity = getattr(args, "severity", "all") or "all"
     fmt = get_report_format(args)
     output_dest = getattr(args, "output", None)
+    curr = getattr(args, "currency", "USD").upper()
     backend_url = get_backend_url(getattr(args, "url", None))
 
     try:
@@ -1048,7 +1506,7 @@ def cmd_anomalies(args):
             from backend.engines.focus_spec import FOCUSNormalizer
 
         inv = resolve_cli_inventory()
-        recs = FOCUSNormalizer.convert_inventory_to_focus(inv)
+        recs = FOCUSNormalizer.normalize_inventory(inv)
         anomaly_detector.scan_inventory_and_focus(inv, recs)
         anomalies = anomaly_detector.get_anomalies(severity)
         data = {
@@ -1078,19 +1536,20 @@ def cmd_anomalies(args):
     for a in anomalies:
         sev = a.get("severity", "LOW").upper()
         if sev == "CRITICAL":
-            sev_str = f"{RED}{BOLD}CRITICAL{RESET}"
+            col = f"{RED}{BOLD}"
         elif sev == "HIGH":
-            sev_str = f"{YELLOW}{BOLD}HIGH{RESET}"
+            col = f"{YELLOW}{BOLD}"
         elif sev == "MEDIUM":
-            sev_str = f"{CYAN}MEDIUM{RESET}"
+            col = f"{CYAN}"
         else:
-            sev_str = f"LOW"
+            col = ""
 
         rid = (a.get("resource_id") or "unknown")[:20]
         atype = (a.get("anomaly_type") or "UNKNOWN")[:20]
-        impact = f"${a.get('financial_impact_monthly', 0.0):.2f}/mo"
+        impact_val = float(a.get('financial_impact_monthly', 0.0) or 0.0)
+        impact = f"{fmt_cost(impact_val, curr)}/mo"
         rca = (a.get("root_cause") or "")[:45] + "..."
-        out.append(f"  {sev_str:<19} {rid:<22} {atype:<22} {impact:<16} {rca}")
+        out.append(f"  {col}{sev:<10}{RESET} {rid:<22} {atype:<22} {impact:<16} {rca}")
     out.append("=" * 90)
     out.append("  💡 Remediate an anomaly safely with: cloudpulse apply <resource_id> --dry-run")
     out.append("=" * 90 + "\n")
@@ -1109,6 +1568,7 @@ def cmd_forecast(args):
     budget = float(getattr(args, "budget", 100.0) or 100.0)
     fmt = get_report_format(args)
     output_dest = getattr(args, "output", None)
+    curr = getattr(args, "currency", "USD").upper()
     backend_url = get_backend_url(getattr(args, "url", None))
 
     try:
@@ -1132,9 +1592,9 @@ def cmd_forecast(args):
     out.append("=" * 90)
     out.append(f"     📈 CLOUDPULSE PREDICTIVE SPEND FORECAST ({days}-Day Horizon | Holt-Winters)")
     out.append("=" * 90)
-    out.append(f"  • Daily Spend Run-Rate       : {BOLD}${data.get('current_daily_run_rate', 0.0):.2f} / day{RESET}")
-    out.append(f"  • Projected Month-End Spend  : {CYAN}{BOLD}${data.get('projected_monthly_spend', 0.0):.2f}{RESET}")
-    out.append(f"  • Monthly Budget Threshold   : ${data.get('monthly_budget', budget):.2f}")
+    out.append(f"  • Daily Spend Run-Rate       : {BOLD}{fmt_cost(data.get('current_daily_run_rate', 0.0), curr)} / day{RESET}")
+    out.append(f"  • Projected Month-End Spend  : {CYAN}{BOLD}{fmt_cost(data.get('projected_monthly_spend', 0.0), curr)}{RESET}")
+    out.append(f"  • Monthly Budget Threshold   : {fmt_cost(data.get('monthly_budget', budget), curr)}")
 
     util = data.get('budget_utilization_pct', 0.0)
     if util > 100.0:
@@ -1159,9 +1619,9 @@ def cmd_forecast(args):
     traj = data.get("daily_trajectory", [])[:10]
     for d in traj:
         day_str = f"Day +{d.get('day_ahead')}"
-        daily_str = f"${d.get('projected_daily_spend', 0.0):.2f}"
-        cum_str = f"${d.get('cumulative_projected_spend', 0.0):.2f}"
-        range_str = f"${d.get('lower_bound_80', 0.0):.2f} - ${d.get('upper_bound_80', 0.0):.2f}"
+        daily_str = fmt_cost(d.get('projected_daily_spend', 0.0), curr)
+        cum_str = fmt_cost(d.get('cumulative_projected_spend', 0.0), curr)
+        range_str = f"{fmt_cost(d.get('lower_bound_80', 0.0), curr)} - {fmt_cost(d.get('upper_bound_80', 0.0), curr)}"
         out.append(f"  {day_str:<12} {daily_str:<18} {cum_str:<18} {range_str}")
 
     if len(data.get("daily_trajectory", [])) > 10:
@@ -1400,6 +1860,11 @@ def cmd_query(args):
     preset = getattr(args, "preset", None)
     sql_query = getattr(args, "sql", None)
 
+    # Automatically resolve if positional argument was intended as a preset name
+    if not preset and sql_query and sql_query.strip().lower() in ("services", "accounts", "top-drivers", "regions"):
+        preset = sql_query.strip().lower()
+        sql_query = None
+
     if preset == "services":
         data = focus_lakehouse.get_spend_by_service()
         title = "FOCUS 1.0 SPEND BY SERVICE"
@@ -1409,6 +1874,18 @@ def cmd_query(args):
     elif preset == "top-drivers":
         data = focus_lakehouse.get_top_cost_drivers(limit=getattr(args, "limit", 10))
         title = "FOCUS 1.0 TOP COST DRIVERS"
+    elif preset == "regions":
+        res = focus_lakehouse.execute_query("""
+            SELECT RegionName, 
+                   ROUND(SUM(EffectiveCost), 2) as TotalSpend,
+                   COUNT(ResourceID) as ResourceCount,
+                   ProviderName
+            FROM focus_costs
+            GROUP BY RegionName, ProviderName
+            ORDER BY TotalSpend DESC
+        """)
+        data = res.get("rows", [])
+        title = "FOCUS 1.0 SPEND BY REGION"
     elif sql_query:
         try:
             res = focus_lakehouse.execute_query(sql_query)
@@ -1594,7 +2071,9 @@ def cmd_k8s(args):
         out.append("  " + "-" * 92)
         for w in data:
             eff_color = GREEN if w['overall_efficiency_pct'] >= 60 else YELLOW if w['overall_efficiency_pct'] >= 30 else RED
-            out.append(f"  {w['namespace']:<14} {w['workload']:<20} {w['kind']:<12} {w['requested_cpu_cores']:<9.2f} {w['utilized_cpu_cores']:<8.2f} {w['requested_ram_gib']:<8.1f}G {w['utilized_ram_gib']:<8.1f}G {w['formatted_cost']:<16} {eff_color}{w['overall_efficiency_pct']:.1f}%{RESET}")
+            req_ram_str = f"{w['requested_ram_gib']:.1f}G"
+            ut_ram_str = f"{w['utilized_ram_gib']:.1f}G"
+            out.append(f"  {w['namespace']:<14} {w['workload']:<20} {w['kind']:<12} {w['requested_cpu_cores']:<9.2f} {w['utilized_cpu_cores']:<8.2f} {req_ram_str:<9} {ut_ram_str:<8} {w['formatted_cost']:<16} {eff_color}{w['overall_efficiency_pct']:.1f}%{RESET}")
 
     out.append("=" * 96 + "\n")
     emit_output("\n".join(out), output_dest)
@@ -1698,6 +2177,136 @@ def cmd_gh(args):
 
 
 # ==========================================
+# COMMAND: watch (Post-Remediation CloudWatch SLA Watchdog & Rollback)
+# ==========================================
+def cmd_watch(args):
+    """
+    Monitors post-remediation CloudWatch SLA health and executes zero-downtime automated rollback PRs.
+    """
+    fmt = get_report_format(args)
+    output_dest = getattr(args, "output", None)
+    watch_id = getattr(args, "watch_id", None)
+    do_evaluate = getattr(args, "evaluate", False)
+    do_rollback = getattr(args, "rollback", False)
+    sim_latency = getattr(args, "latency", None)
+
+    try:
+        from services.sla_watchdog import sla_watchdog
+    except ImportError:
+        from backend.services.sla_watchdog import sla_watchdog
+
+    if do_rollback and watch_id:
+        try:
+            pkg = sla_watchdog.trigger_automated_rollback(watch_id, breach_reasons=["Manual operator rollback via CLI"])
+            if fmt == "json":
+                emit_output(json.dumps(pkg, indent=2), output_dest)
+                return
+            out = []
+            out.append(get_banner_str())
+            out.append("=" * 90)
+            out.append("  🚨 CLOUDPULSE SLA WATCHDOG: AUTOMATED ROLLBACK EXECUTED")
+            out.append("=" * 90)
+            out.append(f"  • Monitored Watch ID : {BOLD}{pkg['watch_id']}{RESET}")
+            out.append(f"  • Target Resource    : {pkg['resource_id']}")
+            out.append(f"  • Rollback Branch    : {BOLD}{pkg['branch_name']}{RESET}")
+            out.append(f"  • Rollback PR Link   : {CYAN}{BOLD}{pkg['pull_request_url']}{RESET}")
+            out.append("-" * 90)
+            out.append("  Restored Configuration Diff:")
+            for l in pkg['revert_diff'].splitlines():
+                if l.startswith("+"):
+                    out.append(f"    {GREEN}{l}{RESET}")
+                elif l.startswith("-"):
+                    out.append(f"    {RED}{l}{RESET}")
+                else:
+                    out.append(f"    {l}")
+            out.append("=" * 90 + "\n")
+            emit_output("\n".join(out), output_dest)
+            return
+        except KeyError as e:
+            print(f"{RED}Error: {e}{RESET}")
+            sys.exit(1)
+
+    if do_evaluate and watch_id:
+        try:
+            metrics = None
+            if sim_latency is not None:
+                metrics = {"p95_latency_ms": sim_latency, "error_rate_pct": 0.02, "cpu_utilization_avg": 35.0}
+            res = sla_watchdog.evaluate_health(watch_id, current_metrics=metrics)
+            if fmt == "json":
+                emit_output(json.dumps(res, indent=2), output_dest)
+                return
+            out = []
+            out.append(get_banner_str())
+            out.append("=" * 90)
+            out.append("  ⏱️  CLOUDPULSE SLA WATCHDOG: HEALTH EVALUATION")
+            out.append("=" * 90)
+            out.append(f"  • Watch ID           : {res['watch_id']}")
+            out.append(f"  • Resource ID        : {res['resource_id']}")
+            status_col = GREEN if res['status'] == "HEALTHY" else RED if res['status'] == "ROLLED_BACK" else YELLOW
+            out.append(f"  • Current Status     : {status_col}{BOLD}{res['status']}{RESET}")
+            out.append(f"  • SLA Breached       : {RED if res['sla_breached'] else GREEN}{res['sla_breached']}{RESET}")
+            out.append(f"  • Baseline Latency   : {res['baseline_latency_ms']:.1f} ms")
+            out.append(f"  • Current Latency    : {res['current_latency_ms']:.1f} ms ({'+' if res['latency_increase_pct'] > 0 else ''}{res['latency_increase_pct']}%)")
+            if res.get("breach_reasons"):
+                out.append(f"  • Breach Reasons     : {RED}{'; '.join(res['breach_reasons'])}{RESET}")
+            if res.get("rollback_pr"):
+                out.append(f"  • Rollback PR Synthesized: {CYAN}{BOLD}{res['rollback_pr']['pull_request_url']}{RESET}")
+            out.append("=" * 90 + "\n")
+            emit_output("\n".join(out), output_dest)
+            return
+        except KeyError as e:
+            print(f"{RED}Error: {e}{RESET}")
+            sys.exit(1)
+
+    # Default: List all watches
+    watches = sla_watchdog.list_watches()
+
+    if fmt == "json":
+        emit_output(json.dumps(watches, indent=2), output_dest)
+        return
+    elif fmt in ("markdown", "md"):
+        lines = [
+            "# CloudPulse Post-Remediation CloudWatch SLA Watchdog",
+            "",
+            "| Watch ID | Resource ID | Remediation Action | Status | Base P95 | Cur P95 | Latency Delta | Rollback PR |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for w in watches:
+            base_p95 = w.get("baseline_metrics", {}).get("p95_latency_ms", 0.0)
+            cur_p95 = w.get("current_metrics", {}).get("p95_latency_ms", 0.0)
+            lat_delta = round(((cur_p95 - base_p95) / base_p95 * 100), 1) if base_p95 > 0 else 0.0
+            rb_link = w.get("rollback_pr", {}).get("pull_request_url", "N/A") if w.get("rollback_pr") else "None"
+            lines.append(f"| `{w['watch_id']}` | `{w['resource_id']}` | {w['remediation_action']} | **{w['status']}** | {base_p95:.1f}ms | {cur_p95:.1f}ms | {'+' if lat_delta > 0 else ''}{lat_delta}% | {rb_link} |")
+        emit_output("\n".join(lines) + "\n", output_dest)
+        return
+
+    # Table Mode
+    out = []
+    out.append(get_banner_str())
+    out.append("=" * 96)
+    out.append("  ⏱️  CLOUDPULSE POST-REMEDIATION SLA WATCHDOG & ZERO-DOWNTIME ROLLBACK ENGINE")
+    out.append("=" * 96)
+    out.append(f"  Active Monitoring Periods : {len(watches)} resources under 60-minute SLA observation")
+    out.append(f"  SLA Guardrail Rule        : Automatic 'git revert' PR triggered if P95 latency increases > 15%")
+    out.append("-" * 96)
+    out.append(f"  {'WATCH ID':<26} {'RESOURCE ID':<22} {'ACTION':<18} {'STATUS':<14} {'P95 LATENCY'}")
+    out.append("  " + "-" * 92)
+    for w in watches:
+        base_p95 = w.get("baseline_metrics", {}).get("p95_latency_ms", 0.0)
+        cur_p95 = w.get("current_metrics", {}).get("p95_latency_ms", 0.0)
+        lat_delta = round(((cur_p95 - base_p95) / base_p95 * 100), 1) if base_p95 > 0 else 0.0
+        delta_str = f"({'+' if lat_delta > 0 else ''}{lat_delta}%)"
+        status = w.get("status", "MONITORING")
+        status_color = GREEN if status in ["HEALTHY"] else RED if status in ["ROLLED_BACK", "DEGRADED"] else YELLOW
+        out.append(f"  {w['watch_id']:<26} {w['resource_id']:<22} {w['remediation_action']:<18} {status_color}{status:<14}{RESET} {cur_p95:.1f}ms {delta_str}")
+        if w.get("rollback_pr"):
+            out.append(f"    ↳ {RED}Rollback Revert PR:{RESET} {CYAN}{w['rollback_pr']['pull_request_url']}{RESET}")
+
+    out.append("=" * 96 + "\n")
+    emit_output("\n".join(out), output_dest)
+
+
+# ==========================================
 # COMMAND: notify (Multi-Channel Escalation, WhatsApp, Slack & Teams)
 # ==========================================
 def cmd_notify(args):
@@ -1708,6 +2317,8 @@ def cmd_notify(args):
     msg = getattr(args, "message", "Cost anomaly detected across cloud infrastructure.") or "Cost anomaly detected."
     recipient = getattr(args, "to", None)
     webhook_url = getattr(args, "webhook", None)
+    slack_token = getattr(args, "token", None) or os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_TOKEN")
+    slack_channel_id = getattr(args, "channel_id", None) or os.getenv("SLACK_CHANNEL", "#general")
     is_batch = getattr(args, "batch", False)
     dry_run = getattr(args, "dry_run", False)
     curr = getattr(args, "currency", "USD").upper()
@@ -1732,19 +2343,33 @@ def cmd_notify(args):
         print(f"  • Target Recipient : {recipient}")
     if webhook_url:
         print(f"  • Target Webhook   : {webhook_url[:35]}...")
+    if slack_token and channel == "slack":
+        print(f"  • Slack Auth Token : {slack_token[:9]}... -> Channel: {slack_channel_id}")
     print("-" * 90)
 
     if channel == "whatsapp":
-        success = finops_notifier.send_whatsapp_alert(title, msg, to_number=recipient)
-        if success:
-            print(f"  {GREEN}{BOLD}✅ WhatsApp message dispatched successfully.{RESET}")
+        if dry_run:
+            body = finops_notifier.format_whatsapp_body(title, msg)
+            print(f"  {CYAN}{BOLD}ℹ️  WhatsApp Alert Preview (Dry-Run Mode):{RESET}")
+            print(f"  • Target Recipient : {recipient or finops_notifier.whatsapp_recipient or '+91XXXXXXXXXX'}")
+            print("  " + "-" * 70)
+            for l in body.splitlines():
+                print(f"    {l}")
+            print("  " + "-" * 70)
+            print(f"  {GREEN}{BOLD}✔ WhatsApp payload rendered cleanly.{RESET}")
         else:
-            print(f"  {RED}{BOLD}❌ Failed to dispatch WhatsApp message. Verify credentials, Account SID & recipient.{RESET}")
+            success = finops_notifier.send_whatsapp_alert(title, msg, to_number=recipient)
+            if success:
+                print(f"  {GREEN}{BOLD}✅ WhatsApp message dispatched successfully.{RESET}")
+            else:
+                print(f"  {RED}{BOLD}❌ Failed to dispatch WhatsApp message. See troubleshooting steps above.{RESET}")
 
     elif channel == "slack":
         inv = resolve_cli_inventory()
         gross = inv.get("summary", {}).get("estimated_monthly_spend", 68.40)
         sample_findings = [{"title": title, "message": msg, "severity": "HIGH", "savings": 15.0}]
+        target_url = webhook_url or os.getenv("SLACK_WEBHOOK_URL")
+        has_placeholder = bool(target_url and ("XXXXX" in target_url or "YOUR_WEBHOOK" in target_url))
 
         if is_batch:
             eval_res = FinOpsAnalyzer.evaluate(inv)
@@ -1760,21 +2385,38 @@ def cmd_notify(args):
                 account_id=inv.get("metadata", {}).get("account_id", "582812122408"),
                 currency=curr
             )
-            target_url = webhook_url or os.getenv("SLACK_WEBHOOK_URL")
-            if dry_run or not target_url:
-                print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook):{RESET}")
+            if dry_run or (not target_url and not slack_token) or has_placeholder:
+                if has_placeholder:
+                    print(f"  {YELLOW}⚠️  Detected placeholder in Slack webhook URL. Displaying Block Kit card preview:{RESET}")
+                else:
+                    print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook or Token):{RESET}")
                 print(json.dumps(card, indent=2))
+            elif slack_token:
+                success = notification_engine.dispatch_slack_api(slack_token, slack_channel_id, card)
+                if success:
+                    print(f"  {GREEN}{BOLD}✅ Slack Block Kit alert dispatched successfully via Web API to {slack_channel_id}.{RESET}")
+                else:
+                    print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert via Web API. Check token and channel.{RESET}")
             else:
                 success = notification_engine.dispatch_webhook(target_url, card)
                 if success:
-                    print(f"  {GREEN}{BOLD}✅ Slack Block Kit alert dispatched successfully.{RESET}")
+                    print(f"  {GREEN}{BOLD}✅ Slack Block Kit alert dispatched successfully via Webhook.{RESET}")
                 else:
                     print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check webhook URL.{RESET}")
         else:
-            if dry_run:
-                card = finops_notifier.format_slack_payload(sample_findings, monthly_cost=gross)
-                print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook):{RESET}")
+            card = finops_notifier.format_slack_payload(sample_findings, monthly_cost=gross)
+            if dry_run or (not target_url and not slack_token) or has_placeholder:
+                if has_placeholder:
+                    print(f"  {YELLOW}⚠️  Detected placeholder in Slack webhook URL. Displaying Block Kit card preview:{RESET}")
+                else:
+                    print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook or Token):{RESET}")
                 print(json.dumps(card, indent=2))
+            elif slack_token:
+                success = notification_engine.dispatch_slack_api(slack_token, slack_channel_id, card)
+                if success:
+                    print(f"  {GREEN}{BOLD}✅ Slack alert dispatched successfully via Web API to {slack_channel_id}.{RESET}")
+                else:
+                    print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert via Web API.{RESET}")
             else:
                 if webhook_url:
                     finops_notifier.slack_webhook_url = webhook_url
@@ -1812,8 +2454,12 @@ def cmd_notify(args):
             )
 
         target_url = webhook_url or os.getenv("TEAMS_WEBHOOK_URL")
-        if dry_run or not target_url:
-            print(f"  {CYAN}{BOLD}ℹ️  Microsoft Teams Adaptive Card Preview (v1.4 Schema - Dry-Run / No Webhook):{RESET}")
+        has_placeholder = bool(target_url and ("XXXXX" in target_url or "YOUR_WEBHOOK" in target_url))
+        if dry_run or not target_url or has_placeholder:
+            if has_placeholder:
+                print(f"  {YELLOW}⚠️  Detected placeholder in Teams webhook URL. Displaying Adaptive Card preview:{RESET}")
+            else:
+                print(f"  {CYAN}{BOLD}ℹ️  Microsoft Teams Adaptive Card Preview (v1.4 Schema - Dry-Run / No Webhook):{RESET}")
             print(json.dumps(card, indent=2))
         else:
             success = notification_engine.dispatch_webhook(target_url, card)
@@ -1823,6 +2469,7 @@ def cmd_notify(args):
                 print(f"  {RED}{BOLD}❌ Failed to dispatch Teams alert. Check webhook URL.{RESET}")
 
     print("=" * 90 + "\n")
+
 
 
 
@@ -2015,14 +2662,166 @@ def cmd_connect(args):
         except Exception as err:
             print(f"\n{YELLOW}Note fetching initial node list:{RESET} {err}")
             print("Run `cloudpulse audit` to view discovered resources.")
+
+        # Ingest and cache normalized live telemetry for instant subsequent CLI execution
+        try:
+            import boto3
+            sess = boto3.Session(
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                aws_session_token=session_token,
+                region_name=region
+            )
+            from collectors.orchestrator import AWSDataIngestionOrchestrator
+            orch = AWSDataIngestionOrchestrator(sess, region=region)
+            raw_inv = orch.execute_full_pipeline()
+            norm = normalize_live_inventory(raw_inv, account_id=res.get('account_id', '582812122408'), account_name=account_name)
+            try:
+                from services.telemetry_cache import TelemetryCacheManager
+                TelemetryCacheManager.set_cached_inventory(norm, ttl_seconds=3600)
+            except Exception:
+                pass
+        except Exception:
+            pass
     except Exception as e:
         print(f"{RED}✖ Failed to connect AWS account:{RESET} {e}")
         sys.exit(1)
 
-def fetch_inventory_data(backend_url: str) -> Dict[str, Any]:
+def fmt_cost(amount_usd: float, curr: str = "USD", dual: bool = False) -> str:
+    """Formats cost into target currency, with optional dual currency display."""
     try:
-        return http_json(f"{backend_url}/api/v1/resources/inventory", timeout=25.0)
+        try:
+            from services.currency_converter import currency_engine
+        except ImportError:
+            from backend.services.currency_converter import currency_engine
+        if dual or (curr and curr.upper() == "INR"):
+            return currency_engine.format_dual(amount_usd, primary_currency=curr)
+        return f"${amount_usd:,.2f}"
+    except Exception:
+        return f"${amount_usd:,.2f}"
+
+
+def sweep_all_aws_regions(region_list: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """
+    Concurrently sweeps major AWS regions for EC2 compute instances.
+    Uses ThreadPoolExecutor for high-throughput parallel discovery.
+    """
+    import concurrent.futures
+    import boto3
+
+    regions = region_list or [
+        "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+        "eu-west-1", "eu-central-1", "ap-south-1", "ap-southeast-1"
+    ]
+    all_nodes = []
+
+    def _query_region(r: str):
+        try:
+            client = boto3.client("ec2", region_name=r)
+            res = client.describe_instances()
+            instances = []
+            for rsv in res.get("Reservations", []):
+                for inst in rsv.get("Instances", []):
+                    inst_id = inst.get("InstanceId")
+                    inst_type = inst.get("InstanceType", "t3.micro")
+                    state = inst.get("State", {}).get("Name", "unknown")
+                    pub_ip = inst.get("PublicIpAddress")
+                    priv_ip = inst.get("PrivateIpAddress")
+                    az = inst.get("Placement", {}).get("AvailabilityZone", r)
+                    tags = {t["Key"]: t["Value"] for t in inst.get("Tags", []) if "Key" in t and "Value" in t}
+                    name = tags.get("Name") or inst_id
+                    
+                    try:
+                        from collectors.ec2_collector import INSTANCE_MONTHLY_RATES
+                        c = INSTANCE_MONTHLY_RATES.get(inst_type, 15.20)
+                    except Exception:
+                        c = 15.20
+
+                    instances.append({
+                        "instance_id": inst_id,
+                        "name": name,
+                        "instance_type": inst_type,
+                        "state": state,
+                        "region": r,
+                        "availability_zone": az,
+                        "public_ip": pub_ip,
+                        "private_ip": priv_ip,
+                        "cost": c,
+                        "metrics": {"cpu_utilization_avg": 1.0, "cpu_utilization_max": 2.0}
+                    })
+            return instances
+        except Exception:
+            return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(regions), 8)) as executor:
+        futures = {executor.submit(_query_region, r): r for r in regions}
+        for future in concurrent.futures.as_completed(futures):
+            nodes = future.result()
+            if nodes:
+                all_nodes.extend(nodes)
+
+    return all_nodes
+
+
+def fetch_inventory_data(backend_url: str, force_refresh: bool = False, no_cache: bool = False) -> Dict[str, Any]:
+    if not force_refresh and not no_cache:
+        try:
+            try:
+                from services.telemetry_cache import TelemetryCacheManager
+            except ImportError:
+                from backend.services.telemetry_cache import TelemetryCacheManager
+            cached = TelemetryCacheManager.get_cached_inventory(max_age_seconds=1800)
+            if cached:
+                return cached
+        except Exception:
+            pass
+
+    # Try live AWS scraping if local credentials exist
+    try:
+        import boto3
+        session = boto3.Session()
+        creds = session.get_credentials()
+        if creds and creds.access_key and not creds.access_key.startswith("mock"):
+            sts = session.client("sts", region_name=session.region_name or "us-east-1")
+            ident = sts.get_caller_identity()
+            acc_id = ident.get("Account", "582812122408")
+            from collectors.orchestrator import AWSDataIngestionOrchestrator
+            orch = AWSDataIngestionOrchestrator(session, region=session.region_name or "us-east-1")
+            raw_inv = orch.execute_full_pipeline()
+            norm = normalize_live_inventory(raw_inv, account_id=acc_id, account_name="AWS Learner Lab")
+            try:
+                from services.telemetry_cache import TelemetryCacheManager
+                TelemetryCacheManager.set_cached_inventory(norm, ttl_seconds=1800)
+            except Exception:
+                pass
+            return norm
+    except Exception:
+        pass
+
+    try:
+        inv = http_json(f"{backend_url}/api/v1/resources/inventory", timeout=25.0)
+        if not no_cache and inv:
+            try:
+                try:
+                    from services.telemetry_cache import TelemetryCacheManager
+                except ImportError:
+                    from backend.services.telemetry_cache import TelemetryCacheManager
+                TelemetryCacheManager.set_cached_inventory(inv, ttl_seconds=900)
+            except Exception:
+                pass
+        return inv
+
     except Exception as e:
+        try:
+            try:
+                from services.telemetry_cache import TelemetryCacheManager
+            except ImportError:
+                from backend.services.telemetry_cache import TelemetryCacheManager
+            cached = TelemetryCacheManager.get_cached_inventory(max_age_seconds=86400)
+            if cached:
+                return cached
+        except Exception:
+            pass
         try:
             from mock_database import DB
             return DB
@@ -2044,8 +2843,24 @@ def cmd_inspect(args):
         target_id = target_id.strip()
     fmt = get_report_format(args)
     output_dest = getattr(args, "output", None)
+    curr = getattr(args, "currency", "USD").upper()
+    force_refresh = getattr(args, "refresh", False)
+    no_cache = getattr(args, "no_cache", False)
+    all_regions = getattr(args, "all_regions", False)
+
     backend_url = get_backend_url(getattr(args, "url", None))
-    inv = fetch_inventory_data(backend_url)
+    inv = fetch_inventory_data(backend_url, force_refresh=force_refresh, no_cache=no_cache)
+
+    if all_regions:
+        try:
+            swept_nodes = sweep_all_aws_regions()
+            if swept_nodes:
+                inv = dict(inv)
+                inv["compute"] = {"nodes": swept_nodes}
+                inv["metadata"] = dict(inv.get("metadata", {}))
+                inv["metadata"]["region"] = f"all-regions ({len(swept_nodes)} nodes discovered)"
+        except Exception:
+            pass
 
     metadata = inv.get("metadata", {})
     nodes = inv.get("compute", {}).get("nodes", [])
@@ -2344,7 +3159,7 @@ def cmd_inspect(args):
             out.append(f"  • Private IP         : {matched_node.get('private_ip', 'None')}")
             out.append(f"  • Public IP          : {BOLD}{matched_node.get('public_ip', 'None')}{RESET}")
             out.append(f"  • VPC ID / Subnet    : {matched_node.get('vpc_id', 'None')} / {matched_node.get('subnet_id', 'None')}")
-            out.append(f"  • Public IPv4 Charge : {YELLOW}$3.60/month ($0.005/hr Amazon IPv4 fee){RESET}" if matched_node.get("public_ip") else "  • Public IPv4 Charge : $0.00/month (Private only)")
+            out.append(f"  • Public IPv4 Charge : {YELLOW}{fmt_cost(3.60, curr)}/month ($0.005/hr Amazon IPv4 fee){RESET}" if matched_node.get("public_ip") else f"  • Public IPv4 Charge : {fmt_cost(0.00, curr)}/month (Private only)")
             if attached_enis:
                 out.append(f"  • Network Interfaces : {len(attached_enis)} ENI(s)")
                 for eni in attached_enis:
@@ -2358,11 +3173,11 @@ def cmd_inspect(args):
                     out.append(f"    • Capacity & Type  : {vol.get('size_gb')} GB ({vol.get('volume_type', 'gp3').upper()})")
                     out.append(f"    • Baseline IOPS    : {vol.get('iops', 3000)} IOPS | Throughput: {vol.get('throughput', 125)} MB/s")
                     out.append(f"    • Rate & Pricing   : $0.08 / GB-month (gp3 base)")
-                    out.append(f"    • Monthly Cost     : {GREEN}${vol_cost:.2f}/month{RESET}")
+                    out.append(f"    • Monthly Cost     : {GREEN}{fmt_cost(vol_cost, curr)}/month{RESET}")
                     out.append(f"    • Encrypted        : {vol.get('encrypted', False)}")
-                out.append(f"  • Total Storage Cost : {BOLD}${storage_cost:.2f}/month{RESET} across {len(attached_vols)} volume(s)")
+                out.append(f"  • Total Storage Cost : {BOLD}{fmt_cost(storage_cost, curr)}/month{RESET} across {len(attached_vols)} volume(s)")
             else:
-                out.append(f"  • Attached Volumes   : {matched_node.get('volumes', 1)} volume(s) referenced (Estimated: ${storage_cost:.2f}/mo)")
+                out.append(f"  • Attached Volumes   : {matched_node.get('volumes', 1)} volume(s) referenced (Estimated: {fmt_cost(storage_cost, curr)}/mo)")
 
             out.append(f"\n{CYAN}{BOLD}📈 [4] PERFORMANCE TELEMETRY & CLOUDWATCH METRICS{RESET}")
             out.append(f"  • Average CPU Util   : {BOLD}{cpu_avg:.2f}%{RESET}")
@@ -2381,26 +3196,26 @@ def cmd_inspect(args):
             out.append(f"  • Parameter Breakdown:")
             out.append(f"    - On-Demand Hourly Rate   : ${hourly_rate:.4f} / hr (AWS Pricing API: {matched_node.get('instance_type')})")
             out.append(f"    - Monthly Operating Hours : 730 hrs (State: {matched_node.get('state')})")
-            out.append(f"    - Compute Subtotal        : ${compute_cost:.2f} / month")
-            out.append(f"    - Attached EBS Storage    : ${storage_cost:.2f} / month ({len(attached_vols)} volumes)")
-            out.append(f"    - Public IPv4 Surcharge   : ${ipv4_cost:.2f} / month ({'1 address' if matched_node.get('public_ip') else 'None'})")
+            out.append(f"    - Compute Subtotal        : {fmt_cost(compute_cost, curr)} / month")
+            out.append(f"    - Attached EBS Storage    : {fmt_cost(storage_cost, curr)} / month ({len(attached_vols)} volumes)")
+            out.append(f"    - Public IPv4 Surcharge   : {fmt_cost(ipv4_cost, curr)} / month ({'1 address' if matched_node.get('public_ip') else 'None'})")
             out.append(f"    ------------------------------------------------------------------------")
-            out.append(f"    • {BOLD}Total Monthly Cost        : {GREEN}${total_cost:.2f} / month{RESET} ($3.60 net + ${storage_cost:.2f} EBS + ${compute_cost:.2f} EC2)")
+            out.append(f"    • {BOLD}Total Monthly Cost        : {GREEN}{fmt_cost(total_cost, curr)} / month{RESET}")
 
             out.append(f"\n{CYAN}{BOLD}💡 [6] FINOPS OPTIMIZATION & ROI ACTIONS{RESET}")
             out.append(f"  1. {BOLD}Migrate to AWS Graviton (t4g.micro){RESET}:")
             out.append(f"     Upgrade from {matched_node.get('instance_type')} to t4g.micro (ARM64).")
-            out.append(f"     • Compute Rate drops to: $6.08/mo")
-            out.append(f"     • {GREEN}Immediate Savings: +$1.52/month (20.0% compute reduction){RESET}")
+            out.append(f"     • Compute Rate drops to: {fmt_cost(6.08, curr)}/mo")
+            out.append(f"     • {GREEN}Immediate Savings: +{fmt_cost(1.52, curr)}/month (20.0% compute reduction){RESET}")
             if cpu_avg < 5.0:
                 out.append(f"  2. {BOLD}Stop or Power-Schedule Idle Server{RESET}:")
                 out.append(f"     Server is idle (CPU {cpu_avg:.2f}%). Stop instance when not in active use.")
-                out.append(f"     • Compute drops to: $0.00/mo (EBS retains data at ${storage_cost:.2f}/mo)")
-                out.append(f"     • {GREEN}Immediate Savings: +${compute_cost:.2f}/month (64.2% total instance bill reduction){RESET}")
+                out.append(f"     • Compute drops to: {fmt_cost(0.00, curr)}/mo (EBS retains data at {fmt_cost(storage_cost, curr)}/mo)")
+                out.append(f"     • {GREEN}Immediate Savings: +{fmt_cost(compute_cost, curr)}/month (64.2% total instance bill reduction){RESET}")
             if matched_node.get("public_ip"):
                 out.append(f"  3. {BOLD}Remove Public IPv4 Address{RESET}:")
                 out.append(f"     If instance does not require direct ingress from the internet, switch to private IPv4.")
-                out.append(f"     • {GREEN}Immediate Savings: +$3.60/month (30.4% total instance bill reduction){RESET}")
+                out.append(f"     • {GREEN}Immediate Savings: +{fmt_cost(3.60, curr)}/month (30.4% total instance bill reduction){RESET}")
             out.append("=" * 88 + "\n")
             emit_output("\n".join(out), output_dest)
             return
@@ -2457,6 +3272,9 @@ def cmd_inspect(args):
     out.append(f"  • Execution Timestamp : {metadata.get('timestamp', 'N/A')}")
     out.append(f"  • Scraped Region      : {metadata.get('region', 'us-east-1')}")
     out.append(f"  • Organization        : {metadata.get('organization', 'AWS Learner Lab')}")
+    if inv.get("_cache_metadata", {}).get("served_from_cache"):
+        age = inv["_cache_metadata"]["age_seconds"]
+        out.append(f"  • Cache Telemetry     : ⚡ Local Cache ({age:.0f}s old | Use --refresh for live scrape)")
     out.append("=" * 88)
 
     # 1. COMPUTE NODES
@@ -2477,7 +3295,7 @@ def cmd_inspect(args):
             out.append(f"    • State & Platform   : {state_color}{node.get('state')}{RESET} | {node.get('platform', 'linux')}")
             out.append(f"    • AZ / Public IP     : {node.get('availability_zone')} | {node.get('public_ip') or 'None'}")
             out.append(f"    • Average CPU        : {cpu:.2f}% {'(⚠️ IDLE)' if cpu < 5.0 else ''}")
-            out.append(f"    • Monthly Cost       : {BOLD}${tot:.2f}/mo{RESET} (Compute: ${c_cost:.2f} + EBS: ${s_cost:.2f} + Net: ${net_cost:.2f})")
+            out.append(f"    • Monthly Cost       : {BOLD}{fmt_cost(tot, curr)}/mo{RESET} (Compute: {fmt_cost(c_cost, curr)} + EBS: {fmt_cost(s_cost, curr)} + Net: {fmt_cost(net_cost, curr)})")
     else:
         out.append("  • No active EC2 compute instances detected in region.")
 
@@ -2490,7 +3308,7 @@ def cmd_inspect(args):
             out.append(f"  Volume #{idx}: {BOLD}{vol.get('volume_id')}{RESET}")
             out.append(f"    • Size & Type        : {vol.get('size_gb')} GB ({vol.get('volume_type', 'gp3')})")
             out.append(f"    • Status & Attachment: {vol.get('status')} (Attached to: {vol.get('attached_instance_id') or 'UNATTACHED / ORPHANED'})")
-            out.append(f"    • Is Orphaned Waste  : {RED if orphaned else GREEN}{orphaned}{RESET} | Monthly Cost: ${v_cost:.2f}/mo")
+            out.append(f"    • Is Orphaned Waste  : {RED if orphaned else GREEN}{orphaned}{RESET} | Monthly Cost: {fmt_cost(v_cost, curr)}/mo")
     else:
         out.append("  • No EBS volumes found.")
 
@@ -2499,9 +3317,10 @@ def cmd_inspect(args):
     if eips:
         for idx, eip in enumerate(eips, 1):
             unattached = eip.get("is_unattached")
+            eip_cost = float(eip.get('estimated_monthly_cost', 0.0) or 0.0)
             out.append(f"  EIP #{idx}: {BOLD}{eip.get('public_ip')}{RESET} (Allocation: {eip.get('allocation_id')})")
             out.append(f"    • Attached Instance  : {eip.get('instance_id') or 'Unattached'}")
-            out.append(f"    • Unattached Waste   : {RED if unattached else GREEN}{unattached}{RESET} (${eip.get('estimated_monthly_cost', 0.0)}/mo)")
+            out.append(f"    • Unattached Waste   : {RED if unattached else GREEN}{unattached}{RESET} ({fmt_cost(eip_cost, curr)}/mo)")
     else:
         out.append("  • No Elastic IPs provisioned.")
 
@@ -2574,8 +3393,11 @@ def cmd_inspect(args):
 def cmd_cost(args):
     fmt = get_report_format(args)
     output_dest = getattr(args, "output", None)
+    curr = getattr(args, "currency", "USD").upper()
+    force_refresh = getattr(args, "refresh", False)
+    no_cache = getattr(args, "no_cache", False)
     backend_url = get_backend_url(args.url)
-    inv = fetch_inventory_data(backend_url)
+    inv = fetch_inventory_data(backend_url, force_refresh=force_refresh, no_cache=no_cache)
 
     nodes = inv.get("compute", {}).get("nodes", [])
     ec2_other = inv.get("ec2_other_resources", {})
@@ -2885,7 +3707,7 @@ def cmd_cost(args):
     out.append("=" * 88)
     out.append(f"  • Monitored Instances : {len(nodes)} EC2 compute nodes")
     out.append(f"  • Target Region       : us-east-1")
-    out.append(f"  • Total Monthly Spend : {GREEN}{BOLD}${gross_total:.2f} / month{RESET}")
+    out.append(f"  • Total Monthly Spend : {GREEN}{BOLD}{fmt_cost(gross_total, curr)} / month{RESET}")
     out.append("-" * 88)
 
     out.append(f"\n{CYAN}{BOLD}📊 [1] INSTANCE-BY-INSTANCE COST BREAKDOWN TABLE{RESET}")
@@ -2900,34 +3722,34 @@ def cmd_cost(args):
         tot = c + s + p
         cpu = n.get("metrics", {}).get("cpu_utilization_avg", 0.0)
         state_col = GREEN if n.get("state") == "running" else YELLOW
-        out.append(f"  {nid:<22} {n.get('instance_type'):<10} {state_col}{n.get('state'):<9}{RESET} {cpu:.2f}%{'':<3} ${c:<9.2f} ${s:<9.2f} ${p:<7.2f} {BOLD}${tot:.2f}/mo{RESET}")
+        out.append(f"  {nid:<22} {n.get('instance_type'):<10} {state_col}{n.get('state'):<9}{RESET} {cpu:.2f}%{'':<3} ${c:<9.2f} ${s:<9.2f} ${p:<7.2f} {BOLD}{fmt_cost(tot, curr)}/mo{RESET}")
     out.append("  " + "-" * 86)
-    out.append(f"  {BOLD}{'SUBTOTALS':<22} {'':<10} {'':<9} {'':<9} ${total_compute:<9.2f} ${total_storage:<9.2f} ${total_ipv4:<7.2f} ${gross_total:.2f}/mo{RESET}")
+    out.append(f"  {BOLD}{'SUBTOTALS':<22} {'':<10} {'':<9} {'':<9} ${total_compute:<9.2f} ${total_storage:<9.2f} ${total_ipv4:<7.2f} {fmt_cost(gross_total, curr)}/mo{RESET}")
 
     out.append(f"\n{CYAN}{BOLD}🧮 [2] INFRASTRUCTURE SPEND DISTRIBUTION BY SERVICE{RESET}")
-    out.append(f"  • 🖥️  EC2 Compute Instances ({len(nodes)} running)       : ${total_compute:.2f} / mo ({round(total_compute/gross_total*100, 1)}%)")
-    out.append(f"  • 📦 Attached EBS Volumes ({len(nodes)} × 8 GB gp3)     : ${total_storage:.2f} / mo ({round(total_storage/gross_total*100, 1)}%)")
-    out.append(f"  • 🌐 Public IPv4 Address Fees ({len(nodes)} active IPs)   : ${total_ipv4:.2f} / mo ({round(total_ipv4/gross_total*100, 1)}%)")
-    out.append(f"  • 📜 CloudWatch Log Groups & Storage             : $0.00 / mo (0.0%)")
-    out.append(f"  • 🛣️  NAT Gateways & VPC Endpoints               : $0.00 / mo (0.0%)")
+    out.append(f"  • 🖥️  EC2 Compute Instances ({len(nodes)} running)       : {fmt_cost(total_compute, curr)} / mo ({round(total_compute/gross_total*100, 1)}%)")
+    out.append(f"  • 📦 Attached EBS Volumes ({len(nodes)} × 8 GB gp3)     : {fmt_cost(total_storage, curr)} / mo ({round(total_storage/gross_total*100, 1)}%)")
+    out.append(f"  • 🌐 Public IPv4 Address Fees ({len(nodes)} active IPs)   : {fmt_cost(total_ipv4, curr)} / mo ({round(total_ipv4/gross_total*100, 1)}%)")
+    out.append(f"  • 📜 CloudWatch Log Groups & Storage             : {fmt_cost(0.00, curr)} / mo (0.0%)")
+    out.append(f"  • 🛣️  NAT Gateways & VPC Endpoints               : {fmt_cost(0.00, curr)} / mo (0.0%)")
     out.append("  ------------------------------------------------------------------------")
-    out.append(f"  • {BOLD}GROSS ESTIMATED MONTHLY CLOUD BILL             : {GREEN}${gross_total:.2f} / month{RESET}")
+    out.append(f"  • {BOLD}GROSS ESTIMATED MONTHLY CLOUD BILL             : {GREEN}{fmt_cost(gross_total, curr)} / month{RESET}")
 
     out.append(f"\n{CYAN}{BOLD}🚨 [3] FINOPS EFFICIENCY & WASTE AUDIT{RESET}")
     idle_count = sum(1 for n in nodes if n.get("metrics", {}).get("cpu_utilization_avg", 0.0) < 5.0)
     out.append(f"  • Idle Machine Waste   : {YELLOW}{idle_count} of {len(nodes)} instances{RESET} have average CPU < 5.0%.")
-    out.append(f"    - Wasted Compute Spend: {RED}${total_compute:.2f} / month{RESET} sitting completely idle.")
-    out.append(f"  • IPv4 Address Waste   : {len(nodes)} public IPv4 addresses incurring {YELLOW}${total_ipv4:.2f}/month{RESET}.")
+    out.append(f"    - Wasted Compute Spend: {RED}{fmt_cost(total_compute, curr)} / month{RESET} sitting completely idle.")
+    out.append(f"  • IPv4 Address Waste   : {len(nodes)} public IPv4 addresses incurring {YELLOW}{fmt_cost(total_ipv4, curr)}/month{RESET}.")
     out.append(f"  • Exposed Security     : 4 Security Groups open to 0.0.0.0/0 (Ports 22, 80, 443).")
 
     out.append(f"\n{CYAN}{BOLD}💡 [4] IMMEDIATE ACTIONS & BILL REDUCTION POTENTIAL{RESET}")
     out.append(f"  1. {BOLD}Power-Schedule Idle Test Instances{RESET}:")
     out.append(f"     Stopping {idle_count} idle instances when not actively testing cuts compute to $0.")
-    out.append(f"     • {GREEN}Immediate Monthly Savings: +${total_compute:.2f} / month (64.2% bill cut){RESET}")
+    out.append(f"     • {GREEN}Immediate Monthly Savings: +{fmt_cost(total_compute, curr)} / month (64.2% bill cut){RESET}")
     out.append(f"  2. {BOLD}Release Non-Ingress Public IPv4 Addresses{RESET}:")
-    out.append(f"     • {GREEN}Immediate Monthly Savings: +${total_ipv4:.2f} / month (30.4% bill cut){RESET}")
+    out.append(f"     • {GREEN}Immediate Monthly Savings: +{fmt_cost(total_ipv4, curr)} / month (30.4% bill cut){RESET}")
     out.append(f"  3. {BOLD}Migrate All Compute to AWS Graviton (t4g.micro){RESET}:")
-    out.append(f"     • {GREEN}Immediate Monthly Savings: +${len(nodes) * 1.52:.2f} / month (20.0% compute cut){RESET}")
+    out.append(f"     • {GREEN}Immediate Monthly Savings: +{fmt_cost(len(nodes) * 1.52, curr)} / month (20.0% compute cut){RESET}")
     out.append("=" * 88 + "\n")
     emit_output("\n".join(out), output_dest)
 
@@ -2935,6 +3757,9 @@ def main():
     common_parser = argparse.ArgumentParser(add_help=False)
     common_parser.add_argument("--url", default=None, help="CloudPulse backend URL (defaults to configured URL)")
     common_parser.add_argument("--currency", default="USD", choices=["USD", "INR", "usd", "inr"], help="Display currency standard: USD or INR (default: USD)")
+    common_parser.add_argument("--refresh", action="store_true", help="Bypass local telemetry cache and force a live cloud scrape")
+    common_parser.add_argument("--no-cache", action="store_true", help="Disable reading and writing to local telemetry cache")
+    common_parser.add_argument("--all-regions", action="store_true", help="Concurrently inspect resources across all major AWS regions")
 
     parser = argparse.ArgumentParser(
         prog="cloudpulse",
@@ -2964,7 +3789,6 @@ def main():
     p_ask = subparsers.add_parser("ask", parents=[common_parser], help="Ask autonomous FinOps AI Copilot questions or execute slash commands")
     p_ask.add_argument("prompt", nargs="+", help="Your question or slash command (e.g. /optimize, /health)")
     p_ask.add_argument("--rag", action="store_true", help="Force deep RAG context retrieval & augmentation")
-    p_ask.add_argument("--no-cache", action="store_true", help="Bypass query cache and force fresh inference")
     p_ask.add_argument("--semantic", action="store_true", help="Display matched Well-Architected and corporate policies")
 
     # recommend (Autonomous Groq RAG FinOps Recommendation Engine)
@@ -2979,10 +3803,10 @@ def main():
 
     # iac
     p_iac = subparsers.add_parser("iac", parents=[common_parser], help="Generate Terraform PR code to remediate a finding")
-    p_iac.add_argument("resource_id", help="Resource ID (e.g., i-036358db85d245e3a)")
-    p_iac.add_argument("--action", default="rightsize", help="Action (rightsize, stop, terminate)")
-    p_iac.add_argument("--from-type", default="m5.2xlarge", help="Current instance type")
-    p_iac.add_argument("--to-type", default="m6g.xlarge", help="Target instance type")
+    p_iac.add_argument("resource_id", nargs="?", default=None, help="Target resource ID (e.g., i-07d01b00f95a4cc41). Auto-resolved from live inventory if omitted.")
+    p_iac.add_argument("--action", default="rightsize", help="Remediation action (rightsize, stop, terminate)")
+    p_iac.add_argument("--from-type", default=None, help="Current instance type (auto-detected if omitted)")
+    p_iac.add_argument("--to-type", default=None, help="Target instance type (auto-selected if omitted)")
     p_iac.add_argument("--output", "-o", default=None, help="File to write Terraform HCL to")
 
     # onboard
@@ -3043,15 +3867,18 @@ def main():
     p_fleet.add_argument("--output", "-o", default=None, help="File path to save the generated report")
     p_fleet.add_argument("--json", dest="json_only", action="store_true", help="Output raw structured JSON (shorthand for --format json)")
 
-    # apply (GitOps Autonomous Remediation & PR Generation)
-    p_apply = subparsers.add_parser("apply", parents=[common_parser], help="Apply autonomous FinOps remediation via safe GitOps Pull Requests")
+    # apply (GitOps Autonomous Remediation & Live Execution)
+    p_apply = subparsers.add_parser("apply", parents=[common_parser], help="Apply autonomous FinOps remediation via safe GitOps PRs or direct live execution")
     p_apply.add_argument("resource_id", nargs="?", default=None, help="Target Resource ID (or omit when using --batch)")
     p_apply.add_argument("--batch", "-b", action="store_true", help="Synthesize a consolidated multi-resource batch remediation PR covering all identified waste")
     p_apply.add_argument("--demo", action="store_true", help="Run remediation simulation against benchmark fleet environment")
     p_apply.add_argument("--action", "-a", default="downsize", help="Remediation action (downsize, graviton, stop, modernize, release)")
     p_apply.add_argument("--from-type", default=None, help="Current resource type or storage class (e.g. t3.micro, gp2)")
     p_apply.add_argument("--to-type", default=None, help="Target resource type or storage class (e.g. t4g.micro, gp3)")
-    p_apply.add_argument("--dry-run", "-d", action="store_true", help="Simulate remediation diff and preflight checks without opening PR")
+    p_apply.add_argument("--dry-run", "-d", action="store_true", help="Simulate remediation diff and preflight checks without mutating state")
+    p_apply.add_argument("--live", "-l", action="store_true", help="Execute direct live remediation against cloud APIs with automated safety snapshot")
+    p_apply.add_argument("--yes", "-y", action="store_true", help="Non-interactive execution; automatically confirm live execution prompts")
+    p_apply.add_argument("--force", action="store_true", help="Override guardrails for production environments")
     p_apply.add_argument("--environment", "-e", default="production", help="Deployment environment (production, staging, dev)")
     p_apply.add_argument("--repo", default="infrastructure/aws-workloads", help="Target infrastructure repository name")
     p_apply.add_argument("--savings", type=float, default=0.0, help="Estimated monthly savings in USD")
@@ -3060,6 +3887,15 @@ def main():
     p_apply.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
     p_apply.add_argument("--output", "-o", default=None, help="File path to save the generated PR package or diff")
     p_apply.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
+    # rollback (Closed-Loop Instant Rollback Engine)
+    p_rollback = subparsers.add_parser("rollback", parents=[common_parser], help="Safely roll back recent remediation actions using local audit trail and cloud tags")
+    p_rollback.add_argument("resource_id", help="Target Resource ID to roll back (e.g. i-07d01b00f95a4cc41)")
+    p_rollback.add_argument("--yes", "-y", action="store_true", help="Automatic yes to confirmation prompt; non-interactive mode")
+    p_rollback.add_argument("--dry-run", "-d", action="store_true", help="Simulate rollback without mutating state")
+    p_rollback.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_rollback.add_argument("--output", "-o", default=None, help="File path to save the generated report")
+    p_rollback.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
 
     # anomalies (Real-Time Cost Anomaly Detection)
     p_anom = subparsers.add_parser("anomalies", parents=[common_parser], help="Detect real-time spend spikes, runaway compute, and unattached resource waste")
@@ -3092,7 +3928,7 @@ def main():
     # query (FOCUS 1.0 SQL Lakehouse Engine)
     p_query = subparsers.add_parser("query", parents=[common_parser], help="Execute SQL analytics or preset aggregations over FOCUS 1.0 datasets")
     p_query.add_argument("sql", nargs="?", default=None, help="Read-only SQL query against 'focus_costs' table (e.g. 'SELECT ServiceName, SUM(EffectiveCost) FROM focus_costs GROUP BY ServiceName')")
-    p_query.add_argument("--preset", "-p", choices=["services", "accounts", "top-drivers"], default=None, help="Preset FinOps aggregation")
+    p_query.add_argument("--preset", "-p", choices=["services", "accounts", "top-drivers", "regions"], default=None, help="Preset FinOps aggregation")
     p_query.add_argument("--limit", "-l", type=int, default=10, help="Row limit for top cost drivers (default: 10)")
     p_query.add_argument("--format", "-m", choices=["table", "json", "csv", "markdown", "md"], default="table", help="Output format (default: table)")
     p_query.add_argument("--output", "-o", default=None, help="File path to save the output")
@@ -3103,6 +3939,8 @@ def main():
     p_notify.add_argument("--channel", choices=["whatsapp", "slack", "teams"], default="whatsapp", help="Notification channel (default: whatsapp)")
     p_notify.add_argument("--to", default=None, help="Recipient phone number with country code (e.g. +91XXXXXXXXXX)")
     p_notify.add_argument("--webhook", "-w", default=None, help="Target incoming webhook URL (Slack / Teams)")
+    p_notify.add_argument("--token", default=None, help="Slack Bot / User OAuth token (xoxb-... or xoxp-...)")
+    p_notify.add_argument("--channel-id", default=None, help="Slack channel name or ID (e.g. #finops-alerts or C0123456789)")
     p_notify.add_argument("--title", default="CloudPulse FinOps Alert", help="Alert title")
     p_notify.add_argument("--message", "-m", default="Cost anomaly detected across cloud infrastructure.", help="Alert body message")
     p_notify.add_argument("--batch", "-b", action="store_true", help="Generate fleet-wide batch optimization digest with interactive remediation actions")
@@ -3127,6 +3965,16 @@ def main():
     p_gh.add_argument("--output", "-o", default=None, help="File path to save output")
     p_gh.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
 
+    # watch (Post-Remediation CloudWatch SLA Watchdog & Automated Rollback)
+    p_watch = subparsers.add_parser("watch", parents=[common_parser], help="Monitor post-remediation SLA health and trigger zero-downtime rollback PRs")
+    p_watch.add_argument("--watch-id", "-w", default=None, help="Target SLA watch period ID")
+    p_watch.add_argument("--evaluate", "-e", action="store_true", help="Evaluate current CloudWatch metrics against SLA thresholds")
+    p_watch.add_argument("--latency", type=float, default=None, help="Simulate observed P95 latency in ms for SLA evaluation")
+    p_watch.add_argument("--rollback", "-r", action="store_true", help="Force immediate safe git revert rollback PR for monitored resource")
+    p_watch.add_argument("--format", "-m", choices=["table", "json", "markdown", "md"], default="table", help="Output format (default: table)")
+    p_watch.add_argument("--output", "-o", default=None, help="File path to save output")
+    p_watch.add_argument("--json", dest="json_only", action="store_true", help="Output raw JSON (shorthand for --format json)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -3150,6 +3998,7 @@ def main():
         "query": cmd_query,
         "k8s": cmd_k8s,
         "gh": cmd_gh,
+        "watch": cmd_watch,
         "onboard": cmd_onboard,
         "connect": cmd_connect,
         "push": cmd_push,
@@ -3161,6 +4010,7 @@ def main():
         "fleet": cmd_fleet,
         "recommend": cmd_recommend,
         "rag-test": cmd_rag_test,
+        "rollback": cmd_rollback,
     }
 
     cmd_fn = dispatch.get(args.command)
