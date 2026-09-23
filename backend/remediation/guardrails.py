@@ -29,7 +29,7 @@ class RemediationGuardrails:
 
             if lower_k in ["environment", "env"] and lower_v in PRODUCTION_VALUES:
                 # Disallow destructive actions in production without override
-                if action in ["delete_volume", "stop_instance", "delete_snapshot"] and not allow_production_override:
+                if action in ["delete_volume", "stop_instance", "stop", "delete_snapshot"] and not allow_production_override:
                     return False, f"Resource '{resource_id}' is in PRODUCTION environment. Automated destruction is blocked (use --force to override)."
 
             # 2. Check Auto Scaling Group membership

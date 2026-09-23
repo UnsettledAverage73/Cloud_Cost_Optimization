@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 import json
 import time
+import uuid
 
 # Auto-load local .env if present
 for cand in [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().parent.parent / ".env"]:
@@ -80,6 +81,7 @@ try:
     from services.opencost_engine import opencost_engine
     from services.github_app_engine import github_app_engine
     from services.sla_watchdog import sla_watchdog
+    from services.scheduler_engine import scheduler_engine
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -105,6 +107,7 @@ except ImportError:
     from backend.services.opencost_engine import opencost_engine
     from backend.services.github_app_engine import github_app_engine
     from backend.services.sla_watchdog import sla_watchdog
+    from backend.services.scheduler_engine import scheduler_engine
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -122,7 +125,19 @@ async def lifespan(app: FastAPI):
         print("✅ Database schema initialized successfully.")
     except Exception as e:
         print(f"⚠️ Startup database initialization notice: {e}")
+
+    try:
+        scheduler_engine.start_worker()
+        print("✅ Background scheduler worker initialized.")
+    except Exception as e:
+        print(f"⚠️ Scheduler startup note: {e}")
+
     yield
+
+    try:
+        scheduler_engine.stop_worker()
+    except Exception:
+        pass
 
 app = FastAPI(
     title="CloudPulse FinOps & Telemetry API",
@@ -2451,6 +2466,111 @@ async def get_pov_html_report(currency: str = "INR", rate: float = 84.0, account
         account_name=account_name
     )
     return HTMLResponse(content=html_content, status_code=200)
+
+
+# ==============================================================================
+# OPTISCALE OPERATIONAL SCHEDULER & PRE-WARMING PIPELINE APIS
+# ==============================================================================
+
+@app.get("/api/v2/schedules")
+async def list_operational_schedules():
+    """Lists all operational EC2 schedules."""
+    schedules = scheduler_engine.list_schedules()
+    return {"status": "success", "count": len(schedules), "schedules": schedules}
+
+
+@app.post("/api/v2/schedules")
+async def create_operational_schedule(payload: Request):
+    """Creates or updates an operational schedule for an EC2 instance."""
+    body = await payload.json()
+    try:
+        schedule = scheduler_engine.create_or_update_schedule(body)
+        return {"status": "success", "schedule": schedule}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/v2/schedules/{schedule_id}")
+async def delete_operational_schedule(schedule_id: str):
+    """Deletes an operational schedule."""
+    success = scheduler_engine.delete_schedule(schedule_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
+    return {"status": "success", "message": f"Schedule {schedule_id} deleted successfully"}
+
+
+@app.get("/api/v2/schedules/jobs")
+async def list_scheduled_jobs(limit: int = 50):
+    """Retrieves all past and pending optimization execution jobs."""
+    jobs = scheduler_engine.list_jobs(limit=limit)
+    return {"status": "success", "count": len(jobs), "jobs": jobs}
+
+
+@app.post("/api/v2/schedules/jobs/{job_id}/override")
+async def override_scheduled_job(job_id: str, payload: Request):
+    """
+    User/developer override during the 10-minute grace period.
+    Supports KEEP_RUNNING (extends running state) or STOP_NOW (immediate execution).
+    """
+    body = await payload.json()
+    action = body.get("action", "KEEP_RUNNING")
+    hours = int(body.get("extension_hours", 2))
+    try:
+        res = scheduler_engine.override_job(job_id, override_type=action, extension_hours=hours)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/v2/schedules/evaluate-now")
+async def evaluate_schedules_now(dry_run: bool = True):
+    """Triggers an immediate evaluation sweep of all schedules and processes due jobs."""
+    try:
+        session = active_credentials.get("default", {}).get("session") if not is_demo_mode else None
+        await scheduler_engine.run_scheduler_tick(session=session, dry_run=dry_run)
+        jobs = scheduler_engine.list_jobs(limit=20)
+        return {
+            "status": "success",
+            "message": f"Evaluation tick completed (dry_run={dry_run})",
+            "recent_jobs": jobs
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v2/schedules/jobs/manual-trigger")
+async def manual_trigger_job(payload: Request):
+    """
+    Manually triggers an instance lifecycle request (START / STOP / PREWARM)
+    strictly routed through Guardian validation and safe execution.
+    """
+    body = await payload.json()
+    instance_id = body.get("instance_id")
+    action = body.get("action", "STOP").upper()
+    tags = body.get("tags", {})
+    dry_run = bool(body.get("dry_run", False))
+
+    if not instance_id:
+        raise HTTPException(status_code=400, detail="instance_id is required")
+
+    job_dict = {
+        "id": str(uuid.uuid4()),
+        "schedule_id": None,
+        "instance_id": instance_id,
+        "action": action,
+        "scheduled_at": datetime.now(timezone.utc).isoformat(),
+        "status": "PENDING",
+        "reason": f"Manual trigger from FinOps console: {action}",
+        "blocked_reason": None,
+        "execution_details": {"initiated_by": "console_operator"},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "executed_at": None,
+    }
+
+    session = active_credentials.get("default", {}).get("session") if not is_demo_mode else None
+    processed = await scheduler_engine.process_job(job_dict, session=session, tags=tags, dry_run=dry_run)
+    return {"status": "success", "job": processed}
+
 
 
 

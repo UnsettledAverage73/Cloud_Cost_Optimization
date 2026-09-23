@@ -236,3 +236,96 @@ class RemediationAuditLedger(Base):
             "parameters": self.parameters,
             "executed_at": self.executed_at.isoformat() if self.executed_at else None
         }
+
+
+class Schedule(Base):
+    """Central operational schedule defining on/off windows per EC2 instance."""
+    __tablename__ = "schedules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instance_id = Column(String(100), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    timezone = Column(String(50), default="Asia/Kolkata", nullable=False)
+
+    start_time = Column(String(10), nullable=False, default="08:00")  # HH:MM format
+    stop_time = Column(String(10), nullable=False, default="20:00")   # HH:MM format
+
+    monday = Column(Boolean, default=True, nullable=False)
+    tuesday = Column(Boolean, default=True, nullable=False)
+    wednesday = Column(Boolean, default=True, nullable=False)
+    thursday = Column(Boolean, default=True, nullable=False)
+    friday = Column(Boolean, default=True, nullable=False)
+    saturday = Column(Boolean, default=False, nullable=False)
+    sunday = Column(Boolean, default=False, nullable=False)
+
+    prewarm_minutes = Column(BigInteger, default=15, nullable=False)
+    grace_period_minutes = Column(BigInteger, default=10, nullable=False)
+    enabled = Column(Boolean, default=True, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_schedules_instance", "instance_id"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "instance_id": self.instance_id,
+            "organization_id": str(self.organization_id) if self.organization_id else None,
+            "timezone": self.timezone,
+            "start_time": self.start_time,
+            "stop_time": self.stop_time,
+            "monday": self.monday,
+            "tuesday": self.tuesday,
+            "wednesday": self.wednesday,
+            "thursday": self.thursday,
+            "friday": self.friday,
+            "saturday": self.saturday,
+            "sunday": self.sunday,
+            "prewarm_minutes": int(self.prewarm_minutes or 15),
+            "grace_period_minutes": int(self.grace_period_minutes or 10),
+            "enabled": self.enabled,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class ScheduledJob(Base):
+    """Tracks state lifecycle of each scheduled optimization request."""
+    __tablename__ = "scheduled_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    schedule_id = Column(UUID(as_uuid=True), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True)
+    instance_id = Column(String(100), nullable=False)
+    action = Column(String(30), nullable=False)  # 'START', 'STOP', 'PREWARM', 'RESIZE'
+    scheduled_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(30), default="PENDING", nullable=False)
+    # PENDING, NOTIFYING, OVERRIDDEN, VALIDATING, APPROVED, EXECUTING, SUCCESS, BLOCKED, FAILED, CANCELLED
+    reason = Column(Text, nullable=True)
+    blocked_reason = Column(Text, nullable=True)
+    execution_details = Column(JSONB, default={}, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    executed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_scheduled_jobs_status", "status", "scheduled_at"),
+        Index("idx_scheduled_jobs_instance", "instance_id", "created_at"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "schedule_id": str(self.schedule_id) if self.schedule_id else None,
+            "instance_id": self.instance_id,
+            "action": self.action,
+            "scheduled_at": self.scheduled_at.isoformat() if self.scheduled_at else None,
+            "status": self.status,
+            "reason": self.reason,
+            "blocked_reason": self.blocked_reason,
+            "execution_details": self.execution_details,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "executed_at": self.executed_at.isoformat() if self.executed_at else None
+        }
+

@@ -112,7 +112,7 @@ class SafeRemediationExecutor:
                 res = self._set_log_retention(resource_id, extra.get("retention_days", 30))
             elif action_norm in ["stop_instance", "stop"]:
                 res = self._stop_ec2_instance(resource_id)
-            elif action_norm in ["start_instance", "start"]:
+            elif action_norm in ["start_instance", "start", "prewarm"]:
                 res = self._start_ec2_instance(resource_id)
             elif action_norm in ["downsize", "resize", "resize_instance", "change_instance_type"]:
                 target_type = extra.get("to_type") or extra.get("target_type") or "t3.medium"

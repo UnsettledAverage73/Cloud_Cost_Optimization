@@ -6,13 +6,15 @@ try:
     from database.connection import sync_engine, SyncSessionLocal
     from database.models import (
         Base, Organization, ConnectedAWSAccount, CloudResource,
-        ResourceTelemetry, DailySpendRecord, OptimizationFinding, RemediationAuditLedger
+        ResourceTelemetry, DailySpendRecord, OptimizationFinding, RemediationAuditLedger,
+        Schedule, ScheduledJob
     )
 except ImportError:
     from backend.database.connection import sync_engine, SyncSessionLocal
     from backend.database.models import (
         Base, Organization, ConnectedAWSAccount, CloudResource,
-        ResourceTelemetry, DailySpendRecord, OptimizationFinding, RemediationAuditLedger
+        ResourceTelemetry, DailySpendRecord, OptimizationFinding, RemediationAuditLedger,
+        Schedule, ScheduledJob
     )
 
 logging.basicConfig(level=logging.INFO)
