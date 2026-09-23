@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
-  Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Check,
+  Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Calendar, Check,
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Copy, Cpu, Database,
-  Download, ExternalLink, Eye, FileCode, FileText, GitBranch, GitPullRequest, HardDrive, History, KeyRound, LayoutDashboard,
-  Lock, Menu, MessageSquare, Moon, MoreHorizontal, Network, PanelLeft, Play, Plus, RefreshCw, RotateCcw, Search, Send,
+  Download, ExternalLink, Eye, FileCode, FileText, GitBranch, GitPullRequest, HardDrive, History, Inbox, KeyRound, LayoutDashboard,
+  Layers, Lock, Menu, MessageSquare, Moon, MoreHorizontal, Network, PanelLeft, Play, Plus, RefreshCw, RotateCcw, Search, Send,
   Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Sun, Terminal, X, Zap, Loader2
 } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -19,6 +19,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Skeleton } from '@/components/ui/skeleton'
+import { SectionErrorBoundary } from '@/components/error-boundary'
+import { EmptyState, MetricCardSkeleton, TableSkeleton, ChartSkeleton } from '@/components/empty-state'
 
 // Base URL for CloudPulse Backend (Render Web Service or local)
 function getApiBase(): string {
@@ -1032,106 +1035,132 @@ export default function Page() {
                   </Card>
                 )}
                 {view === 'overview' && (
-                  <Overview
-                    accessMode={connectionAccessMode}
-                    setView={setView}
-                    spend={spend}
-                    alerts={alerts}
-                    summary={summary}
-                    currency={currency}
-                    apiUrl={apiUrl}
-                    sectionStatus={dataSources.summary?.status || 'idle'}
-                  />
+                  <SectionErrorBoundary title="Overview">
+                    <Overview
+                      accessMode={connectionAccessMode}
+                      setView={setView}
+                      spend={spend}
+                      alerts={alerts}
+                      summary={summary}
+                      currency={currency}
+                      apiUrl={apiUrl}
+                      sectionStatus={dataSources.summary?.status || (syncing ? 'loading' : 'idle')}
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'inventory' && (
-                  <Inventory
-                    accessMode={connectionAccessMode}
-                    search={search}
-                    setSearch={setSearch}
-                    status={status}
-                    setStatus={setStatus}
-                    filteredNodes={filteredNodes}
-                    setSelectedNode={setSelectedNode}
-                    sectionStatus={dataSources.nodes?.status || 'idle'}
-                  />
+                  <SectionErrorBoundary title="Compute Inventory">
+                    <Inventory
+                      accessMode={connectionAccessMode}
+                      search={search}
+                      setSearch={setSearch}
+                      status={status}
+                      setStatus={setStatus}
+                      filteredNodes={filteredNodes}
+                      setSelectedNode={setSelectedNode}
+                      sectionStatus={dataSources.nodes?.status || (syncing ? 'loading' : 'idle')}
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'telemetry' && (
-                  <Telemetry
-                    accessMode={connectionAccessMode}
-                    telemetry={telemetry}
-                    timeframe={timeframe}
-                    setTimeframe={setTimeframe}
-                    sectionStatus={dataSources.telemetry?.status || 'idle'}
-                  />
+                  <SectionErrorBoundary title="Telemetry Analytics">
+                    <Telemetry
+                      accessMode={connectionAccessMode}
+                      telemetry={telemetry}
+                      timeframe={timeframe}
+                      setTimeframe={setTimeframe}
+                      sectionStatus={dataSources.telemetry?.status || (syncing ? 'loading' : 'idle')}
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'security' && (
-                  <Security
-                    accessMode={connectionAccessMode}
-                    tab={securityTab}
-                    setTab={setSecurityTab}
-                    summary={summary}
-                    audit={securityAudit}
-                    sectionStatus={dataSources.security?.status || 'idle'}
-                  />
+                  <SectionErrorBoundary title="Security Center">
+                    <Security
+                      accessMode={connectionAccessMode}
+                      tab={securityTab}
+                      setTab={setSecurityTab}
+                      summary={summary}
+                      audit={securityAudit}
+                      sectionStatus={dataSources.security?.status || (syncing ? 'loading' : 'idle')}
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'optimization' && (
-                  <Optimization
-                    accessMode={connectionAccessMode}
-                    items={optimizations}
-                    applied={applied}
-                    setApplied={setApplied}
-                    currency={currency}
-                    apiUrl={apiUrl}
-                    sectionStatus={
-                      dataSources.optimizations?.status === 'error'
-                        ? 'error'
-                        : dataSources.optimizations?.status === 'partial' || dataSources.applied?.status === 'partial'
-                          ? 'partial'
-                          : dataSources.optimizations?.status === 'ready' || dataSources.applied?.status === 'ready'
-                            ? 'ready'
-                            : syncing ? 'loading' : 'idle'
-                    }
-                  />
+                  <SectionErrorBoundary title="Cost Optimization">
+                    <Optimization
+                      accessMode={connectionAccessMode}
+                      items={optimizations}
+                      applied={applied}
+                      setApplied={setApplied}
+                      currency={currency}
+                      apiUrl={apiUrl}
+                      sectionStatus={
+                        dataSources.optimizations?.status === 'error'
+                          ? 'error'
+                          : dataSources.optimizations?.status === 'partial' || dataSources.applied?.status === 'partial'
+                            ? 'partial'
+                            : dataSources.optimizations?.status === 'ready' || dataSources.applied?.status === 'ready'
+                              ? 'ready'
+                              : syncing ? 'loading' : 'idle'
+                      }
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'scheduler' && (
-                  <SchedulerPrewarmView
-                    currency={currency}
-                    apiUrl={apiUrl}
-                  />
+                  <SectionErrorBoundary title="Scheduler & Pre-Warming">
+                    <SchedulerPrewarmView
+                      currency={currency}
+                      apiUrl={apiUrl}
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'gitops-sla' && (
-                  <GitOpsSlaView
-                    currency={currency}
-                    apiUrl={apiUrl}
-                    items={optimizations}
-                    applied={applied}
-                    setApplied={setApplied}
-                  />
+                  <SectionErrorBoundary title="GitOps & SLA Watchdog">
+                    <GitOpsSlaView
+                      currency={currency}
+                      apiUrl={apiUrl}
+                      items={optimizations}
+                      applied={applied}
+                      setApplied={setApplied}
+                    />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'fleet' && (
-                  <FleetView currency={currency} apiUrl={apiUrl} />
+                  <SectionErrorBoundary title="Enterprise Fleet">
+                    <FleetView currency={currency} apiUrl={apiUrl} />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'cicd' && (
-                  <CiCdGuardrailView currency={currency} apiUrl={apiUrl} />
+                  <SectionErrorBoundary title="CI/CD Guardrails">
+                    <CiCdGuardrailView currency={currency} apiUrl={apiUrl} />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'kubernetes' && (
-                  <KubernetesView currency={currency} apiUrl={apiUrl} />
+                  <SectionErrorBoundary title="Kubernetes Optimization">
+                    <KubernetesView currency={currency} apiUrl={apiUrl} />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'lakehouse' && (
-                  <LakehouseView currency={currency} apiUrl={apiUrl} />
+                  <SectionErrorBoundary title="FinOps Lakehouse">
+                    <LakehouseView currency={currency} apiUrl={apiUrl} />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'copilot' && (
-                  <CopilotView apiUrl={apiUrl} />
+                  <SectionErrorBoundary title="FinOps Copilot">
+                    <CopilotView apiUrl={apiUrl} />
+                  </SectionErrorBoundary>
                 )}
                 {view === 'settings' && (
-                  <SettingsView
-                    connectionState={connectionState}
-                    connectedAccounts={connectedAccounts}
-                    rememberedProfile={rememberedProfile}
-                    onSwitchAccount={switchAccount}
-                    selectedAccountKey={selectedAccountKey}
-                    apiUrl={apiUrl}
-                  />
+                  <SectionErrorBoundary title="Account Settings">
+                    <SettingsView
+                      connectionState={connectionState}
+                      connectedAccounts={connectedAccounts}
+                      rememberedProfile={rememberedProfile}
+                      onSwitchAccount={switchAccount}
+                      selectedAccountKey={selectedAccountKey}
+                      apiUrl={apiUrl}
+                    />
+                  </SectionErrorBoundary>
                 )}
               </>
             )}
@@ -1287,10 +1316,21 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
       />
     
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={CircleDollarSign} label={`Total monthly spend (${currency})`} value={formatCurrency(totalSpend, currency)} detail={`Last synced ${lastSynced}`} tone="cyan" trend="Live" />
-        <MetricCard icon={Cpu} label="Active compute nodes" value={formatInteger(activeNodes)} detail={`${formatInteger(Math.max(totalNodes - activeNodes, 0))} stopped · ${formatInteger(totalNodes)} total`} tone="emerald" />
-        <MetricCard icon={ArrowDownRight} label={`Monthly wasted spend (${currency})`} value={formatCurrency(wastedSpend, currency)} detail="Actionable savings" tone="amber" />
-        <MetricCard icon={ShieldAlert} label="Critical security risks" value={formatInteger(criticalRisks)} detail="Exposure alerts from the backend" tone="red" />
+        {sectionStatus === 'loading' ? (
+          <>
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+          </>
+        ) : (
+          <>
+            <MetricCard icon={CircleDollarSign} label={`Total monthly spend (${currency})`} value={formatCurrency(totalSpend, currency)} detail={`Last synced ${lastSynced}`} tone="cyan" trend="Live" />
+            <MetricCard icon={Cpu} label="Active compute nodes" value={formatInteger(activeNodes)} detail={`${formatInteger(Math.max(totalNodes - activeNodes, 0))} stopped · ${formatInteger(totalNodes)} total`} tone="emerald" />
+            <MetricCard icon={ArrowDownRight} label={`Monthly wasted spend (${currency})`} value={formatCurrency(wastedSpend, currency)} detail="Actionable savings" tone="amber" />
+            <MetricCard icon={ShieldAlert} label="Critical security risks" value={formatInteger(criticalRisks)} detail="Exposure alerts from the backend" tone="red" />
+          </>
+        )}
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
@@ -1303,27 +1343,38 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
             <Badge variant="outline" className="border-white/10 text-muted-foreground">{summaryMode}</Badge>
           </CardHeader>
           <CardContent className="h-60 sm:h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={spend}>
-                <defs>
-                  <linearGradient id="aws" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity=".35" />
-                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" />
-                  </linearGradient>
-                  <linearGradient id="gcp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--chart-2)" stopOpacity=".3" />
-                    <stop offset="100%" stopColor="var(--chart-2)" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
-                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={36} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="aws" name="AWS" stackId="1" stroke="var(--chart-1)" fill="url(#aws)" />
-                <Area type="monotone" dataKey="gcp" name="GCP" stackId="1" stroke="var(--chart-2)" fill="url(#gcp)" />
-                <Area type="monotone" dataKey="azure" name="Azure" stackId="1" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={.16} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {sectionStatus === 'loading' ? (
+              <ChartSkeleton height="h-full" />
+            ) : (!Array.isArray(spend) || spend.length === 0) ? (
+              <EmptyState
+                icon={BarChart3}
+                title="No spend telemetry recorded"
+                description="Daily cloud cost data will populate as billing metrics are ingested."
+                className="h-full border-0 py-6"
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={spend}>
+                  <defs>
+                    <linearGradient id="aws" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-1)" stopOpacity=".35" />
+                      <stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" />
+                    </linearGradient>
+                    <linearGradient id="gcp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-2)" stopOpacity=".3" />
+                      <stop offset="100%" stopColor="var(--chart-2)" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={36} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area type="monotone" dataKey="aws" name="AWS" stackId="1" stroke="var(--chart-1)" fill="url(#aws)" />
+                  <Area type="monotone" dataKey="gcp" name="GCP" stackId="1" stroke="var(--chart-2)" fill="url(#gcp)" />
+                  <Area type="monotone" dataKey="azure" name="Azure" stackId="1" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={.16} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -1333,20 +1384,35 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
             <p className="mt-1 text-xs text-muted-foreground">Items needing your attention</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            {(Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => (
-              <div key={alert.id || alert.title || idx} className="flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.03] p-3">
-                <div className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-${alert.tone || 'amber'}-400/10 text-${alert.tone || 'amber'}-400`}>
-                  <AlertTriangle className="size-3.5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{alert.title || 'Untitled Alert'}</div>
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground">{alert.desc || alert.description || ''}</div>
-                </div>
-                {alert.tag && (
-                  <Badge variant="outline" className="border-white/10 text-[10px] shrink-0">{alert.tag}</Badge>
-                )}
+            {sectionStatus === 'loading' ? (
+              <div className="space-y-3">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
               </div>
-            ))}
+            ) : (Array.isArray(alerts) ? alerts : []).length === 0 ? (
+              <EmptyState
+                icon={CheckCircle2}
+                title="All systems optimal"
+                description="Zero infrastructure or billing alerts requiring action."
+                className="py-8 border-0"
+              />
+            ) : (
+              (Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => (
+                <div key={alert.id || alert.title || idx} className="flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.03] p-3">
+                  <div className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-${alert.tone || 'amber'}-400/10 text-${alert.tone || 'amber'}-400`}>
+                    <AlertTriangle className="size-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{alert.title || 'Untitled Alert'}</div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">{alert.desc || alert.description || ''}</div>
+                  </div>
+                  {alert.tag && (
+                    <Badge variant="outline" className="border-white/10 text-[10px] shrink-0">{alert.tag}</Badge>
+                  )}
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1496,50 +1562,68 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
         </Select>
       </div>
       <Card className="overflow-hidden border-white/8 bg-card/70">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-white/8 hover:bg-transparent">
-              <TableHead className="w-10" />
-              <TableHead>Instance</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Region</TableHead>
-              <TableHead>Public IP</TableHead>
-              <TableHead>Volumes</TableHead>
-              <TableHead className="text-right">Monthly cost</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredNodes.map((n: any) => (
-              <TableRow key={n.instance_id} onClick={() => setSelectedNode(n)} className="cursor-pointer border-white/8 hover:bg-white/[.04]">
-                <TableCell>
-                  <input type="checkbox" aria-label={`Select ${n.name}`} className="accent-cyan-400" onClick={e => e.stopPropagation()} />
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium">{n.name}</div>
-                  <div className="font-mono text-[11px] text-muted-foreground">{n.instance_id}</div>
-                </TableCell>
-                <TableCell>
-                  <span className="flex items-center gap-2 text-xs capitalize">
-                    <span className={`size-2 rounded-full ${n.state === 'running' ? 'bg-emerald-400' : n.state === 'stopped' ? 'bg-amber-400' : 'bg-red-400'}`} />
-                    {n.state}
-                  </span>
-                </TableCell>
-                <TableCell className="font-mono text-xs">{n.type}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{n.region}</TableCell>
-                <TableCell className="font-mono text-xs">{n.public_ip}</TableCell>
-                <TableCell className="text-xs">{n.volumes} attached</TableCell>
-                <TableCell className="text-right font-mono text-xs">${Number(n.cost).toFixed(2)}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" aria-label="More actions" onClick={e => e.stopPropagation()}>
-                    <MoreHorizontal />
-                  </Button>
-                </TableCell>
+        {sectionStatus === 'loading' ? (
+          <TableSkeleton rows={6} cols={8} />
+        ) : (!Array.isArray(filteredNodes) || filteredNodes.length === 0) ? (
+          <EmptyState
+            icon={Server}
+            title="No compute instances found"
+            description={search || status !== 'all' ? "No instances match your current filter criteria." : "No live EC2 nodes discovered in this connected region."}
+            action={
+              (search || status !== 'all') ? (
+                <Button variant="outline" size="sm" onClick={() => { setSearch(''); setStatus('all'); }}>
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+            className="my-6 border-0"
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="border-white/8 hover:bg-transparent">
+                <TableHead className="w-10" />
+                <TableHead>Instance</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Region</TableHead>
+                <TableHead>Public IP</TableHead>
+                <TableHead>Volumes</TableHead>
+                <TableHead className="text-right">Monthly cost</TableHead>
+                <TableHead />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredNodes.map((n: any) => (
+                <TableRow key={n.instance_id} onClick={() => setSelectedNode(n)} className="cursor-pointer border-white/8 hover:bg-white/[.04]">
+                  <TableCell>
+                    <input type="checkbox" aria-label={`Select ${n.name}`} className="accent-cyan-400" onClick={e => e.stopPropagation()} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{n.name}</div>
+                    <div className="font-mono text-[11px] text-muted-foreground">{n.instance_id}</div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="flex items-center gap-2 text-xs capitalize">
+                      <span className={`size-2 rounded-full ${n.state === 'running' ? 'bg-emerald-400' : n.state === 'stopped' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                      {n.state}
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{n.type}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{n.region}</TableCell>
+                  <TableCell className="font-mono text-xs">{n.public_ip}</TableCell>
+                  <TableCell className="text-xs">{n.volumes} attached</TableCell>
+                  <TableCell className="text-right font-mono text-xs">${Number(n.cost).toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="icon" aria-label="More actions" onClick={e => e.stopPropagation()}>
+                      <MoreHorizontal />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Card>
     </>
   )
@@ -1580,28 +1664,39 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
               <span className="size-2 rounded-full bg-emerald-400" />
             </CardHeader>
             <CardContent className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                {kind === 'bar' ? (
-                  <BarChart data={telemetry}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                    <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={30} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="read" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="write" fill="var(--chart-2)" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                ) : (
-                  <LineChart data={telemetry}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                    <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={30} />
-                    <Tooltip content={<ChartTooltip />} />
-                    {key === 'cpu' && <ReferenceLine y={80} stroke="var(--destructive)" strokeDasharray="4 4" />}
-                    <Line type="monotone" dataKey={key === 'network' ? 'netIn' : key} stroke="var(--chart-1)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey={key === 'network' ? 'netOut' : undefined} stroke="var(--chart-2)" strokeWidth={2} dot={false} />
-                  </LineChart>
-                )}
-              </ResponsiveContainer>
+              {sectionStatus === 'loading' ? (
+                <ChartSkeleton height="h-full" />
+              ) : (!Array.isArray(telemetry) || telemetry.length === 0) ? (
+                <EmptyState
+                  icon={Activity}
+                  title="No telemetry signals"
+                  description={`No ${title.toLowerCase()} data received in the last ${timeframe}.`}
+                  className="h-full border-0 py-4"
+                />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  {kind === 'bar' ? (
+                    <BarChart data={telemetry}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
+                      <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={30} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="read" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="write" fill="var(--chart-2)" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={telemetry}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
+                      <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={30} />
+                      <Tooltip content={<ChartTooltip />} />
+                      {key === 'cpu' && <ReferenceLine y={80} stroke="var(--destructive)" strokeDasharray="4 4" />}
+                      <Line type="monotone" dataKey={key === 'network' ? 'netIn' : key} stroke="var(--chart-1)" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey={key === 'network' ? 'netOut' : undefined} stroke="var(--chart-2)" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -1661,76 +1756,84 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
           <TabsTrigger value="logs">CloudWatch logs</TabsTrigger>
         </TabsList>
         <TabsContent value="groups">
-          <Card className="border-white/8 bg-card/70">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/8">
-                  <TableHead>Group</TableHead>
-                  <TableHead>Exposure</TableHead>
-                  <TableHead>Ports</TableHead>
-                  <TableHead>Resources</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {exposedSecurityGroups.length ? exposedSecurityGroups.map((group: any) => (
-                  <TableRow key={group.group_id} className="border-white/8">
-                    <TableCell>
-                      <div className="font-medium">{group.group_name}</div>
-                      <div className="font-mono text-xs text-muted-foreground">{group.group_id}</div>
-                    </TableCell>
-                    <TableCell><Badge className="border-red-400/20 bg-red-400/10 text-red-300">Publicly exposed</Badge></TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {(group.exposed_ports || []).map((port: number) => (
-                          <Badge key={port} variant="outline" className={port === 22 ? 'border-red-400/30 text-red-300' : ''}>
-                            {port}{port === 22 ? ' SSH' : ''}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{group.exposed_ports?.length || 0} exposed ports</TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="destructive" onClick={() => handleRevoke(group.group_id)}>Revoke</Button>
-                    </TableCell>
-                  </TableRow>
-                )) : (
+          <Card className="border-white/8 bg-card/70 overflow-hidden">
+            {sectionStatus === 'loading' ? (
+              <TableSkeleton rows={4} cols={5} />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow className="border-white/8">
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                      No public security groups detected.
-                    </TableCell>
+                    <TableHead>Group</TableHead>
+                    <TableHead>Exposure</TableHead>
+                    <TableHead>Ports</TableHead>
+                    <TableHead>Resources</TableHead>
+                    <TableHead />
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {exposedSecurityGroups.length ? exposedSecurityGroups.map((group: any) => (
+                    <TableRow key={group.group_id} className="border-white/8">
+                      <TableCell>
+                        <div className="font-medium">{group.group_name}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{group.group_id}</div>
+                      </TableCell>
+                      <TableCell><Badge className="border-red-400/20 bg-red-400/10 text-red-300">Publicly exposed</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {(group.exposed_ports || []).map((port: number) => (
+                            <Badge key={port} variant="outline" className={port === 22 ? 'border-red-400/30 text-red-300' : ''}>
+                              {port}{port === 22 ? ' SSH' : ''}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{group.exposed_ports?.length || 0} exposed ports</TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="destructive" onClick={() => handleRevoke(group.group_id)}>Revoke</Button>
+                      </TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow className="border-white/8">
+                      <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                        No public security groups detected.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </Card>
         </TabsContent>
         <TabsContent value="ips">
-          <Card className="border-white/8 bg-card/70">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/8">
-                  <TableHead>Elastic IP</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Monthly cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unattachedElasticIPs.length ? unattachedElasticIPs.map((eip: any) => (
-                  <TableRow key={eip.public_ip} className="border-white/8">
-                    <TableCell className="font-mono text-xs">{eip.public_ip}</TableCell>
-                    <TableCell><Badge variant="outline" className="border-amber-400/30 text-amber-300">Unattached</Badge></TableCell>
-                    <TableCell className="font-mono text-xs">${Number(eip.estimated_monthly_cost ?? 0).toFixed(2)}</TableCell>
-                  </TableRow>
-                )) : (
+          <Card className="border-white/8 bg-card/70 overflow-hidden">
+            {sectionStatus === 'loading' ? (
+              <TableSkeleton rows={4} cols={3} />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow className="border-white/8">
-                    <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">
-                      No unattached Elastic IPs found.
-                    </TableCell>
+                    <TableHead>Elastic IP</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Monthly cost</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {unattachedElasticIPs.length ? unattachedElasticIPs.map((eip: any) => (
+                    <TableRow key={eip.public_ip} className="border-white/8">
+                      <TableCell className="font-mono text-xs">{eip.public_ip}</TableCell>
+                      <TableCell><Badge variant="outline" className="border-amber-400/30 text-amber-300">Unattached</Badge></TableCell>
+                      <TableCell className="font-mono text-xs">${Number(eip.estimated_monthly_cost ?? 0).toFixed(2)}</TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow className="border-white/8">
+                      <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">
+                        No unattached Elastic IPs found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </Card>
         </TabsContent>
         <TabsContent value="logs">
@@ -1876,43 +1979,66 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
           {formatCurrency(items.reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0), currency)} potential savings
         </span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item: any) => {
-          const done = applied.includes(item.id);
-          return (
-            <Card key={item.id} className={`border-white/8 bg-card/70 transition ${done ? 'border-emerald-400/30' : ''}`}>
-              <CardHeader>
-                <Badge variant="outline" className="w-fit border-white/10">{item.type}</Badge>
-                <CardTitle className="pt-2 text-base">{item.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="min-h-10 text-sm text-muted-foreground">{item.desc}</p>
-                {item.ai_rationale && item.ai_rationale !== item.desc && (
-                  <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2.5 text-xs text-cyan-200">
-                    <div className="mb-1 flex items-center gap-1.5 font-medium text-cyan-300">
-                      <Sparkles className="size-3.5" /> AI Architecture Rationale
-                    </div>
-                    {item.ai_rationale}
-                  </div>
-                )}
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-lg sm:text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button size="sm" variant="ghost" className="text-xs text-cyan-300 hover:bg-cyan-400/10 px-2" onClick={() => handleSingleGitopsPr(item)}>
-                      <GitPullRequest className="mr-1 size-3" />PR
-                    </Button>
-                    <Button size="sm" variant={done ? 'secondary' : 'outline'} onClick={() => toggleOptimization(item.id)}>
-                      {done ? <><Check data-icon="inline-start" />Applied</> : 'Review'}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
+      {sectionStatus === 'loading' ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="border-white/8 bg-card/70 p-5 space-y-3">
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-16 w-full" />
+              <div className="flex justify-between items-center pt-2">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-8 w-20" />
+              </div>
             </Card>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      ) : (!Array.isArray(items) || items.length === 0) ? (
+        <EmptyState
+          icon={Sparkles}
+          title="Cloud Estate Fully Optimized"
+          description="No idle, oversized, or unattached resource waste detected. All provisioned infrastructure is operating within target cost thresholds."
+          className="my-6 py-12"
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item: any) => {
+            const done = applied.includes(item.id);
+            return (
+              <Card key={item.id} className={`border-white/8 bg-card/70 transition ${done ? 'border-emerald-400/30' : ''}`}>
+                <CardHeader>
+                  <Badge variant="outline" className="w-fit border-white/10">{item.type}</Badge>
+                  <CardTitle className="pt-2 text-base">{item.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="min-h-10 text-sm text-muted-foreground">{item.desc}</p>
+                  {item.ai_rationale && item.ai_rationale !== item.desc && (
+                    <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2.5 text-xs text-cyan-200">
+                      <div className="mb-1 flex items-center gap-1.5 font-medium text-cyan-300">
+                        <Sparkles className="size-3.5" /> AI Architecture Rationale
+                      </div>
+                      {item.ai_rationale}
+                    </div>
+                  )}
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-lg sm:text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button size="sm" variant="ghost" className="text-xs text-cyan-300 hover:bg-cyan-400/10 px-2" onClick={() => handleSingleGitopsPr(item)}>
+                        <GitPullRequest className="mr-1 size-3" />PR
+                      </Button>
+                      <Button size="sm" variant={done ? 'secondary' : 'outline'} onClick={() => toggleOptimization(item.id)}>
+                        {done ? <><Check data-icon="inline-start" />Applied</> : 'Review'}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
 
       {/* GitOps PR Synthesis Modal */}
       <Dialog open={gitopsOpen} onOpenChange={setGitopsOpen}>
@@ -2218,44 +2344,64 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
             {recommendations.length} Actionable Rightsizing Diffs
           </Badge>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recommendations.map((rec: any, idx: number) => (
-            <Card key={`${rec.workload}-${idx}`} className="border-white/8 bg-card/70">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="border-white/10 text-xs">{rec.namespace}</Badge>
-                  <span className="text-xs font-semibold text-emerald-400">
-                    +{formatCurrency(rec.monthly_savings, currency)}/mo
-                  </span>
-                </div>
-                <CardTitle className="pt-2 text-base font-semibold">{rec.workload}</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3 text-xs">
-                <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/8 bg-white/5 p-2.5">
-                  <div>
-                    <span className="text-muted-foreground">CPU Request:</span>
-                    <div className="font-mono font-medium text-amber-300">{rec.current_cpu} ➔ <span className="text-emerald-300">{rec.recommended_cpu}</span></div>
+        {loading ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} className="border-white/8 bg-card/70 p-5 space-y-3">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-8 w-28 ml-auto" />
+              </Card>
+            ))}
+          </div>
+        ) : (!Array.isArray(recommendations) || recommendations.length === 0) ? (
+          <EmptyState
+            icon={Layers}
+            title="All Workloads Optimized"
+            description="Kubernetes CPU and memory requests align with actual telemetry. No rightsizing required."
+            className="my-4 py-10"
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recommendations.map((rec: any, idx: number) => (
+              <Card key={`${rec.workload}-${idx}`} className="border-white/8 bg-card/70">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="border-white/10 text-xs">{rec.namespace}</Badge>
+                    <span className="text-xs font-semibold text-emerald-400">
+                      +{formatCurrency(rec.monthly_savings, currency)}/mo
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">RAM Request:</span>
-                    <div className="font-mono font-medium text-amber-300">{rec.current_memory} ➔ <span className="text-emerald-300">{rec.recommended_memory}</span></div>
+                  <CardTitle className="pt-2 text-base font-semibold">{rec.workload}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/8 bg-white/5 p-2.5">
+                    <div>
+                      <span className="text-muted-foreground">CPU Request:</span>
+                      <div className="font-mono font-medium text-amber-300">{rec.current_cpu} ➔ <span className="text-emerald-300">{rec.recommended_cpu}</span></div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">RAM Request:</span>
+                      <div className="font-mono font-medium text-amber-300">{rec.current_memory} ➔ <span className="text-emerald-300">{rec.recommended_memory}</span></div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-muted-foreground">Kind: <b>{rec.kind || 'Deployment'}</b></span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-cyan-400/30 bg-cyan-400/10 text-xs text-cyan-300 hover:bg-cyan-400/20"
-                    onClick={() => { setActiveYamlDiff(rec.yaml_diff); setCopied(false); }}
-                  >
-                    View YAML Diff
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-muted-foreground">Kind: <b>{rec.kind || 'Deployment'}</b></span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-cyan-400/30 bg-cyan-400/10 text-xs text-cyan-300 hover:bg-cyan-400/20"
+                      onClick={() => { setActiveYamlDiff(rec.yaml_diff); setCopied(false); }}
+                    >
+                      View YAML Diff
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       <Card className="border-white/8 bg-card/70">
@@ -2276,22 +2422,39 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/8 hover:bg-transparent">
-                  <TableHead className="text-xs">Workload</TableHead>
-                  <TableHead className="text-xs">Namespace</TableHead>
-                  <TableHead className="text-xs">Kind</TableHead>
-                  <TableHead className="text-xs text-right">CPU (Req / Util)</TableHead>
-                  <TableHead className="text-xs text-right">RAM (Req / Util)</TableHead>
-                  <TableHead className="text-xs text-right">Monthly Spend</TableHead>
-                  <TableHead className="text-xs text-right">Idle Waste</TableHead>
-                  <TableHead className="text-xs text-right">Efficiency</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAllocations.map((alloc: any, idx: number) => (
+          {loading ? (
+            <TableSkeleton rows={5} cols={8} />
+          ) : filteredAllocations.length === 0 ? (
+            <EmptyState
+              icon={Server}
+              title="No Workload Allocations Found"
+              description={`No pods or deployments found in namespace "${selectedNamespace}".`}
+              action={
+                selectedNamespace !== 'all' ? (
+                  <Button variant="outline" size="sm" onClick={() => setSelectedNamespace('all')}>
+                    Show all namespaces
+                  </Button>
+                ) : undefined
+              }
+              className="my-4 border-0"
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/8 hover:bg-transparent">
+                    <TableHead className="text-xs">Workload</TableHead>
+                    <TableHead className="text-xs">Namespace</TableHead>
+                    <TableHead className="text-xs">Kind</TableHead>
+                    <TableHead className="text-xs text-right">CPU (Req / Util)</TableHead>
+                    <TableHead className="text-xs text-right">RAM (Req / Util)</TableHead>
+                    <TableHead className="text-xs text-right">Monthly Spend</TableHead>
+                    <TableHead className="text-xs text-right">Idle Waste</TableHead>
+                    <TableHead className="text-xs text-right">Efficiency</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAllocations.map((alloc: any, idx: number) => (
                   <TableRow key={`${alloc.workload}-${idx}`} className="border-white/8">
                     <TableCell className="font-mono text-xs font-semibold text-cyan-300">{alloc.workload}</TableCell>
                     <TableCell className="text-xs">{alloc.namespace}</TableCell>
@@ -2325,7 +2488,8 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
               </TableBody>
             </Table>
           </div>
-        </CardContent>
+        )}
+      </CardContent>
       </Card>
 
       <Dialog open={!!activeYamlDiff} onOpenChange={() => setActiveYamlDiff(null)}>
@@ -2564,7 +2728,11 @@ function LakehouseView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; 
               </div>
             )}
 
-            {queryResult && (
+            {executing ? (
+              <div className="pt-2">
+                <TableSkeleton rows={4} cols={4} />
+              </div>
+            ) : queryResult ? (
               <div className="flex flex-col gap-2 pt-2">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Returned {queryResult.row_count || queryResult.rows?.length || 0} rows</span>
@@ -2580,22 +2748,30 @@ function LakehouseView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(queryResult.rows || []).map((row: any, rIdx: number) => (
-                        <TableRow key={rIdx} className="border-white/8">
-                          {(queryResult.columns || Object.keys(row)).map((col: string) => (
-                            <TableCell key={col} className="font-mono text-xs">
-                              {typeof row[col] === 'number' && col.toLowerCase().includes('cost')
-                                ? formatCurrency(row[col], currency)
-                                : String(row[col] ?? '')}
-                            </TableCell>
-                          ))}
+                      {(queryResult.rows || []).length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={(queryResult.columns || ['Result']).length} className="py-8 text-center text-xs text-muted-foreground">
+                            Query executed successfully with 0 rows returned.
+                          </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (queryResult.rows || []).map((row: any, rIdx: number) => (
+                          <TableRow key={rIdx} className="border-white/8">
+                            {(queryResult.columns || Object.keys(row)).map((col: string) => (
+                              <TableCell key={col} className="font-mono text-xs">
+                                {typeof row[col] === 'number' && col.toLowerCase().includes('cost')
+                                  ? formatCurrency(row[col], currency)
+                                  : String(row[col] ?? '')}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>
@@ -3555,10 +3731,21 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {schedules.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                No active schedules configured. Click &quot;New Schedule&quot; to define on/off windows.
-              </div>
+            {loading ? (
+              <TableSkeleton rows={4} cols={7} />
+            ) : schedules.length === 0 ? (
+              <EmptyState
+                icon={Calendar}
+                title="No Active Schedules"
+                description="Configure working windows, grace periods, and pre-warm leads to eliminate off-hours idle waste."
+                action={
+                  <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => setCreateModalOpen(true)}>
+                    <Plus className="mr-1.5 size-3.5" />
+                    New Schedule
+                  </Button>
+                }
+                className="my-4 border-0"
+              />
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -3641,10 +3828,15 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {jobs.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                No optimization jobs recorded yet.
-              </div>
+            {loading ? (
+              <TableSkeleton rows={4} cols={6} />
+            ) : jobs.length === 0 ? (
+              <EmptyState
+                icon={History}
+                title="No Execution Jobs Recorded"
+                description="Jobs triggered by schedules, pre-warming, or manual interventions will appear here."
+                className="my-4 border-0"
+              />
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -4858,13 +5050,25 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="py-12 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-              <Loader2 className="size-4 animate-spin text-cyan-400" /> Loading AWS member accounts...
-            </div>
+            <TableSkeleton rows={5} cols={7} />
           ) : filteredAccounts.length === 0 ? (
-            <div className="py-12 text-center text-xs text-muted-foreground">
-              No accounts matching &quot;{search}&quot;. Click &quot;Auto-Discover Org Accounts&quot; to fetch from AWS Organizations.
-            </div>
+            <EmptyState
+              icon={Server}
+              title={search ? `No accounts matching "${search}"` : "No Fleet Accounts Enrolled"}
+              description={search ? "Try adjusting your search query." : "Click 'Auto-Discover Org Accounts' or 'Enroll Account' to start multi-account management."}
+              action={
+                search ? (
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Clear search
+                  </Button>
+                ) : (
+                  <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={handleDiscover}>
+                    Auto-Discover Org Accounts
+                  </Button>
+                )
+              }
+              className="my-4 border-0"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table>
