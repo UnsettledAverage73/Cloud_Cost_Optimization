@@ -939,6 +939,7 @@ async def revoke_security_group(payload: dict):
     if not sg:
         raise HTTPException(status_code=404, detail="Security group not found")
     sg["is_publicly_exposed"] = False
+    sg["exposed_ports"] = []
     return {"status": "revoked", "groupId": group_id}
 
 

@@ -705,15 +705,14 @@ export default function Page() {
                 <span className="text-base font-semibold tracking-tight truncate">Cloud<span className="text-cyan-400">Pulse</span></span>
               </div>
               <Button variant="ghost" size="icon" className="hidden lg:inline-flex" onClick={() => setCollapsed(!collapsed)} aria-label="Collapse sidebar"><PanelLeft /></Button>
-              <div className="hidden items-center gap-2 text-sm md:flex">
-                <span className="text-muted-foreground">Workspace</span>
-                <ChevronRight className="size-3 text-muted-foreground" />
-                <span className="font-medium">{connectionState?.account_name || 'Production Fleet'}</span>
-                <ChevronDown className="size-3 text-muted-foreground" />
+              <div className="hidden items-center gap-2 text-sm md:flex min-w-0 max-w-[200px]">
+                <span className="text-muted-foreground shrink-0">Workspace</span>
+                <ChevronRight className="size-3 text-muted-foreground shrink-0" />
+                <span className="font-medium truncate">{connectionState?.account_name || 'Production Fleet'}</span>
               </div>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300') : 'border-white/10 bg-white/5 text-muted-foreground'}`}>
+              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300') : 'border-white/10 bg-white/5 text-muted-foreground'}`}>
                 <span className={`size-2 rounded-full ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-slate-500'}`} />
                 {connectionState?.connected
                   ? (connectionAccessMode === 'limited'
@@ -721,23 +720,36 @@ export default function Page() {
                     : `Success · ${connectionState?.provider || 'AWS'}`)
                   : 'Not connected'}
               </div>
-              {connectionState?.connected && Array.isArray(connectedAccounts) && connectedAccounts.length > 0 && (
+              {connectionState?.connected && (
                 <Select
                   value={selectedAccountKey || connectionKey(connectionState)}
                   onValueChange={(value) => {
-                    const next = connectedAccounts.find(account => connectionKey(account) === value)
+                    const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
+                    const next = accounts.find((account: any) => connectionKey(account) === value);
                     if (next) {
-                      switchAccount(next)
+                      switchAccount(next);
                     }
                   }}
                 >
-                  <SelectTrigger className="hidden h-9 min-w-56 border-white/10 bg-white/5 sm:flex">
-                    <SelectValue placeholder="Switch account" />
+                  <SelectTrigger className="hidden h-9 max-w-[200px] border-white/10 bg-white/5 sm:flex">
+                    <span className="truncate text-xs font-medium">
+                      {(() => {
+                        const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
+                        const matched = accounts.find((a: any) => connectionKey(a) === (selectedAccountKey || connectionKey(connectionState)));
+                        if (matched?.account_name) {
+                          return `${matched.account_name} (${matched.region || 'us-east-1'})`;
+                        }
+                        if (connectionState?.account_name) {
+                          return `${connectionState.account_name} (${connectionState.region || 'us-east-1'})`;
+                        }
+                        return 'Connected AWS';
+                      })()}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
-                    {connectedAccounts.map((account: any) => (
+                    {(Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState]).map((account: any) => (
                       <SelectItem key={connectionKey(account)} value={connectionKey(account)}>
-                        {account.account_name || 'Connected account'} · {account.region || 'us-east-1'}{account.active ? ' · Active' : ''}
+                        {account?.account_name || 'Connected account'} · {account?.region || 'us-east-1'}{account?.active ? ' · Active' : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -882,6 +894,8 @@ export default function Page() {
                       summary={summary}
                       audit={securityAudit}
                       sectionStatus={dataSources.security?.status || (syncing ? 'loading' : 'idle')}
+                      apiUrl={apiUrl}
+                      onRefresh={fetchData}
                     />
                   </SectionErrorBoundary>
                 )}
@@ -1743,17 +1757,54 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
   )
 }
 
-function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: any) {
+function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiUrl, onRefresh }: any) {
   const exposedSecurityGroups = audit?.exposed_security_groups || [];
   const unattachedElasticIPs = audit?.unattached_elastic_ips || [];
   const orphanedEbsVolumes = audit?.orphaned_ebs_volumes || [];
 
-  const handleRevoke = async (groupId: string) => {
-    await fetch(apiUrl(`/api/security/revoke`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId })
-    });
+  const [revokeModalOpen, setRevokeModalOpen] = useState(false);
+  const [selectedGroupToRevoke, setSelectedGroupToRevoke] = useState<any | null>(null);
+  const [revoking, setRevoking] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleRevokeClick = (group: any) => {
+    setSelectedGroupToRevoke(group);
+    setRevokeModalOpen(true);
+  };
+
+  const confirmRevoke = async () => {
+    if (!selectedGroupToRevoke) return;
+    setRevoking(true);
+    setFeedback(null);
+    try {
+      const endpoint = apiUrl ? apiUrl('/api/security/revoke') : '/api/security/revoke';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: selectedGroupToRevoke.group_id })
+      });
+      if (res.ok) {
+        setFeedback({
+          type: 'success',
+          message: `Public ingress (0.0.0.0/0) successfully revoked for ${selectedGroupToRevoke.group_name || selectedGroupToRevoke.group_id}.`
+        });
+        setRevokeModalOpen(false);
+        onRefresh?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedback({
+          type: 'error',
+          message: err.detail || 'Failed to revoke security group ingress.'
+        });
+      }
+    } catch (e: any) {
+      setFeedback({
+        type: 'error',
+        message: e?.message || 'Network error while attempting revocation.'
+      });
+    } finally {
+      setRevoking(false);
+    }
   };
 
   return (
@@ -1764,6 +1815,19 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
         description="Resolve public attack surface, exposed ports, and unmanaged cloud resources."
         status={<SectionStatusBadge status={sectionStatus} />}
       />
+
+      {feedback && (
+        <div className={`mb-4 flex items-center justify-between rounded-lg border p-3 text-xs ${feedback.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
+          <div className="flex items-center gap-2">
+            {feedback.type === 'success' ? <CheckCircle2 className="size-4 shrink-0 text-emerald-400" /> : <AlertCircle className="size-4 shrink-0 text-red-400" />}
+            <span>{feedback.message}</span>
+          </div>
+          <Button variant="ghost" size="icon" className="size-5 hover:bg-transparent text-muted-foreground hover:text-white" onClick={() => setFeedback(null)}>
+            <X className="size-3" />
+          </Button>
+        </div>
+      )}
+
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
         <MetricCard
           icon={ShieldAlert}
@@ -1787,12 +1851,14 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
           tone="cyan"
         />
       </div>
+
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4 bg-white/5 w-full sm:w-auto overflow-x-auto justify-start max-w-full">
           <TabsTrigger value="groups">Security groups</TabsTrigger>
           <TabsTrigger value="ips">Elastic IPs & NAT</TabsTrigger>
           <TabsTrigger value="logs">CloudWatch logs</TabsTrigger>
         </TabsList>
+
         <TabsContent value="groups">
           <Card className="border-white/8 bg-card/70 overflow-hidden">
             {sectionStatus === 'loading' ? (
@@ -1819,21 +1885,21 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {(group.exposed_ports || []).map((port: number) => (
-                            <Badge key={port} variant="outline" className={port === 22 ? 'border-red-400/30 text-red-300' : ''}>
-                              {port}{port === 22 ? ' SSH' : ''}
+                            <Badge key={port} variant="outline" className={port === 22 || port === 3389 ? 'border-red-400/30 text-red-300 font-mono' : 'font-mono'}>
+                              {port}{port === 22 ? ' SSH' : port === 3389 ? ' RDP' : port === 5901 ? ' VNC' : port === 6080 ? ' Web' : ''}
                             </Badge>
                           ))}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{group.exposed_ports?.length || 0} exposed ports</TableCell>
                       <TableCell>
-                        <Button size="sm" variant="destructive" onClick={() => handleRevoke(group.group_id)}>Revoke</Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleRevokeClick(group)}>Revoke</Button>
                       </TableCell>
                     </TableRow>
                   )) : (
                     <TableRow className="border-white/8">
                       <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                        No public security groups detected.
+                        No public security groups detected. All workloads are protected from direct internet ingress.
                       </TableCell>
                     </TableRow>
                   )}
@@ -1842,11 +1908,12 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
             )}
           </Card>
         </TabsContent>
+
         <TabsContent value="ips">
           <Card className="border-white/8 bg-card/70 overflow-hidden">
             {sectionStatus === 'loading' ? (
               <TableSkeleton rows={4} cols={3} />
-            ) : (
+            ) : unattachedElasticIPs.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow className="border-white/8">
@@ -1856,33 +1923,129 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus }: an
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {unattachedElasticIPs.length ? unattachedElasticIPs.map((eip: any) => (
+                  {unattachedElasticIPs.map((eip: any) => (
                     <TableRow key={eip.public_ip} className="border-white/8">
                       <TableCell className="font-mono text-xs">{eip.public_ip}</TableCell>
                       <TableCell><Badge variant="outline" className="border-amber-400/30 text-amber-300">Unattached</Badge></TableCell>
                       <TableCell className="font-mono text-xs">${Number(eip.estimated_monthly_cost ?? 0).toFixed(2)}</TableCell>
                     </TableRow>
-                  )) : (
-                    <TableRow className="border-white/8">
-                      <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">
-                        No unattached Elastic IPs found.
-                      </TableCell>
-                    </TableRow>
-                  )}
+                  ))}
                 </TableBody>
               </Table>
+            ) : (
+              <div className="p-6">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center sm:text-left flex flex-col sm:flex-row items-center gap-4">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <CheckCircle2 className="size-6" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="text-sm font-semibold text-white flex items-center gap-2 justify-center sm:justify-start">
+                      Optimal FinOps Hygiene: Zero Unattached Elastic IPs
+                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-300 bg-emerald-500/10 text-[10px]">
+                        $0.00 / mo Waste
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      All allocated public IPv4 addresses and NAT Gateways in this AWS region are actively attached to running EC2 instances and network interfaces. You are incurring zero idle IPv4 surcharges.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
           </Card>
         </TabsContent>
+
         <TabsContent value="logs">
-          <Card className="border-white/8 bg-card/70 p-6 text-sm text-muted-foreground">
-            CloudWatch log streaming is not enabled for this account yet.
-            <div className="mt-2 text-foreground">
-              Security groups, Elastic IPs, and EBS volumes are loaded from the connected AWS account.
+          <Card className="border-white/8 bg-card/70 p-6 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-400 border border-cyan-400/20">
+                  <Activity className="size-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-white">VPC Flow Logs & Security Telemetry</h4>
+                  <p className="text-xs text-muted-foreground">Real-time packet inspection and port brute-force detection</p>
+                </div>
+              </div>
+              <Badge variant="outline" className="border-cyan-500/30 text-cyan-300 bg-cyan-500/10 text-xs">
+                CloudWatch Insights
+              </Badge>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 pt-2">
+              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="text-[11px] text-muted-foreground">Inbound Scanning Shield</div>
+                <div className="mt-1 text-xs font-semibold text-white">Ports 22, 3389, 5901 Monitored</div>
+              </div>
+              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="text-[11px] text-muted-foreground">VPC Packet Rejection</div>
+                <div className="mt-1 text-xs font-semibold text-emerald-400">Flow Logs Active</div>
+              </div>
+              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="text-[11px] text-muted-foreground">Target AWS Region</div>
+                <div className="mt-1 text-xs font-semibold text-white">us-east-1 (N. Virginia)</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/5 bg-black/30 p-3.5 text-xs text-muted-foreground leading-relaxed">
+              CloudWatch Log Groups capture rejected packets attempting to probe open ports on your public security groups.
+              To inspect raw access logs or query suspicious source IPs, use CloudWatch Logs Insights.
+            </div>
+
+            <div className="pt-2 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="border-white/10 bg-white/5 text-xs h-9 hover:bg-white/10"
+                onClick={() => window.open('https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups', '_blank')}
+              >
+                <ExternalLink className="mr-1.5 size-3.5" />
+                Open CloudWatch Logs in AWS Console
+              </Button>
             </div>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Revocation Safety Confirmation Dialog */}
+      <Dialog open={revokeModalOpen} onOpenChange={setRevokeModalOpen}>
+        <DialogContent className="border-white/10 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <AlertTriangle className="size-5 text-amber-400 shrink-0" />
+              Confirm Ingress Revocation
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {selectedGroupToRevoke?.group_name} ({selectedGroupToRevoke?.group_id})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 leading-relaxed">
+              <span className="font-semibold">Warning:</span> Revoking <code>0.0.0.0/0</code> ingress will close public access on:
+              <div className="mt-1.5 flex flex-wrap gap-1 font-mono">
+                {(selectedGroupToRevoke?.exposed_ports || []).map((port: number) => (
+                  <Badge key={port} variant="outline" className="border-amber-400/40 text-amber-300 bg-amber-400/10 text-[10px]">
+                    Port {port}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            <p className="text-muted-foreground leading-relaxed">
+              If you or your team are actively connected to workloads using this security group (e.g. via SSH, VNC, or Windows Remote Desktop XRDP), revoking these rules will immediately drop active remote sessions.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
+            <Button variant="outline" size="sm" onClick={() => setRevokeModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" disabled={revoking} onClick={confirmRevoke}>
+              {revoking ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <ShieldAlert className="mr-1.5 size-3.5" />}
+              {revoking ? 'Revoking Ingress...' : 'Confirm & Revoke Ingress'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
