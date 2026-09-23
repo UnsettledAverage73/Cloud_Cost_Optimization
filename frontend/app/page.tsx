@@ -22,6 +22,26 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionErrorBoundary } from '@/components/error-boundary'
 import { EmptyState, MetricCardSkeleton, TableSkeleton, ChartSkeleton } from '@/components/empty-state'
+import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel } from '@/components/dashboard'
+import type {
+  SyncState,
+  AccessMode,
+  Currency,
+  CloudProvider,
+  Timeframe,
+  ViewType,
+  ComputeNode,
+  TelemetryPoint,
+  SpendPoint,
+  CloudAlert,
+  OptimizationRecommendation,
+  SecurityAudit,
+  DashboardSummary,
+  ConnectionState,
+  ConnectedAccount,
+  CloudProfile,
+} from '@/types/dashboard'
+import { useDashboardStore } from '@/stores/useDashboardStore'
 
 // Base URL for CloudPulse Backend (Render Web Service or local)
 function getApiBase(): string {
@@ -61,47 +81,6 @@ const nav = [
   { id: 'settings', label: 'Settings & Notifications', icon: Settings },
 ]
 
-const MetricCard = memo(function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: any) {
-  return (
-    <Card className="border-white/8 bg-card/70 shadow-lg shadow-black/10 backdrop-blur">
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex items-start justify-between">
-          <div className={`flex size-9 sm:size-10 items-center justify-center rounded-xl bg-${tone}-500/10 text-${tone}-400 shrink-0`}>
-            <Icon className="size-4 sm:size-5" />
-          </div>
-          {trend && (
-            <span className="flex items-center gap-1 text-[11px] sm:text-xs font-medium text-emerald-400">
-              <ArrowUpRight className="size-3" />{trend}
-            </span>
-          )}
-        </div>
-        <div className="mt-4 sm:mt-5 text-xs text-muted-foreground">{label}</div>
-        <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight truncate">{value}</div>
-        <div className="mt-1 text-xs text-muted-foreground truncate">{detail}</div>
-      </CardContent>
-    </Card>
-  )
-})
-
-function SectionTitle({ eyebrow, title, description, action, status }: any) {
-  return (
-    <div className="mb-4 sm:mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-cyan-400">
-          <span className="size-1.5 rounded-full bg-cyan-400" />{eyebrow}
-        </div>
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance break-words">{title}</h1>
-        {description && <p className="mt-1 text-xs sm:text-sm text-muted-foreground">{description}</p>}
-      </div>
-      {(status || action) && (
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
-          {status}
-          {action}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -149,7 +128,6 @@ function formatInteger(value: number | null | undefined) {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-type SyncState = 'idle' | 'loading' | 'ready' | 'partial' | 'error'
 
 const DATA_SOURCES = [
   { key: 'summary', label: 'Summary' },
@@ -205,49 +183,6 @@ function writeStoredConnection(connection: any, connectedAccounts: any[] = []) {
   )
 }
 
-function getSectionStatusLabel(status: SyncState) {
-  switch (status) {
-    case 'loading':
-      return 'Syncing'
-    case 'ready':
-      return 'Synced'
-    case 'partial':
-      return 'Partial'
-    case 'error':
-      return 'Unavailable'
-    default:
-      return 'Idle'
-  }
-}
-
-function SectionStatusBadge({ status }: { status: SyncState }) {
-  const classes =
-    status === 'ready'
-      ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-      : status === 'partial'
-        ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
-        : status === 'error'
-          ? 'border-red-400/30 bg-red-400/10 text-red-300'
-          : 'border-slate-400/30 bg-slate-400/10 text-slate-300'
-
-  const dot =
-    status === 'loading'
-      ? 'bg-amber-400 animate-pulse'
-      : status === 'ready'
-        ? 'bg-emerald-400'
-        : status === 'partial'
-          ? 'bg-amber-400'
-          : status === 'error'
-            ? 'bg-red-400'
-            : 'bg-slate-400'
-
-  return (
-    <Badge variant="outline" className={classes}>
-      <span className={`mr-2 size-2 rounded-full ${dot}`} />
-      {getSectionStatusLabel(status)}
-    </Badge>
-  )
-}
 
 function connectionKey(account: any) {
   return [
@@ -260,46 +195,44 @@ function connectionKey(account: any) {
 }
 
 export default function Page() {
-  const [view, setView] = useState('overview');
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [provider, setProvider] = useState('all');
-  const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
-  const [light, setLight] = useState(false);
-  const [connectOpen, setConnectOpen] = useState(false);
-  const [connectionState, setConnectionState] = useState<any>({ connected: false, status: 'disconnected', message: '' });
-  const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
-  const [rememberedProfile, setRememberedProfile] = useState<any>(null);
-  const [selectedAccountKey, setSelectedAccountKey] = useState('');
-  const [connectionReady, setConnectionReady] = useState(false);
-  const [dataSources, setDataSources] = useState<Record<string, { status: SyncState; error?: string }>>({});
-  const [selectedNode, setSelectedNode] = useState<any>(null);
-  const [selectedNodeDetail, setSelectedNodeDetail] = useState<any>(null);
-  const [selectedNodeTelemetry, setSelectedNodeTelemetry] = useState<any[]>([]);
-  const [selectedNodeLoading, setSelectedNodeLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('all');
-  const [securityTab, setSecurityTab] = useState('groups');
-  const [timeframe, setTimeframe] = useState('24h');
-  const [syncing, setSyncing] = useState(false);
-  const [applied, setApplied] = useState<string[]>([]);
+  const {
+    view, setView,
+    collapsed, setCollapsed,
+    mobileNavOpen, setMobileNavOpen,
+    provider, setProvider,
+    currency, setCurrency,
+    light, setLight,
+    connectOpen, setConnectOpen,
+    connectionState, setConnectionState,
+    connectedAccounts, setConnectedAccounts,
+    rememberedProfile, setRememberedProfile,
+    selectedAccountKey, setSelectedAccountKey,
+    connectionReady, setConnectionReady,
+    dataSources, updateDataSource,
+    selectedNode, setSelectedNode,
+    selectedNodeDetail, setSelectedNodeDetail,
+    selectedNodeTelemetry, setSelectedNodeTelemetry,
+    selectedNodeLoading, setSelectedNodeLoading,
+    search, setSearch,
+    status, setStatus,
+    securityTab, setSecurityTab,
+    timeframe, setTimeframe,
+    syncing, setSyncing,
+    applied, setApplied,
+    nodes, setNodes,
+    telemetry, setTelemetry,
+    spend, setSpend,
+    alerts, setAlerts,
+    optimizations, setOptimizations,
+    securityAudit, setSecurityAudit,
+    summary, setSummary,
+    loading, setLoading,
+    dataError, setDataError,
+    fetchData: storeFetchData,
+  } = useDashboardStore();
 
-  // State variables for dynamic backend data
-  const [nodes, setNodes] = useState<any[]>([]);
-  const [telemetry, setTelemetry] = useState<any[]>([]);
-  const [spend, setSpend] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [optimizations, setOptimizations] = useState<any[]>([]);
-  const [securityAudit, setSecurityAudit] = useState<any>(null);
-  const [summary, setSummary] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [dataError, setDataError] = useState('');
   const connectionAccessMode = connectionState?.access_mode || 'live';
   const connectionWarning = connectionState?.warning || '';
-
-  const updateDataSource = (key: string, patch: { status: SyncState; error?: string }) => {
-    setDataSources(prev => ({ ...prev, [key]: patch }));
-  };
 
   useEffect(() => {
     const stored = readStoredConnection();
@@ -318,7 +251,7 @@ export default function Page() {
       setConnectedAccounts(Array.isArray(stored.connected_accounts) ? stored.connected_accounts : []);
     }
     setRememberedProfile(readStoredProfile());
-  }, []);
+  }, [setConnectionState, setConnectedAccounts, setRememberedProfile]);
 
   useEffect(() => {
     const activeAccount = connectedAccounts.find(account => account?.active);
@@ -337,149 +270,13 @@ export default function Page() {
     connectionState?.account_name,
     connectionState?.region,
     connectionState?.role_arn,
+    setSelectedAccountKey,
   ]);
 
-  // Core Data Fetching Handler
-  const fetchData = useCallback(async () => {
-    if (!connectionReady || !connectionState?.connected) {
-      setSummary(null);
-      setNodes([]);
-      setTelemetry([]);
-      setSpend([]);
-      setAlerts([]);
-      setOptimizations([]);
-      setSecurityAudit(null);
-      setApplied([]);
-      setDataSources({});
-      if (connectionReady) setDataError('Connect an AWS account to load live data.');
-      setLoading(false);
-      return;
-    }
-
-    setSyncing(true);
-    setDataError('');
-    DATA_SOURCES.forEach(source => updateDataSource(source.key, { status: 'loading' }));
-    try {
-      const fetchLive = async (url: string, timeoutMs = 25000) => {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const res = await fetch(apiUrl(url), { signal: controller.signal });
-          const responseBody = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(responseBody?.detail || `Live data request failed (${res.status})`);
-          return responseBody;
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') {
-            throw new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s`);
-          }
-          throw err;
-        } finally {
-          window.clearTimeout(timer);
-        }
-      };
-      const requests = {
-        summary: fetchLive('/api/v1/dashboard/summary'),
-        nodes: fetchLive(`/api/nodes?provider=${provider}`),
-        telemetry: fetchLive(`/api/telemetry?timeframe=${timeframe}`),
-        spend: fetchLive(`/api/spend?provider=${provider}`),
-        alerts: fetchLive('/api/alerts'),
-        optimizations: fetchLive('/api/v1/optimizations'),
-        security: fetchLive('/api/v1/security/audit'),
-        applied: fetchLive('/api/optimizations/applied'),
-      };
-
-      const results = await Promise.allSettled(Object.entries(requests).map(async ([key, promise]) => [key, await promise] as const));
-      const resolved = Object.fromEntries(results.flatMap(result => {
-        if (result.status === 'fulfilled') return [result.value];
-        return [];
-      })) as Record<string, any>;
-
-      const failed = results
-        .map((result, index) => ({ result, key: Object.keys(requests)[index] }))
-        .filter((item): item is { key: string; result: PromiseRejectedResult } => item.result.status === 'rejected')
-        .map(item => ({
-          key: item.key,
-          error: item.result.reason instanceof Error ? item.result.reason.message : String(item.result.reason),
-        }));
-
-      if (resolved.summary) {
-        setSummary(resolved.summary);
-        updateDataSource('summary', { status: 'ready' });
-      } else {
-        const nodeCount = Array.isArray(resolved.nodes) ? resolved.nodes.length : 0;
-        const runningCount = Array.isArray(resolved.nodes) ? resolved.nodes.filter((node: any) => node?.state === 'running').length : 0;
-        const orphanedEips = Array.isArray(resolved.alerts) ? resolved.alerts.filter((alert: any) => alert?.tag === 'Cost' && /Elastic IP/i.test(alert?.title || '')).length : 0;
-        const orphanedVolumes = Array.isArray(resolved.alerts) ? resolved.alerts.filter((alert: any) => alert?.tag === 'Storage' && /EBS volume/i.test(alert?.title || '')).length : 0;
-        setSummary({
-          monthly_spend: Array.isArray(resolved.spend) ? resolved.spend.reduce((sum: number, row: any) => sum + Number(row?.aws ?? 0), 0) : 0,
-          total_nodes: nodeCount,
-          running_nodes: runningCount,
-          stopped_nodes: Math.max(nodeCount - runningCount, 0),
-          wasted_monthly_spend: 0,
-          critical_security_risks: Array.isArray(resolved.security?.exposed_security_groups) ? resolved.security.exposed_security_groups.length : 0,
-          last_synced: new Date().toISOString(),
-          partial: true,
-        });
-        updateDataSource('summary', { status: 'partial', error: 'Summary rebuilt from partial results.' });
-      }
-
-      if (Array.isArray(resolved.nodes)) {
-        setNodes(resolved.nodes);
-        updateDataSource('nodes', { status: 'ready' });
-      } else {
-        setNodes([]);
-      }
-
-      if (Array.isArray(resolved.telemetry)) {
-        setTelemetry(resolved.telemetry);
-        updateDataSource('telemetry', { status: 'ready' });
-      } else {
-        setTelemetry([]);
-      }
-
-      if (Array.isArray(resolved.spend)) {
-        setSpend(resolved.spend);
-        updateDataSource('spend', { status: 'ready' });
-      } else {
-        setSpend([]);
-      }
-
-      if (Array.isArray(resolved.alerts)) {
-        setAlerts(resolved.alerts);
-        updateDataSource('alerts', { status: 'ready' });
-      } else {
-        setAlerts([]);
-      }
-
-      if (Array.isArray(resolved.optimizations?.recommendations)) {
-        setOptimizations(resolved.optimizations.recommendations);
-        updateDataSource('optimizations', { status: 'ready' });
-      } else {
-        setOptimizations([]);
-      }
-
-      if (resolved.security) {
-        setSecurityAudit(resolved.security);
-        updateDataSource('security', { status: 'ready' });
-      } else {
-        setSecurityAudit(null);
-      }
-
-      if (Array.isArray(resolved.applied?.applied)) {
-        setApplied(resolved.applied.applied);
-        updateDataSource('applied', { status: 'ready' });
-      } else {
-        setApplied([]);
-      }
-
-      failed.forEach(item => {
-        updateDataSource(item.key, { status: 'error', error: item.error });
-      });
-    } finally {
-      setSyncing(false);
-      setLoading(false);
-    }
-  }, [connectionReady, connectionState?.connected, provider, timeframe]);
+  // Core Data Fetching Handler with caching
+  const fetchData = useCallback(async (force = false) => {
+    await storeFetchData(apiUrl, force);
+  }, [storeFetchData]);
 
   useEffect(() => {
     fetchData();
@@ -977,7 +774,7 @@ export default function Page() {
                 <span className={`size-1.5 rounded-full ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                 {connectionAccessMode === 'limited' ? 'Limited access' : 'Live Data'}
               </div>
-              <Button variant="ghost" size="icon" onClick={fetchData} aria-label="Refresh data" className="size-8 sm:size-9">
+              <Button variant="ghost" size="icon" onClick={() => { fetchData(true); }} aria-label="Refresh data" className="size-8 sm:size-9">
                 <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
               </Button>
               <Button variant="ghost" size="icon" onClick={() => setLight(!light)} aria-label="Toggle theme" className="size-8 sm:size-9">
