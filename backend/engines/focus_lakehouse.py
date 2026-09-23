@@ -141,6 +141,10 @@ class FOCUSLakehouse:
                 r.get("Currency", "USD"),
             ))
 
+        if not rows:
+            logger.info(f"No FOCUS 1.0 records to load into {self.engine_type} in-memory lakehouse.")
+            return
+
         cursor.executemany("""
             INSERT INTO focus_costs (
                 ChargePeriodStart, ChargePeriodEnd, BillingAccountId, SubAccountId,
