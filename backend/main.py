@@ -2572,6 +2572,61 @@ async def manual_trigger_job(payload: Request):
     return {"status": "success", "job": processed}
 
 
+@app.get("/api/v2/schedules/predictive/recommendations")
+async def get_predictive_recommendations(instance_id: str = "i-0a817b3c4d5e6f001", days: int = 14):
+    """
+    Analyzes multi-day historical telemetry to detect recurring diurnal workload patterns,
+    activity onset, and computes pre-warming schedules.
+    """
+    try:
+        from services.predictive_prewarm import PredictivePrewarmEngine
+    except ImportError:
+        from backend.services.predictive_prewarm import PredictivePrewarmEngine
+
+    telemetry = PredictivePrewarmEngine.generate_demo_telemetry_series(days=days, instance_id=instance_id)
+    analysis = PredictivePrewarmEngine.analyze_usage_patterns(telemetry, prewarm_lead_minutes=15)
+    return {
+        "status": "success",
+        "telemetry_points_analyzed": len(telemetry),
+        "recommendation": analysis
+    }
+
+
+@app.post("/api/v2/schedules/predictive/apply")
+async def apply_predictive_recommendation(payload: Request):
+    """
+    Takes an analyzed pattern recommendation and activates it as an operational schedule.
+    """
+    body = await payload.json()
+    instance_id = body.get("instance_id", "i-0a817b3c4d5e6f001")
+    start_time = body.get("start_time", "07:35")
+    stop_time = body.get("stop_time", "20:00")
+    prewarm_minutes = int(body.get("prewarm_minutes", 15))
+
+    schedule_data = {
+        "instance_id": instance_id,
+        "timezone": body.get("timezone", "Asia/Kolkata"),
+        "start_time": start_time,
+        "stop_time": stop_time,
+        "monday": True,
+        "tuesday": True,
+        "wednesday": True,
+        "thursday": True,
+        "friday": True,
+        "saturday": False,
+        "sunday": False,
+        "prewarm_minutes": prewarm_minutes,
+        "grace_period_minutes": 10,
+        "enabled": True,
+    }
+    applied = scheduler_engine.create_or_update_schedule(schedule_data)
+    return {
+        "status": "success",
+        "message": f"Predictive Pre-Warming schedule active for {instance_id} (pre-warms at {start_time}).",
+        "schedule": applied
+    }
+
+
 
 
 

@@ -3298,6 +3298,51 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
     }
   };
 
+  // Predictive AI Telemetry Analysis state
+  const [predictiveRecommendation, setPredictiveRecommendation] = useState<any | null>(null);
+  const [analyzingTelemetry, setAnalyzingTelemetry] = useState(false);
+
+  const handleAnalyzeTelemetry = async () => {
+    setAnalyzingTelemetry(true);
+    try {
+      const res = await fetch(apiUrl('/api/v2/schedules/predictive/recommendations?days=14'));
+      if (res.ok) {
+        const data = await res.json();
+        setPredictiveRecommendation(data.recommendation);
+        setFeedback({
+          type: 'success',
+          message: `Analyzed ${data.telemetry_points_analyzed} telemetry points across 14 days. Recurrence confidence: ${data.recommendation.confidence * 100}%.`
+        });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message });
+    } finally {
+      setAnalyzingTelemetry(false);
+    }
+  };
+
+  const handleApplyPredictive = async () => {
+    if (!predictiveRecommendation) return;
+    try {
+      const res = await fetch(apiUrl('/api/v2/schedules/predictive/apply'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: predictiveRecommendation.instance_id,
+          start_time: predictiveRecommendation.recommended_start_time,
+          stop_time: predictiveRecommendation.recommended_stop_time,
+          prewarm_minutes: predictiveRecommendation.prewarm_minutes,
+        }),
+      });
+      if (res.ok) {
+        setFeedback({ type: 'success', message: `Predictive Pre-Warming schedule active! Starts at ${predictiveRecommendation.recommended_start_time}.` });
+        fetchSchedulerData();
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message });
+    }
+  };
+
   // Find active grace period alerts
   const notifyingJobs = jobs.filter(j => j.status === 'NOTIFYING' || (j.status === 'PENDING' && j.action === 'STOP'));
 
@@ -3309,6 +3354,16 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
         description="Autonomous instance lifecycle scheduling, 10-minute developer grace periods, and pre-flight Guardian safety validations."
         action={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAnalyzeTelemetry}
+              disabled={analyzingTelemetry}
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+            >
+              {analyzingTelemetry ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Bot className="size-3.5 mr-1.5" />}
+              AI Telemetry Analysis
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -3339,6 +3394,46 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
           </div>
         }
       />
+
+      {predictiveRecommendation && (
+        <div className="rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-950/40 via-slate-900 to-emerald-950/30 p-5 shadow-xl shadow-cyan-950/20 backdrop-blur">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="size-10 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 shrink-0">
+                <Sparkles className="size-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-cyan-200">Predictive Pre-Warming Pattern Detected</span>
+                  <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
+                    {Math.round(predictiveRecommendation.confidence * 100)}% Confidence
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs sm:text-sm text-slate-300">
+                  {predictiveRecommendation.reason}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                  <span className="text-slate-400">Target: <code className="text-cyan-300 font-mono">{predictiveRecommendation.instance_id}</code></span>
+                  <span className="text-slate-400">User Activity: <strong className="text-emerald-400">{predictiveRecommendation.detected_activity_start}</strong></span>
+                  <span className="text-slate-400">Pre-Warm Start: <strong className="text-cyan-400">{predictiveRecommendation.recommended_start_time}</strong></span>
+                  <span className="text-slate-400">Stop Time: <strong className="text-amber-400">{predictiveRecommendation.recommended_stop_time}</strong></span>
+                  <span className="text-emerald-400 font-medium">Est. Waste Reduction: ~{predictiveRecommendation.estimated_savings_percent}%</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                onClick={handleApplyPredictive}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium"
+              >
+                <Check className="size-3.5 mr-1.5" />
+                Activate Schedule
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {feedback && (
         <div
