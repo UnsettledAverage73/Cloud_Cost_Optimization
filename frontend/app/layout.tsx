@@ -1,5 +1,6 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { MonitoringProvider } from '@/components/monitoring-provider'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -27,7 +28,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="antialiased">
-        {children}
+        <MonitoringProvider>
+          {children}
+        </MonitoringProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

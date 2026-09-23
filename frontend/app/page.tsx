@@ -23,6 +23,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { SectionErrorBoundary } from '@/components/error-boundary'
 import { EmptyState, MetricCardSkeleton, TableSkeleton, ChartSkeleton } from '@/components/empty-state'
 import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel } from '@/components/dashboard'
+import { validateForm, enrollAccountSchema, connectCloudSchema } from '@/lib/validations/forms'
+import { addBreadcrumb, captureException } from '@/lib/monitoring/logger'
 import type {
   SyncState,
   AccessMode,
@@ -4592,6 +4594,7 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
   const [newAccRegion, setNewAccRegion] = useState('us-east-1');
   const [isMgmtAcc, setIsMgmtAcc] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
+  const [enrollErrors, setEnrollErrors] = useState<Record<string, string>>({});
 
   const fetchFleet = useCallback(async () => {
     setLoading(true);
@@ -4667,29 +4670,49 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
 
   const handleEnroll = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAccId) return;
+    const validation = validateForm(enrollAccountSchema, {
+      account_id: newAccId,
+      account_name: newAccName || `Account-${newAccId}`,
+      role_arn: newAccRole || undefined,
+      region: newAccRegion,
+      is_management_account: isMgmtAcc,
+    });
+
+    if (!validation.success) {
+      setEnrollErrors(validation.errors);
+      addBreadcrumb({
+        category: 'ui',
+        message: 'Enrollment form validation rejected invalid input',
+        level: 'warning',
+        data: validation.errors,
+      });
+      return;
+    }
+
+    setEnrollErrors({});
     setEnrolling(true);
+    addBreadcrumb({
+      category: 'api',
+      message: `Enrolling fleet member account: ${newAccId}`,
+      level: 'info',
+    });
     try {
       const res = await fetch(apiUrl('/api/v2/fleet/accounts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          account_id: newAccId,
-          account_name: newAccName || `Account-${newAccId}`,
-          role_arn: newAccRole || undefined,
-          region: newAccRegion,
-          is_management_account: isMgmtAcc,
-        }),
+        body: JSON.stringify(validation.data),
       });
       if (res.ok) {
         setEnrollOpen(false);
         setNewAccId('');
         setNewAccName('');
         setNewAccRole('');
+        setEnrollErrors({});
         await fetchFleet();
       }
     } catch (err) {
       console.error('Enroll failed:', err);
+      captureException(err, { component: 'FleetView:Enroll', extra: { account_id: newAccId } });
     } finally {
       setEnrolling(false);
     }
@@ -4967,6 +4990,9 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
                 required
                 className="border-white/10 bg-white/5 text-xs font-mono"
               />
+              {enrollErrors.account_id && (
+                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.account_id}</p>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground block mb-1">Account Display Name</label>
@@ -4976,6 +5002,9 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
                 onChange={e => setNewAccName(e.target.value)}
                 className="border-white/10 bg-white/5 text-xs"
               />
+              {enrollErrors.account_name && (
+                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.account_name}</p>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground block mb-1">Cross-Account IAM Role ARN</label>
@@ -4985,6 +5014,9 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
                 onChange={e => setNewAccRole(e.target.value)}
                 className="border-white/10 bg-white/5 text-xs font-mono"
               />
+              {enrollErrors.role_arn && (
+                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.role_arn}</p>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground block mb-1">Primary Region</label>
@@ -4994,6 +5026,9 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
                 onChange={e => setNewAccRegion(e.target.value)}
                 className="border-white/10 bg-white/5 text-xs"
               />
+              {enrollErrors.region && (
+                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.region}</p>
+              )}
             </div>
             <div className="flex items-center gap-2 pt-1">
               <input
@@ -5330,6 +5365,7 @@ function ConnectModal({ open, onOpenChange, onSuccess, initialProfile }: any) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -5340,12 +5376,52 @@ function ConnectModal({ open, onOpenChange, onSuccess, initialProfile }: any) {
     setAuthMethod(profile.auth_method || 'learner_lab');
     setRoleArn(profile.role_arn || '');
     setRegion(profile.region || 'us-east-1');
+    setFieldErrors({});
   }, [open, initialProfile]);
 
   const connect = async () => {
+    let payload: any = {
+      provider: 'AWS',
+      account_name: accountName,
+      region,
+      auth_method: authMethod,
+    };
+    if (authMethod === 'learner_lab') {
+      payload.access_key_id = accessKey;
+      payload.secret_access_key = secretKey;
+      payload.session_token = sessionToken;
+    } else if (authMethod === 'iam_role') {
+      payload.role_arn = roleArn;
+    } else {
+      payload.access_key_id = accessKey;
+      payload.secret_access_key = secretKey;
+    }
+
+    if (cloud === 'AWS') {
+      const validation = validateForm(connectCloudSchema, payload);
+      if (!validation.success) {
+        setFieldErrors(validation.errors);
+        setError(Object.values(validation.errors)[0] || 'Invalid inputs');
+        addBreadcrumb({
+          category: 'ui',
+          message: 'Cloud connection rejected by client validation',
+          level: 'warning',
+          data: validation.errors,
+        });
+        return;
+      }
+    }
+
+    setFieldErrors({});
     setLoading(true);
     setError('');
     setSuccess('');
+    addBreadcrumb({
+      category: 'api',
+      message: `Connecting cloud account: ${accountName || 'Unnamed'} (${authMethod})`,
+      level: 'info',
+    });
+
     try {
       const res = await fetch(apiUrl('/api/v1/connect-cloud'), {
         method: 'POST',
@@ -5379,6 +5455,7 @@ function ConnectModal({ open, onOpenChange, onSuccess, initialProfile }: any) {
       }
     } catch (err) {
       console.error('Failed to connect account:', err);
+      captureException(err, { component: 'ConnectModal', extra: { cloud, authMethod, accountName } });
       setError('Failed to connect account');
     } finally {
       setLoading(false);

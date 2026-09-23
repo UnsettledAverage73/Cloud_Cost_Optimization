@@ -4,6 +4,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { captureException, addBreadcrumb } from '@/lib/monitoring/logger'
 
 interface Props {
   children: ReactNode
@@ -30,9 +31,24 @@ export class SectionErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(`[SectionErrorBoundary:${this.props.title || 'Widget'}] caught an error:`, error, errorInfo)
+    captureException(error, {
+      component: this.props.title || 'Widget',
+      extra: {
+        componentStack: errorInfo.componentStack,
+      },
+      tags: {
+        error_boundary: 'true',
+        section: this.props.title || 'UnknownSection',
+      },
+    })
   }
 
   public reset = () => {
+    addBreadcrumb({
+      category: 'ui',
+      message: `User clicked retry on error boundary: ${this.props.title || 'widget'}`,
+      level: 'info',
+    })
     this.setState({ hasError: false, error: null })
     if (this.props.onReset) {
       this.props.onReset()

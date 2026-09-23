@@ -253,7 +253,7 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
 
     const fetchLive = async (url: string, timeoutMs = 25000) => {
       const controller = new AbortController()
-      const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
         const res = await fetch(apiUrl(url), { signal: controller.signal })
         const responseBody = await res.json().catch(() => ({}))
@@ -267,7 +267,7 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
         }
         throw err
       } finally {
-        window.clearTimeout(timer)
+        clearTimeout(timer)
       }
     }
 
@@ -390,6 +390,10 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
 
       // Record any errors
       failed.forEach((item) => {
+        if (item.key === 'summary' && updatedSources['summary']?.status === 'partial') {
+          updatedSources['summary'].error = item.error
+          return
+        }
         updatedSources[item.key] = { status: 'error', error: item.error }
       })
 
