@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useState, useEffect, useCallback, useDeferredValue, memo } from 'react'
 import {
   Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Calendar, Check,
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Copy, Cpu, Database,
@@ -61,7 +61,7 @@ const nav = [
   { id: 'settings', label: 'Settings & Notifications', icon: Settings },
 ]
 
-function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: any) {
+const MetricCard = memo(function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: any) {
   return (
     <Card className="border-white/8 bg-card/70 shadow-lg shadow-black/10 backdrop-blur">
       <CardContent className="p-4 sm:p-5">
@@ -81,7 +81,7 @@ function MetricCard({ icon: Icon, label, value, detail, tone = 'cyan', trend }: 
       </CardContent>
     </Card>
   )
-}
+})
 
 function SectionTitle({ eyebrow, title, description, action, status }: any) {
   return (
@@ -724,14 +724,15 @@ export default function Page() {
     };
   }, [selectedNode?.instance_id]);
 
+  const deferredSearch = useDeferredValue(search);
   const filteredNodes = useMemo(() => {
-  if (!Array.isArray(nodes)) return []; // Critical guard line
-
-  return nodes.filter(n =>
-    ((n?.name || '') + (n?.instance_id || '')).toLowerCase().includes(search.toLowerCase()) &&
-    (status === 'all' || n?.state === status)
-  );
-}, [nodes, search, status]);
+    if (!Array.isArray(nodes)) return [];
+    const q = (deferredSearch || '').toLowerCase();
+    return nodes.filter(n =>
+      ((n?.name || '') + (n?.instance_id || '')).toLowerCase().includes(q) &&
+      (status === 'all' || n?.state === status)
+    );
+  }, [nodes, deferredSearch, status]);
 
   const overviewStatus: SyncState = dataSources.summary?.status || (syncing ? 'loading' : 'idle');
 
@@ -4897,13 +4898,15 @@ function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiU
     }
   };
 
+  const deferredSearch = useDeferredValue(search);
   const filteredAccounts = useMemo(() => {
+    const q = (deferredSearch || '').toLowerCase();
     return accounts.filter(acc =>
-      (acc.account_id || '').toLowerCase().includes(search.toLowerCase()) ||
-      (acc.account_name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (acc.region || '').toLowerCase().includes(search.toLowerCase())
+      (acc.account_id || '').toLowerCase().includes(q) ||
+      (acc.account_name || '').toLowerCase().includes(q) ||
+      (acc.region || '').toLowerCase().includes(q)
     );
-  }, [accounts, search]);
+  }, [accounts, deferredSearch]);
 
   const totalRegistered = summary?.total_accounts_registered || Math.max(accounts.length, 1);
   const totalSpend = summary?.total_fleet_monthly_spend || 68.40;

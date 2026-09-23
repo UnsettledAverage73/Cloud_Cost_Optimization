@@ -45,6 +45,9 @@ html, body {
   background: var(--background);
   overflow-x: hidden;
   max-width: 100vw;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 * {
   scrollbar-width: thin;
@@ -52,3 +55,9 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 .recharts-tooltip-wrapper { outline: none; }
+
+/* Defer paint of offscreen dashboard cards to lower TBT and boost INP */
+.content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 400px;
+}
