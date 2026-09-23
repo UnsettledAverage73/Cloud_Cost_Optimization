@@ -529,14 +529,9 @@ def _node_volume_count(node: dict) -> int:
 def _frontend_nodes(status: Optional[str] = None, search: Optional[str] = None):
     _ensure_live_aws_state()
     db = _db()
-    region = db["metadata"].get("region", "us-east-1")
     nodes = []
     for node in db["nodes"]:
-        normalized = {
-            **node,
-            "region": region,
-            "volumes": _node_volume_count(node),
-        }
+        normalized = _normalize_node(node)
         if status and normalized["state"].lower() != status.lower():
             continue
         if search and search.lower() not in normalized["instance_id"].lower() and search.lower() not in normalized["name"].lower():
@@ -548,9 +543,12 @@ def _frontend_nodes(status: Optional[str] = None, search: Optional[str] = None):
 def _normalize_node(node: dict):
     db = _db()
     region = db["metadata"].get("region", "us-east-1")
+    inst_type = node.get("instance_type") or node.get("type", "t3.micro")
     return {
         **node,
-        "region": region,
+        "type": inst_type,
+        "instance_type": inst_type,
+        "region": node.get("region") or region,
         "volumes": _node_volume_count(node),
     }
 
@@ -806,14 +804,20 @@ async def get_node_details(instance_id: str):
     if not node:
         raise HTTPException(status_code=404, detail="Instance ID not found")
     details = _normalize_node(node)
+    attached_vols = set(node.get("attached_volume_ids") or [])
     details["volumes_detail"] = [
         volume for volume in mock_database.DB.get("ebs_volumes", [])
         if any(attachment.get("InstanceId") == instance_id for attachment in volume.get("attachments", []))
         or volume.get("attached_instance_id") == instance_id
+        or volume.get("volume_id") in attached_vols
     ]
     details["network_interfaces"] = [
         eni for eni in mock_database.DB.get("network_interfaces", [])
         if eni.get("attached_instance_id") == instance_id
+    ]
+    db_sgs = {sg.get("group_id"): sg for sg in mock_database.DB.get("security_groups", []) if isinstance(sg, dict)}
+    details["security_groups_detail"] = [
+        db_sgs.get(sg.get("group_id"), sg) for sg in node.get("security_groups", []) if isinstance(sg, dict)
     ]
     return details
 

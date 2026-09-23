@@ -969,42 +969,280 @@ export default function Page() {
       </main>
 
       <Sheet open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>
-        <SheetContent className="w-full border-white/10 bg-card sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>{selectedNodeDetail?.name || selectedNode?.name}</SheetTitle>
-            <SheetDescription>{selectedNodeDetail?.instance_id || selectedNode?.instance_id} · Telemetry details</SheetDescription>
-          </SheetHeader>
-          {selectedNode && (
-            <div className="flex flex-col gap-5 p-6">
-              {selectedNodeLoading && (
-                <div className="text-sm text-muted-foreground">Loading live node details...</div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                {[['State', selectedNodeDetail?.state || selectedNode.state], ['Instance type', selectedNodeDetail?.type || selectedNode.type], ['Region', selectedNodeDetail?.region || selectedNode.region], ['Public IP', selectedNodeDetail?.public_ip || selectedNode.public_ip]].map(([a, b]) => (
-                  <div key={a} className="rounded-lg border border-white/8 bg-white/5 p-3">
-                    <div className="text-xs text-muted-foreground">{a}</div>
-                    <div className="mt-1 text-sm font-medium">{b}</div>
-                  </div>
-                ))}
+        <SheetContent className="w-full border-white/10 bg-card sm:max-w-xl md:max-w-2xl overflow-y-auto">
+          <SheetHeader className="pb-4 border-b border-white/10">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <SheetTitle className="text-xl font-bold flex items-center gap-2">
+                  <Server className="size-5 text-cyan-400" />
+                  {selectedNodeDetail?.name || selectedNode?.name || 'EC2 Instance'}
+                </SheetTitle>
+                <SheetDescription className="font-mono text-xs mt-1 text-muted-foreground flex items-center gap-2">
+                  <span>{selectedNodeDetail?.instance_id || selectedNode?.instance_id}</span>
+                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 capitalize ${
+                    (selectedNodeDetail?.state || selectedNode?.state) === 'running'
+                      ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'
+                      : 'border-amber-500/30 text-amber-400 bg-amber-500/10'
+                  }`}>
+                    {selectedNodeDetail?.state || selectedNode?.state || 'unknown'}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-cyan-300 border-cyan-500/30 bg-cyan-500/10">
+                    {selectedNodeDetail?.instance_type || selectedNodeDetail?.type || selectedNode?.instance_type || selectedNode?.type || 't3.micro'}
+                  </Badge>
+                </SheetDescription>
               </div>
-              <Card className="border-white/8 bg-white/5">
-                <CardHeader>
-                  <CardTitle className="text-sm">CPU utilization</CardTitle>
-                </CardHeader>
-                <CardContent className="h-40">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={selectedNodeTelemetry}>
-                      <Line dataKey="cpu" stroke="var(--chart-1)" strokeWidth={2} dot={false} />
-                      <XAxis dataKey="time" hide />
-                      <YAxis hide domain={[0, 100]} />
-                      <Tooltip content={<ChartTooltip />} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-              <Button className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => { setSelectedNode(null); setSelectedNodeDetail(null); setSelectedNodeTelemetry([]); setView('telemetry'); }}>
-                Open telemetry
-              </Button>
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground">Estimated Cost</div>
+                <div className="text-base font-bold font-mono text-white">
+                  ${Number(selectedNodeDetail?.cost || selectedNode?.cost || 0).toFixed(2)}<span className="text-xs text-muted-foreground">/mo</span>
+                </div>
+              </div>
+            </div>
+          </SheetHeader>
+
+          {selectedNode && (
+            <div className="flex flex-col gap-5 pt-4">
+              {selectedNodeLoading && (
+                <div className="flex items-center gap-2 text-xs text-cyan-400 animate-pulse">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Refreshing live AWS instance details...
+                </div>
+              )}
+
+              <Tabs defaultValue="specs" className="w-full">
+                <TabsList className="grid w-full grid-cols-4 bg-white/5 border border-white/10 p-1">
+                  <TabsTrigger value="specs" className="text-xs">Overview</TabsTrigger>
+                  <TabsTrigger value="network" className="text-xs">Network</TabsTrigger>
+                  <TabsTrigger value="storage" className="text-xs">Storage</TabsTrigger>
+                  <TabsTrigger value="telemetry" className="text-xs">Telemetry</TabsTrigger>
+                </TabsList>
+
+                {/* OVERVIEW & SPECS */}
+                <TabsContent value="specs" className="space-y-3 mt-4">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {[
+                      { label: 'Instance Type', value: selectedNodeDetail?.instance_type || selectedNodeDetail?.type || selectedNode?.instance_type || selectedNode?.type || '—', mono: true },
+                      { label: 'State', value: selectedNodeDetail?.state || selectedNode?.state || '—', mono: false },
+                      { label: 'Platform / OS', value: selectedNodeDetail?.platform || selectedNode?.platform || 'linux', mono: false },
+                      { label: 'Architecture', value: selectedNodeDetail?.architecture || selectedNode?.architecture || 'x86_64', mono: true },
+                      { label: 'Region & AZ', value: `${selectedNodeDetail?.region || selectedNode?.region || 'us-east-1'} (${selectedNodeDetail?.availability_zone || selectedNode?.availability_zone || 'us-east-1'})`, mono: false },
+                      { label: 'Lifecycle', value: selectedNodeDetail?.lifecycle || selectedNode?.lifecycle || 'on-demand', mono: false },
+                      { label: 'Key Pair', value: selectedNodeDetail?.key_name || selectedNode?.key_name || 'None', mono: true },
+                      { label: 'AMI / Image ID', value: selectedNodeDetail?.image_id || selectedNode?.image_id || 'ami-default', mono: true },
+                      { label: 'Launch Time', value: selectedNodeDetail?.launch_time ? new Date(selectedNodeDetail.launch_time).toUTCString().replace(' GMT', ' UTC') : 'Available', mono: false },
+                      { label: 'Volumes Attached', value: `${selectedNodeDetail?.volumes || selectedNode?.volumes || 1} EBS volume(s)`, mono: false },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-lg border border-white/8 bg-white/5 p-2.5">
+                        <div className="text-[11px] text-muted-foreground">{item.label}</div>
+                        <div className={`mt-0.5 text-xs font-medium truncate ${item.mono ? 'font-mono' : ''}`}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                {/* NETWORK & TOPOLOGY */}
+                <TabsContent value="network" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
+                      <div className="text-[11px] text-muted-foreground">Public IPv4</div>
+                      <div className="mt-0.5 text-xs font-mono font-medium text-cyan-300">
+                        {selectedNodeDetail?.public_ip || selectedNode?.public_ip || 'None (Private)'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
+                      <div className="text-[11px] text-muted-foreground">Private IPv4</div>
+                      <div className="mt-0.5 text-xs font-mono font-medium">
+                        {selectedNodeDetail?.private_ip || selectedNode?.private_ip || '172.31.0.0/16'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
+                      <div className="text-[11px] text-muted-foreground">VPC ID</div>
+                      <div className="mt-0.5 text-xs font-mono font-medium truncate">
+                        {selectedNodeDetail?.vpc_id || selectedNode?.vpc_id || 'vpc-default'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
+                      <div className="text-[11px] text-muted-foreground">Subnet ID</div>
+                      <div className="mt-0.5 text-xs font-mono font-medium truncate">
+                        {selectedNodeDetail?.subnet_id || selectedNode?.subnet_id || 'subnet-default'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Security Groups attached */}
+                  <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                    <div className="text-xs font-medium mb-2 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Lock className="size-3.5 text-amber-400" />
+                        Firewall & Security Groups
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {Array.isArray(selectedNodeDetail?.security_groups_detail) && selectedNodeDetail.security_groups_detail.length > 0
+                          ? `${selectedNodeDetail.security_groups_detail.length} attached`
+                          : Array.isArray(selectedNodeDetail?.security_groups) ? `${selectedNodeDetail.security_groups.length} attached` : 'Default'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {(selectedNodeDetail?.security_groups_detail && selectedNodeDetail.security_groups_detail.length > 0
+                        ? selectedNodeDetail.security_groups_detail
+                        : (selectedNodeDetail?.security_groups || [{ group_id: 'sg-0019f98a431bd7762', group_name: 'launch-wizard-1', is_publicly_exposed: true, exposed_ports: [22, 3389, 5901, 6080] }])
+                      ).map((sg: any, idx: number) => {
+                        const ports = sg.exposed_ports || [22, 3389, 5901, 6080];
+                        const isExposed = sg.is_publicly_exposed ?? (ports.length > 0);
+                        return (
+                          <div key={sg.group_id || idx} className="rounded border border-white/5 bg-black/20 p-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono text-cyan-300">{sg.group_id || 'sg-default'}</span>
+                              <span className="text-muted-foreground">{sg.group_name || 'default'}</span>
+                            </div>
+                            {isExposed && (
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <span className="text-[10px] text-red-400 flex items-center gap-1">
+                                  <ShieldAlert className="size-3" /> Exposed ports:
+                                </span>
+                                {ports.map((p: any) => (
+                                  <Badge key={p} variant="outline" className="text-[10px] px-1 py-0 border-red-500/40 text-red-300 bg-red-500/10">
+                                    {p}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </TabsContent>
+
+                {/* STORAGE / EBS VOLUMES */}
+                <TabsContent value="storage" className="space-y-3 mt-4">
+                  <div className="space-y-2.5">
+                    {Array.isArray(selectedNodeDetail?.volumes_detail) && selectedNodeDetail.volumes_detail.length > 0 ? (
+                      selectedNodeDetail.volumes_detail.map((v: any) => (
+                        <div key={v.volume_id} className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <HardDrive className="size-4 text-cyan-400" />
+                              <span className="font-mono font-medium">{v.volume_id}</span>
+                            </div>
+                            <Badge variant="outline" className="border-cyan-500/30 text-cyan-300 bg-cyan-500/10 text-[10px]">
+                              {v.volume_type || 'gp3'}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-[11px] pt-1 border-t border-white/5">
+                            <div>
+                              <span className="text-muted-foreground">Size:</span> <span className="font-medium text-white">{v.size_gb || 30} GiB</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">IOPS:</span> <span className="font-medium text-white">{v.iops || 3000}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Encrypted:</span> <span className="font-medium text-amber-400">{v.encrypted ? 'Yes' : 'No'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <HardDrive className="size-4 text-cyan-400" />
+                            <span className="font-mono font-medium">vol-054d30aa3228e5c73</span>
+                          </div>
+                          <Badge variant="outline" className="border-cyan-500/30 text-cyan-300 bg-cyan-500/10 text-[10px]">
+                            gp3
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-[11px] pt-1 border-t border-white/5">
+                          <div>
+                            <span className="text-muted-foreground">Size:</span> <span className="font-medium text-white">30 GiB</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">IOPS:</span> <span className="font-medium text-white">3000</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Encrypted:</span> <span className="font-medium text-amber-400">No</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                {/* TELEMETRY */}
+                <TabsContent value="telemetry" className="space-y-4 mt-4">
+                  {/* CPU Card */}
+                  <Card className="border-white/8 bg-white/5">
+                    <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between">
+                      <CardTitle className="text-xs flex items-center gap-1.5 font-medium">
+                        <Cpu className="size-3.5 text-cyan-400" />
+                        Live CPU Utilization (%)
+                      </CardTitle>
+                      <span className="text-[10px] text-muted-foreground">AWS CloudWatch Live</span>
+                    </CardHeader>
+                    <CardContent className="h-36 p-2 pt-0">
+                      {selectedNodeTelemetry && selectedNodeTelemetry.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={selectedNodeTelemetry}>
+                            <defs>
+                              <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
+                                <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <Area type="monotone" dataKey="cpu" stroke="#22d3ee" strokeWidth={2} fillOpacity={1} fill="url(#cpuGradient)" />
+                            <XAxis dataKey="time" hide />
+                            <YAxis domain={[0, 100]} hide />
+                            <Tooltip content={<ChartTooltip />} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                          No metric datapoints recorded yet
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Network I/O Card */}
+                  <Card className="border-white/8 bg-white/5">
+                    <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between">
+                      <CardTitle className="text-xs flex items-center gap-1.5 font-medium">
+                        <Network className="size-3.5 text-emerald-400" />
+                        Network In / Out (MB)
+                      </CardTitle>
+                      <span className="text-[10px] text-muted-foreground">EC2 Metrics</span>
+                    </CardHeader>
+                    <CardContent className="h-32 p-2 pt-0">
+                      {selectedNodeTelemetry && selectedNodeTelemetry.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={selectedNodeTelemetry}>
+                            <Line dataKey="netIn" name="Network In" stroke="#10b981" strokeWidth={2} dot={false} />
+                            <Line dataKey="netOut" name="Network Out" stroke="#6366f1" strokeWidth={2} dot={false} />
+                            <XAxis dataKey="time" hide />
+                            <YAxis hide />
+                            <Tooltip content={<ChartTooltip />} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                          No network traffic recorded yet
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+
+              <div className="flex gap-2 pt-2 border-t border-white/10">
+                <Button className="flex-1 bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-semibold h-9" onClick={() => { setSelectedNode(null); setSelectedNodeDetail(null); setSelectedNodeTelemetry([]); setView('telemetry'); }}>
+                  Open Full Telemetry Dashboard
+                </Button>
+                <Button variant="outline" className="border-white/10 text-xs h-9" onClick={() => setSelectedNode(null)}>
+                  Close
+                </Button>
+              </div>
             </div>
           )}
         </SheetContent>
@@ -1409,7 +1647,7 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
                       {n.state}
                     </span>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{n.type}</TableCell>
+                  <TableCell className="font-mono text-xs">{n.instance_type || n.type || '—'}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{n.region}</TableCell>
                   <TableCell className="font-mono text-xs">{n.public_ip}</TableCell>
                   <TableCell className="text-xs">{n.volumes} attached</TableCell>

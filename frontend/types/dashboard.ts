@@ -27,10 +27,23 @@ export interface ComputeNode {
   instance_id: string
   name?: string
   type?: string
+  instance_type?: string
   state?: 'running' | 'stopped' | 'terminated' | string
   region?: string
+  availability_zone?: string
   public_ip?: string
   private_ip?: string
+  vpc_id?: string
+  subnet_id?: string
+  platform?: string
+  architecture?: string
+  lifecycle?: string
+  key_name?: string
+  image_id?: string
+  launch_time?: string
+  volumes?: number
+  attached_volume_ids?: string[]
+  cost?: number
   monthly_cost?: number
   wasted_cost?: number
   cpu_utilization?: number

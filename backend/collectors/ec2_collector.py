@@ -105,6 +105,12 @@ class EC2Collector(AWSBaseCollector):
                     "asg_name": asg_name,
                     "is_asg": bool(asg_name),
                     "launch_template": launch_template,
+                    "security_groups": [
+                        {"group_id": sg.get("GroupId"), "group_name": sg.get("GroupName")}
+                        for sg in inst.get("SecurityGroups", [])
+                    ],
+                    "key_name": inst.get("KeyName"),
+                    "image_id": inst.get("ImageId"),
                     "cost": monthly_cost,
                     "monthly_cost": monthly_cost,
                 })
