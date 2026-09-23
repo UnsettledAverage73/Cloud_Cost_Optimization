@@ -839,20 +839,9 @@ def cmd_apply(args):
     # -------------------------------------------------------------
     if is_batch:
         if getattr(args, "demo", False):
-            try:
-                from mock_database import DB
-            except ImportError:
-                from backend.mock_database import DB
-            inv = DB
+            inv = {}
         else:
             inv = resolve_cli_inventory()
-            # If live account has 0 findings, fallback to DB if requested or notify user
-            if not inv.get("nodes") and not inv.get("ebs_volumes"):
-                try:
-                    from mock_database import DB
-                    inv = DB
-                except Exception:
-                    pass
         try:
             from services.cost_analytics import evaluate_inventory_optimizations
         except ImportError:
@@ -1419,7 +1408,7 @@ def normalize_live_inventory(raw_inv: dict, account_id: str = "582812122408", ac
 
 
 def resolve_cli_inventory(force_refresh: bool = False, no_cache: bool = False) -> dict:
-    """Resolves cloud inventory: checks local telemetry_cache & live AWS credentials first, falls back to mock_database."""
+    """Resolves cloud inventory: checks local telemetry_cache & live AWS credentials first."""
     if not force_refresh and not no_cache:
         try:
             try:
@@ -1466,15 +1455,7 @@ def resolve_cli_inventory(force_refresh: bool = False, no_cache: bool = False) -
                     return acc["inventory"]
     except Exception:
         pass
-    try:
-        from mock_database import DB
-        return DB
-    except ImportError:
-        try:
-            from backend.mock_database import DB
-            return DB
-        except Exception:
-            return {}
+    return {}
 
 
 
@@ -2822,17 +2803,9 @@ def fetch_inventory_data(backend_url: str, force_refresh: bool = False, no_cache
                 return cached
         except Exception:
             pass
-        try:
-            from mock_database import DB
-            return DB
-        except ImportError:
-            try:
-                from backend.mock_database import DB
-                return DB
-            except ImportError:
-                print(f"{RED}Error fetching cloud inventory from {backend_url}:{RESET} {e}")
-                print(f"Run `{CYAN}cloudpulse connect -f ~/.aws/credentials{RESET}` to authenticate and refresh your AWS session.")
-                sys.exit(1)
+        print(f"{RED}Error fetching cloud inventory from {backend_url}:{RESET} {e}")
+        print(f"Run `{CYAN}cloudpulse connect -f ~/.aws/credentials{RESET}` to authenticate and refresh your AWS session.")
+        sys.exit(1)
 
 # ==========================================
 # COMMAND: inspect & inventory (Deep Parameter Inspection)

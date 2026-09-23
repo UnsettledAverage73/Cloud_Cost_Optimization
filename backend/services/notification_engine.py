@@ -333,10 +333,13 @@ class FinOpsNotificationEngine:
         action = payload.get("action")
         if action in ("batch_pr", "pr", "generate_pr"):
             try:
-                from services.gitops_engine import gitops_engine
-                from mock_database import DB
+                try:
+                    from main import _db
+                    inv = _db()
+                except Exception:
+                    inv = {}
                 from engines.finops_analyzer import FinOpsAnalyzer
-                eval_res = FinOpsAnalyzer.evaluate(DB)
+                eval_res = FinOpsAnalyzer.evaluate(inv)
                 findings = eval_res.get("findings", [])
                 pr_pkg = gitops_engine.create_batch_remediation_pr(
                     findings=findings,

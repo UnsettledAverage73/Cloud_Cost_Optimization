@@ -115,6 +115,8 @@ def test_focus_lakehouse_read_only_enforcement():
 
 
 def test_api_focus_query_endpoint():
+    from main import _db
+    _db()["nodes"] = [{"instance_id": "i-test1", "cost": 25.0, "state": "running", "type": "t3.micro"}]
     client = TestClient(app)
     payload = {
         "query": "SELECT ServiceName, SUM(EffectiveCost) as Total FROM focus_costs GROUP BY ServiceName"
@@ -135,6 +137,8 @@ def test_api_focus_query_invalid_sql():
 
 
 def test_api_focus_analytics_endpoint():
+    from main import _db
+    _db()["nodes"] = [{"instance_id": "i-test1", "cost": 25.0, "state": "running", "type": "t3.micro"}]
     client = TestClient(app)
     response = client.get("/api/v2/focus/analytics")
     assert response.status_code == 200

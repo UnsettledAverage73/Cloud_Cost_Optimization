@@ -285,27 +285,18 @@ class FleetManager:
                 fleet_cache.trigger_async_refresh("fleet_summary", self.scan_fleet_parallel)
             return cached
 
-        summary = self.scan_fleet_parallel()
         if summary.get("accounts_scanned", 0) == 0:
-            try:
-                from mock_database import DB
-            except ImportError:
-                from backend.mock_database import DB
-            nodes = DB.get("nodes", [])
-            vols = DB.get("ebs_volumes", [])
-            eips = DB.get("elastic_ips", [])
-            total_spend = sum(float(n.get("cost", 7.60)) for n in nodes)
             summary = {
-                "total_accounts_registered": max(1, len(self.accounts)),
-                "accounts_scanned": 1,
-                "successful_scans": 1,
+                "total_accounts_registered": len(self.accounts),
+                "accounts_scanned": 0,
+                "successful_scans": 0,
                 "failed_scans": 0,
-                "total_fleet_monthly_spend": round(total_spend, 2),
-                "total_fleet_nodes": len(nodes),
-                "total_fleet_volumes": len(vols),
-                "total_fleet_eips": len(eips),
-                "total_focus_records": len(nodes) + len(vols) + len(eips),
-                "scan_duration_seconds": 0.05,
+                "total_fleet_monthly_spend": 0.0,
+                "total_fleet_nodes": 0,
+                "total_fleet_volumes": 0,
+                "total_fleet_eips": 0,
+                "total_focus_records": 0,
+                "scan_duration_seconds": 0.0,
                 "scanned_accounts": []
             }
         return summary

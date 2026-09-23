@@ -48,7 +48,7 @@ class FinOpsRAGPipeline:
         self.engine = llm_engine
 
     def _get_inventory(self, inventory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Resolves the inventory dictionary from argument, data_store, fleet_cache, or mock_database."""
+        """Resolves the inventory dictionary from argument, data_store, or fleet_cache."""
         if inventory:
             return inventory
         if self.data_store:
@@ -70,15 +70,7 @@ class FinOpsRAGPipeline:
         except Exception:
             pass
 
-        try:
-            from mock_database import DB
-            return DB
-        except ImportError:
-            try:
-                from backend.mock_database import DB
-                return DB
-            except Exception:
-                return {}
+        return {}
 
     def _get_inventory_fingerprint(self, inventory: Dict[str, Any]) -> str:
         """Computes a lightweight state fingerprint to validate query cache validity."""

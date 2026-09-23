@@ -26,7 +26,6 @@ for cand in [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().
         except Exception:
             pass
 
-import mock_database
 from schemas import IngestionPayload, CloudConnectRequest, NodeSchema
 
 from data.cloud_simulator import CloudSimulator
@@ -162,7 +161,46 @@ last_live_error = ""
 is_demo_mode = False
 STATE_FILE = Path(__file__).with_name(".cloudpulse_state.json")
 
-finops_agent = FinOpsAgent(data_store=mock_database.DB)
+REALTIME_STORE: Dict[str, Any] = {
+    "nodes": [],
+    "ebs_volumes": [],
+    "ebs_snapshots": [],
+    "s3_buckets": [],
+    "rds_instances": [],
+    "rds_clusters": [],
+    "rds_manual_snapshots": [],
+    "elastic_ips": [],
+    "nat_gateways": [],
+    "vpc_endpoints": [],
+    "network_interfaces": [],
+    "load_balancers": [],
+    "security_groups": [],
+    "amis": [],
+    "cloudwatch_log_groups": [],
+    "daily_spend": [],
+    "service_breakdown": [],
+    "summary": {
+        "monthly_spend": 0.0,
+        "total_nodes": 0,
+        "running_nodes": 0,
+        "stopped_nodes": 0,
+        "wasted_monthly_spend": 0.0,
+        "critical_security_risks": 0,
+        "last_synced": None,
+    },
+    "applied_optimizations": [],
+    "telemetry": [],
+    "metadata": {
+        "region": "us-east-1",
+        "timestamp": None,
+        "organization": "CloudPulse Realtime",
+    },
+}
+
+def _db() -> Dict[str, Any]:
+    return REALTIME_STORE
+
+finops_agent = FinOpsAgent(data_store=REALTIME_STORE)
 finops_notifier = FinOpsNotifier()
 
 AWS_CLIENT_CONFIG = Config(
@@ -530,10 +568,6 @@ def _ensure_live_aws_state():
         raise HTTPException(status_code=502, detail=f"AWS data refresh failed: {last_live_error}")
 
 
-def _db():
-    return mock_database.DB
-
-
 def _node_volume_count(node: dict) -> int:
     return int(node.get("volumes") or 1)
 
@@ -766,7 +800,7 @@ async def ingest_cloud_data(payload: IngestionPayload):
     """
     Receives raw output from your OptiScale Python script and updates DB state.
     """
-    db = mock_database.DB
+    db = _db()
     db["metadata"] = payload.metadata
     db["nodes"] = payload.compute.get("nodes", [])
     db["ebs_volumes"] = payload.ec2_other_resources.get("ebs_volumes", [])
@@ -780,7 +814,7 @@ async def ingest_cloud_data(payload: IngestionPayload):
 @app.get("/api/v1/dashboard/summary")
 async def get_executive_summary():
     _ensure_live_aws_state()
-    db = mock_database.DB
+    db = _db()
     total_nodes = len(db["nodes"])
     running_nodes = sum(1 for n in db["nodes"] if n["state"] == "running")
     
@@ -811,23 +845,23 @@ async def get_nodes(status: Optional[str] = None, search: Optional[str] = None):
 @app.get("/api/v1/resources/nodes/{instance_id}")
 async def get_node_details(instance_id: str):
     _ensure_live_aws_state()
-    nodes = mock_database.DB["nodes"]
+    nodes = _db()["nodes"]
     node = next((n for n in nodes if n["instance_id"] == instance_id), None)
     if not node:
         raise HTTPException(status_code=404, detail="Instance ID not found")
     details = _normalize_node(node)
     attached_vols = set(node.get("attached_volume_ids") or [])
     details["volumes_detail"] = [
-        volume for volume in mock_database.DB.get("ebs_volumes", [])
+        volume for volume in _db().get("ebs_volumes", [])
         if any(attachment.get("InstanceId") == instance_id for attachment in volume.get("attachments", []))
         or volume.get("attached_instance_id") == instance_id
         or volume.get("volume_id") in attached_vols
     ]
     details["network_interfaces"] = [
-        eni for eni in mock_database.DB.get("network_interfaces", [])
+        eni for eni in _db().get("network_interfaces", [])
         if eni.get("attached_instance_id") == instance_id
     ]
-    db_sgs = {sg.get("group_id"): sg for sg in mock_database.DB.get("security_groups", []) if isinstance(sg, dict)}
+    db_sgs = {sg.get("group_id"): sg for sg in _db().get("security_groups", []) if isinstance(sg, dict)}
     details["security_groups_detail"] = [
         db_sgs.get(sg.get("group_id"), sg) for sg in node.get("security_groups", []) if isinstance(sg, dict)
     ]
@@ -838,7 +872,7 @@ async def get_node_details(instance_id: str):
 async def get_full_inventory():
     """Return the complete live inventory collected by the notebook pipeline."""
     _ensure_live_aws_state()
-    db = mock_database.DB
+    db = _db()
     return {
         "metadata": db["metadata"],
         "compute": {"nodes": db["nodes"]},
@@ -1107,9 +1141,10 @@ async def connect_frontend_account(payload: dict):
 @app.get("/api/v1/security/audit")
 async def get_security_audit():
     _ensure_live_aws_state()
-    db = mock_database.DB
+    db = _db()
     return {
         "exposed_security_groups": [sg for sg in db["security_groups"] if sg["is_publicly_exposed"]],
+        "all_security_groups": db.get("security_groups", []),
         "unattached_elastic_ips": [eip for eip in db["elastic_ips"] if eip["is_unattached"]],
         "orphaned_ebs_volumes": [v for v in db["ebs_volumes"] if v.get("is_orphaned")]
     }
@@ -1118,7 +1153,7 @@ async def get_security_audit():
 @app.get("/api/v1/optimizations")
 async def get_cost_optimizations():
     _ensure_live_aws_state()
-    db = mock_database.DB
+    db = _db()
     analysis = FinOpsAnalyzer.evaluate(db)
 
     return {
@@ -1337,7 +1372,7 @@ async def enable_demo_simulation():
     global is_demo_mode
     is_demo_mode = True
     simulated_env = CloudSimulator.generate_full_environment()
-    mock_database.DB.update(simulated_env)
+    _db().update(simulated_env)
     return {
         "status": "success",
         "demo_mode": True,
@@ -2129,15 +2164,15 @@ async def get_fleet_summary(force_refresh: bool = False):
     """Returns aggregated fleet-wide FinOps executive KPIs and spend."""
     summary = fleet_manager.get_fleet_summary(force_refresh=force_refresh)
     if not summary.get("accounts_scanned"):
-        db = mock_database.DB
+        db = _db()
         nodes = db.get("nodes", [])
         vols = db.get("ebs_volumes", [])
         eips = db.get("elastic_ips", [])
         total_spend = sum(float(n.get("cost", 7.60)) for n in nodes)
         summary = {
             "total_accounts_registered": max(1, len(fleet_manager.accounts)),
-            "accounts_scanned": 1,
-            "successful_scans": 1,
+            "accounts_scanned": 1 if nodes or vols or eips else 0,
+            "successful_scans": 1 if nodes or vols or eips else 0,
             "failed_scans": 0,
             "total_fleet_monthly_spend": round(total_spend, 2),
             "total_fleet_nodes": len(nodes),
@@ -2161,7 +2196,7 @@ async def trigger_fleet_scan(payload: Optional[dict] = None):
 @app.get("/api/v2/fleet/focus-records")
 async def get_fleet_focus_records():
     """Returns normalized FOCUS 1.0 records across the entire fleet."""
-    db = mock_database.DB
+    db = _db()
     focus_records = FOCUSNormalizer.normalize_inventory(db)
     return {
         "specification": "FOCUS 1.0",
@@ -2182,7 +2217,7 @@ async def execute_focus_sql_query(payload: dict):
     except ImportError:
         from backend.engines.focus_lakehouse import focus_lakehouse
 
-    db = mock_database.DB
+    db = _db()
     focus_records = FOCUSNormalizer.normalize_inventory(db)
     focus_lakehouse.load_focus_records(focus_records)
 
@@ -2201,7 +2236,7 @@ async def get_focus_analytics():
     except ImportError:
         from backend.engines.focus_lakehouse import focus_lakehouse
 
-    db = mock_database.DB
+    db = _db()
     focus_records = FOCUSNormalizer.normalize_inventory(db)
     focus_lakehouse.load_focus_records(focus_records)
 
@@ -2363,7 +2398,7 @@ async def list_agent_hosts():
 # =====================================================================
 
 def resolve_active_inventory() -> dict:
-    """Resolves active cloud inventory: checks fleet_cache for live scanned inventory first, falls back to mock_database."""
+    """Resolves active cloud inventory: checks fleet_cache for live scanned inventory first, falls back to realtime store."""
     try:
         try:
             from collectors.fleet_cache import fleet_cache
@@ -2377,7 +2412,7 @@ def resolve_active_inventory() -> dict:
                     return acc["inventory"]
     except Exception:
         pass
-    return mock_database.DB
+    return _db()
 
 
 @app.get("/api/v2/analytics/anomalies")

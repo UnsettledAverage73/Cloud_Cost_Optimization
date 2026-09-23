@@ -86,12 +86,16 @@ class FinOpsAutonomousCopilot:
     def _get_cloud_context(self) -> str:
         """Gathers live telemetry and inventory context for LLM prompt grounding."""
         try:
-            from mock_database import DB
-            nodes = DB.get("nodes", [])
+            try:
+                from main import _db
+                inv = _db()
+            except Exception:
+                inv = {}
+            nodes = inv.get("nodes", [])
             running_nodes = [n for n in nodes if n.get("state") == "running"]
-            vols = DB.get("ebs_volumes", [])
-            eips = DB.get("elastic_ips", [])
-            sgs = DB.get("security_groups", [])
+            vols = inv.get("ebs_volumes", [])
+            eips = inv.get("elastic_ips", [])
+            sgs = inv.get("security_groups", [])
 
             sample_strs = []
             for n in running_nodes[:5]:
@@ -102,14 +106,14 @@ class FinOpsAutonomousCopilot:
 
             lines = [
                 f"- Running Compute Instances: {len(running_nodes)}/{len(nodes)} total instances.",
-                f"  Sample Instances: {', '.join(sample_strs)}",
+                f"  Sample Instances: {', '.join(sample_strs) if sample_strs else 'None active'}",
                 f"- Total EBS Volumes: {len(vols)} ({sum(1 for v in vols if v.get('is_orphaned'))} orphaned/unattached)",
                 f"- Elastic IPs: {len(eips)} ({sum(1 for e in eips if e.get('is_unattached'))} unattached)",
                 f"- Security Groups: {len(sgs)} ({sum(1 for s in sgs if s.get('is_publicly_exposed'))} exposed to 0.0.0.0/0)"
             ]
             return "\n".join(lines)
         except Exception:
-            return "AWS Environment: 9 t3.micro instances active in us-east-1."
+            return "AWS Environment: Realtime telemetry active in us-east-1."
 
     def chat(self, user_message: str, history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """

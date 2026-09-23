@@ -1836,13 +1836,24 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
 
 function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiUrl, onRefresh, revokeSecurityGroupLocally }: any) {
   const exposedSecurityGroups = audit?.exposed_security_groups || [];
+  const allSecurityGroups = (audit?.all_security_groups && audit.all_security_groups.length > 0)
+    ? audit.all_security_groups
+    : exposedSecurityGroups;
   const unattachedElasticIPs = audit?.unattached_elastic_ips || [];
   const orphanedEbsVolumes = audit?.orphaned_ebs_volumes || [];
 
+  const [sgFilter, setSgFilter] = useState<'all' | 'exposed' | 'secured'>('all');
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [selectedGroupToRevoke, setSelectedGroupToRevoke] = useState<any | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const filteredSecurityGroups = allSecurityGroups.filter((group: any) => {
+    const isExposed = Boolean(group.is_publicly_exposed ?? exposedSecurityGroups.some((e: any) => e.group_id === group.group_id));
+    if (sgFilter === 'exposed') return isExposed;
+    if (sgFilter === 'secured') return !isExposed;
+    return true;
+  });
 
   const handleRevokeClick = (group: any) => {
     setSelectedGroupToRevoke(group);
@@ -1917,9 +1928,9 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
         <MetricCard
           icon={Cloud}
           label="Public security groups"
-          value={formatInteger(exposedSecurityGroups.length)}
-          detail="Exposed to the internet"
-          tone="amber"
+          value={`${exposedSecurityGroups.length} exposed`}
+          detail={`${allSecurityGroups.length} total detected on AWS`}
+          tone={exposedSecurityGroups.length > 0 ? "amber" : "emerald"}
         />
         <MetricCard
           icon={HardDrive}
@@ -1932,52 +1943,114 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4 bg-white/5 w-full sm:w-auto overflow-x-auto justify-start max-w-full">
-          <TabsTrigger value="groups">Security groups</TabsTrigger>
+          <TabsTrigger value="groups">Security groups ({allSecurityGroups.length})</TabsTrigger>
           <TabsTrigger value="ips">Elastic IPs & NAT</TabsTrigger>
           <TabsTrigger value="logs">CloudWatch logs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="groups">
           <Card className="border-white/8 bg-card/70 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 p-3 bg-white/[0.02]">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant={sgFilter === 'all' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs px-2.5"
+                  onClick={() => setSgFilter('all')}
+                >
+                  All ({allSecurityGroups.length})
+                </Button>
+                <Button
+                  variant={sgFilter === 'exposed' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className={`h-7 text-xs px-2.5 ${exposedSecurityGroups.length > 0 ? 'text-amber-400 font-medium' : ''}`}
+                  onClick={() => setSgFilter('exposed')}
+                >
+                  Exposed risks ({exposedSecurityGroups.length})
+                </Button>
+                <Button
+                  variant={sgFilter === 'secured' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs px-2.5 text-emerald-400"
+                  onClick={() => setSgFilter('secured')}
+                >
+                  Secured ({Math.max(0, allSecurityGroups.length - exposedSecurityGroups.length)})
+                </Button>
+              </div>
+              <div className="text-[11px] text-muted-foreground pr-2">
+                Live sync with AWS VPC security groups
+              </div>
+            </div>
+
             {sectionStatus === 'loading' ? (
               <TableSkeleton rows={4} cols={5} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow className="border-white/8">
-                    <TableHead>Group</TableHead>
-                    <TableHead>Exposure</TableHead>
-                    <TableHead>Ports</TableHead>
-                    <TableHead>Resources</TableHead>
-                    <TableHead />
+                    <TableHead>Group Name & ID</TableHead>
+                    <TableHead>VPC</TableHead>
+                    <TableHead>Protection Status</TableHead>
+                    <TableHead>Inbound Rules / Open Ports</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {exposedSecurityGroups.length ? exposedSecurityGroups.map((group: any) => (
-                    <TableRow key={group.group_id} className="border-white/8">
-                      <TableCell>
-                        <div className="font-medium">{group.group_name}</div>
-                        <div className="font-mono text-xs text-muted-foreground">{group.group_id}</div>
-                      </TableCell>
-                      <TableCell><Badge className="border-red-400/20 bg-red-400/10 text-red-300">Publicly exposed</Badge></TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {(group.exposed_ports || []).map((port: number) => (
-                            <Badge key={port} variant="outline" className={port === 22 || port === 3389 ? 'border-red-400/30 text-red-300 font-mono' : 'font-mono'}>
-                              {port}{port === 22 ? ' SSH' : port === 3389 ? ' RDP' : port === 5901 ? ' VNC' : port === 6080 ? ' Web' : ''}
+                  {filteredSecurityGroups.length ? filteredSecurityGroups.map((group: any) => {
+                    const isExposed = Boolean(group.is_publicly_exposed ?? exposedSecurityGroups.some((e: any) => e.group_id === group.group_id));
+                    return (
+                      <TableRow key={group.group_id} className="border-white/8">
+                        <TableCell>
+                          <div className="font-medium text-white">{group.group_name || '—'}</div>
+                          <div className="font-mono text-xs text-muted-foreground">{group.group_id}</div>
+                          {group.description && <div className="text-[11px] text-muted-foreground truncate max-w-xs">{group.description}</div>}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {group.vpc_id || '—'}
+                        </TableCell>
+                        <TableCell>
+                          {isExposed ? (
+                            <Badge className="border-red-400/20 bg-red-400/10 text-red-300">Publicly exposed</Badge>
+                          ) : (
+                            <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex items-center gap-1 w-fit">
+                              <ShieldCheck className="size-3" /> Secured
                             </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{group.exposed_ports?.length || 0} exposed ports</TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="destructive" onClick={() => handleRevokeClick(group)}>Revoke</Button>
-                      </TableCell>
-                    </TableRow>
-                  )) : (
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isExposed && (group.exposed_ports || []).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(group.exposed_ports || []).map((port: number) => (
+                                <Badge key={port} variant="outline" className={port === 22 || port === 3389 ? 'border-red-400/30 text-red-300 font-mono text-[11px]' : 'font-mono text-[11px]'}>
+                                  {port}{port === 22 ? ' SSH' : port === 3389 ? ' RDP' : port === 5901 ? ' VNC' : port === 6080 ? ' Web' : ''}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              {group.inbound_rules_count ?? 0} inbound rules &middot; 0 open to 0.0.0.0/0
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {isExposed ? (
+                            <Button size="sm" variant="destructive" className="h-8" onClick={() => handleRevokeClick(group)}>Revoke Ingress</Button>
+                          ) : (
+                            <span className="text-xs text-emerald-400/80 inline-flex items-center gap-1 font-medium">
+                              <Check className="size-3 text-emerald-400" /> Protected
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }) : (
                     <TableRow className="border-white/8">
                       <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                        No public security groups detected. All workloads are protected from direct internet ingress.
+                        {sgFilter === 'exposed'
+                          ? 'No publicly exposed security groups detected. All workloads are protected from direct internet ingress.'
+                          : sgFilter === 'secured'
+                          ? 'No secured security groups found.'
+                          : 'No security groups found for this account/region.'}
                       </TableCell>
                     </TableRow>
                   )}

@@ -222,8 +222,17 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
       const updatedExposed = (currentAudit?.exposed_security_groups || []).filter(
         (sg: any) => sg.group_id !== groupId
       )
+      const updatedAll = (currentAudit?.all_security_groups || []).map((sg: any) =>
+        sg.group_id === groupId
+          ? { ...sg, is_publicly_exposed: false, exposed_ports: [], inbound_rules_count: 0 }
+          : sg
+      )
       const updatedAudit = currentAudit
-        ? { ...currentAudit, exposed_security_groups: updatedExposed }
+        ? {
+            ...currentAudit,
+            exposed_security_groups: updatedExposed,
+            all_security_groups: updatedAll,
+          }
         : currentAudit
 
       const currentSummary = prev.summary

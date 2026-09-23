@@ -216,7 +216,10 @@ class NetworkCollector(AWSBaseCollector):
             security_groups.append({
                 "group_id": group_id,
                 "group_name": group_name,
+                "description": sg.get("Description", ""),
                 "vpc_id": sg.get("VpcId"),
+                "inbound_rules_count": len(sg.get("IpPermissions", [])),
+                "outbound_rules_count": len(sg.get("IpPermissionsEgress", [])),
                 "is_publicly_exposed": is_public,
                 "exposed_ports": sorted(set(exposed_ports)),
                 "tags": self.parse_tags(sg.get("Tags")),

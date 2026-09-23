@@ -94,13 +94,10 @@ export interface OptimizationRecommendation {
 
 export interface SecurityAudit {
   score?: number
-  exposed_security_groups?: Array<{
-    group_id: string
-    group_name: string
-    risk: string
-    description?: string
-    ports?: number[]
-  }>
+  exposed_security_groups?: Array<any>
+  all_security_groups?: Array<any>
+  unattached_elastic_ips?: Array<any>
+  orphaned_ebs_volumes?: Array<any>
   findings?: Array<{
     id: string
     title: string
@@ -109,6 +106,7 @@ export interface SecurityAudit {
     description: string
   }>
   critical_count?: number
+  [key: string]: any
 }
 
 export interface DashboardSummary {

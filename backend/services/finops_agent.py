@@ -70,8 +70,7 @@ When analyzing infrastructure:
     def _get_current_inventory(self) -> Dict[str, Any]:
         if self.data_store:
             return self.data_store
-        from mock_database import DB
-        return DB
+        return {}
 
     def handle_slash_command(self, query: str) -> Optional[Dict[str, Any]]:
         """Parses and executes slash commands."""
