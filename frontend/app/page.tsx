@@ -21,8 +21,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 // Base URL for CloudPulse Backend (Render Web Service or local)
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-const apiUrl = (path: string) => path.startsWith('http') ? path : `${API_BASE}${path}`
+function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    const port = window.location.port
+    if ((host === 'localhost' || host === '127.0.0.1') && port !== '8000') {
+      return `http://${host}:8000`
+    }
+  }
+  return ''
+}
+
+const apiUrl = (path: string) => {
+  if (path.startsWith('http')) return path
+  const base = getApiBase()
+  return `${base}${path}`
+}
 
 // Navigation configuration
 const nav = [
@@ -546,6 +563,9 @@ export default function Page() {
     const syncConnectionState = async () => {
       try {
         const res = await fetch(apiUrl('/api/v1/connect-cloud/state'));
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
         const data = await res.json();
         const connection = data?.connection || data
         const accounts = Array.isArray(data?.connected_accounts)
@@ -713,8 +733,6 @@ export default function Page() {
   );
 }, [nodes, search, status]);
 
-  const loadedDataSources = DATA_SOURCES.filter(source => dataSources[source.key]?.status === 'ready' || dataSources[source.key]?.status === 'partial');
-  const failedDataSources = DATA_SOURCES.filter(source => dataSources[source.key]?.status === 'error');
   const overviewStatus: SyncState = dataSources.summary?.status || (syncing ? 'loading' : 'idle');
 
   return (
@@ -1016,40 +1034,10 @@ export default function Page() {
                     </CardContent>
                   </Card>
                 )}
-                {connectionAccessMode !== 'limited' && (loadedDataSources.length > 0 || failedDataSources.length > 0 || dataError) && (
-                  <Card className="mb-6 border-white/8 bg-card/70">
-                    <CardContent className="flex flex-col gap-4 p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium">Current data coverage</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {loadedDataSources.length} data sources ready{failedDataSources.length ? ` · ${failedDataSources.length} unavailable` : ''}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className={`size-2 rounded-full ${syncing ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                          {syncing ? 'Refreshing' : 'Live Synced'}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {loadedDataSources.map(source => (
-                          <Badge key={source.key} className="bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/10">
-                            {source.label}
-                          </Badge>
-                        ))}
-                        {failedDataSources.map(source => (
-                          <Badge key={source.key} variant="outline" className="border-amber-400/30 text-amber-300">
-                            {source.label} unavailable
-                          </Badge>
-                        ))}
-                      </div>
-                      {dataError && (
-                        <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
-                          {dataError}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                {connectionAccessMode !== 'limited' && dataError && (
+                  <div className="mb-6 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+                    {dataError}
+                  </div>
                 )}
                 {view === 'overview' && (
                   <Overview
