@@ -2201,7 +2201,8 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
   )
 }
 
-function Optimization({ accessMode, items = [], applied, setApplied, sectionStatus, currency = 'USD', apiUrl }: any) {
+function Optimization({ accessMode, items = [], applied = [], setApplied, sectionStatus, currency = 'USD', apiUrl }: any) {
+  const [optFilter, setOptFilter] = useState<'all' | 'pending' | 'applied'>('all');
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastTarget, setBroadcastTarget] = useState<'slack' | 'teams'>('slack');
@@ -2212,8 +2213,33 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
   const [gitopsPackage, setGitopsPackage] = useState<any | null>(null);
   const [gitopsCopied, setGitopsCopied] = useState(false);
 
+  const appliedSet = useMemo(() => new Set(applied || []), [applied]);
+  const pendingItems = useMemo(() => items.filter((i: any) => !appliedSet.has(i.id)), [items, appliedSet]);
+  const appliedItems = useMemo(() => items.filter((i: any) => appliedSet.has(i.id)), [items, appliedSet]);
+
+  const pendingSavings = useMemo(() => {
+    return pendingItems
+      .filter((i: any) => !i.is_alternative)
+      .reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0);
+  }, [pendingItems]);
+
+  const realizedSavings = useMemo(() => {
+    return appliedItems
+      .filter((i: any) => !i.is_alternative)
+      .reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0);
+  }, [appliedItems]);
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item: any) => {
+      const isDone = appliedSet.has(item.id);
+      if (optFilter === 'pending') return !isDone;
+      if (optFilter === 'applied') return isDone;
+      return true;
+    });
+  }, [items, appliedSet, optFilter]);
+
   const toggleOptimization = async (id: string) => {
-    const isApplied = applied.includes(id);
+    const isApplied = appliedSet.has(id);
     const newApplied = isApplied ? applied.filter((x: string) => x !== id) : [...applied, id];
     const res = await fetch(apiUrl('/api/optimizations/apply'), {
       method: 'POST',
@@ -2227,6 +2253,24 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
     } else {
       setApplied(newApplied);
     }
+  };
+
+  const handleApplyAllRemaining = async () => {
+    await Promise.all(pendingItems.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: i.id, action: 'apply' })
+    })));
+    setApplied(items.map((i: any) => i.id));
+  };
+
+  const handleRevertAll = async () => {
+    await Promise.all(appliedItems.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: i.id, action: 'revert' })
+    })));
+    setApplied([]);
   };
 
   const handleBatchGitopsPr = async () => {
@@ -2307,30 +2351,72 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
             >
               <Bell className="mr-2 size-4" />Broadcast Digest
             </Button>
-            <Button
-              onClick={async () => {
-                await Promise.all(items.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ id: i.id, action: 'apply' })
-                })));
-                setApplied(items.map((i: any) => i.id));
-              }}
-              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-            >
-              <Zap data-icon="inline-start" />Apply all optimizations
-            </Button>
+            {pendingItems.length > 0 ? (
+              <Button
+                onClick={handleApplyAllRemaining}
+                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+              >
+                <Zap data-icon="inline-start" />Apply remaining ({pendingItems.length})
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleRevertAll}
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+              >
+                <RotateCcw className="mr-2 size-4" />Revert all optimizations
+              </Button>
+            )}
           </div>
         }
       />
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-          {formatInteger(items.length)} live recommendations
-        </span>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-          {formatCurrency(items.reduce((sum: number, item: any) => sum + Number(item.savings ?? 0), 0), currency)} potential savings
-        </span>
+
+      {/* FinOps Metrics & Lifecycle Counter Banner */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.02] p-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-muted-foreground">
+            <strong className="text-white">{pendingItems.length}</strong> pending recommendations
+          </span>
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-medium text-amber-300">
+            {formatCurrency(pendingSavings, currency)} potential savings remaining
+          </span>
+          {appliedItems.length > 0 && (
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-medium text-emerald-300 flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5" />
+              {appliedItems.length} enacted &middot; {formatCurrency(realizedSavings, currency)}/mo realized
+            </span>
+          )}
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant={optFilter === 'all' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 text-xs px-2.5"
+            onClick={() => setOptFilter('all')}
+          >
+            All ({items.length})
+          </Button>
+          <Button
+            variant={optFilter === 'pending' ? 'secondary' : 'ghost'}
+            size="sm"
+            className={`h-7 text-xs px-2.5 ${pendingItems.length > 0 ? 'text-amber-400 font-medium' : ''}`}
+            onClick={() => setOptFilter('pending')}
+          >
+            Pending ({pendingItems.length})
+          </Button>
+          <Button
+            variant={optFilter === 'applied' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 text-xs px-2.5 text-emerald-400 font-medium"
+            onClick={() => setOptFilter('applied')}
+          >
+            Applied ({appliedItems.length})
+          </Button>
+        </div>
       </div>
+
       {sectionStatus === 'loading' ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -2352,42 +2438,106 @@ function Optimization({ accessMode, items = [], applied, setApplied, sectionStat
           description="No idle, oversized, or unattached resource waste detected. All provisioned infrastructure is operating within target cost thresholds."
           className="my-6 py-12"
         />
+      ) : filteredItems.length === 0 ? (
+        <EmptyState
+          icon={CheckCircle2}
+          title={optFilter === 'pending' ? "All Recommendations Enacted" : "No Enacted Optimizations"}
+          description={
+            optFilter === 'pending'
+              ? "Great job! All identified optimizations have been applied and tracked. Check back as new telemetry arrives."
+              : "No optimizations have been marked as enacted yet. Select 'Pending' to review open recommendations."
+          }
+          className="my-6 py-12"
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item: any) => {
-            const done = applied.includes(item.id);
+          {filteredItems.map((item: any) => {
+            const done = appliedSet.has(item.id);
             return (
-              <Card key={item.id} className={`border-white/8 bg-card/70 transition ${done ? 'border-emerald-400/30' : ''}`}>
+              <Card
+                key={item.id}
+                className={`border-white/8 bg-card/70 transition flex flex-col justify-between ${
+                  done ? 'border-emerald-500/40 bg-emerald-950/10 shadow-[0_0_15px_-3px_rgba(16,185,129,0.1)]' : ''
+                }`}
+              >
                 <CardHeader>
-                  <Badge variant="outline" className="w-fit border-white/10">{item.type}</Badge>
-                  <CardTitle className="pt-2 text-base">{item.title}</CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Badge variant="outline" className="w-fit border-white/10 text-xs">
+                      {item.type}
+                    </Badge>
+                    {item.is_alternative ? (
+                      <Badge variant="outline" className="border-amber-400/30 text-amber-300 bg-amber-400/10 text-[10px]">
+                        Alternative Strategy
+                      </Badge>
+                    ) : done ? (
+                      <Badge variant="outline" className="border-emerald-400/30 text-emerald-300 bg-emerald-400/10 text-[10px] flex items-center gap-1">
+                        <Check className="size-3" /> Enacted
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <CardTitle className="pt-2 text-base leading-snug">{item.title}</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="min-h-10 text-sm text-muted-foreground">{item.desc}</p>
-                  {item.ai_rationale && item.ai_rationale !== item.desc && (
-                    <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2.5 text-xs text-cyan-200">
-                      <div className="mb-1 flex items-center gap-1.5 font-medium text-cyan-300">
-                        <Sparkles className="size-3.5" /> AI Architecture Rationale
+                <CardContent className="flex flex-col justify-between flex-1">
+                  <div>
+                    <p className="min-h-10 text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
+                    {item.conflict_note && (
+                      <div className="mt-2.5 flex items-start gap-1.5 rounded border border-amber-500/20 bg-amber-500/5 p-2 text-[11px] text-amber-200/90 leading-tight">
+                        <AlertTriangle className="size-3.5 shrink-0 text-amber-400 mt-0.5" />
+                        <span>{item.conflict_note}</span>
                       </div>
-                      {item.ai_rationale}
-                    </div>
-                  )}
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+                    )}
+                    {item.ai_rationale && item.ai_rationale !== item.desc && (
+                      <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2.5 text-xs text-cyan-200">
+                        <div className="mb-1 flex items-center gap-1.5 font-medium text-cyan-300">
+                          <Sparkles className="size-3.5" /> AI Architecture Rationale
+                        </div>
+                        {item.ai_rationale}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-white/5 pt-3">
                     <div>
-                      <div className="text-lg sm:text-xl font-semibold text-emerald-300">Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo</div>
+                      <div className="text-lg sm:text-xl font-semibold text-emerald-300">
+                        Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo
+                      </div>
+                      {item.is_alternative && (
+                        <div className="text-[10px] text-muted-foreground">Alternative to primary plan</div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Button size="sm" variant="ghost" className="text-xs text-cyan-300 hover:bg-cyan-400/10 px-2" onClick={() => handleSingleGitopsPr(item)}>
-                        <GitPullRequest className="mr-1 size-3" />PR
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs text-cyan-300 hover:bg-cyan-400/10 px-2"
+                        onClick={() => handleSingleGitopsPr(item)}
+                      >
+                        <GitPullRequest className="mr-1 size-3" />GitOps PR
                       </Button>
-                      <Button size="sm" variant={done ? 'secondary' : 'outline'} onClick={() => toggleOptimization(item.id)}>
-                        {done ? <><Check data-icon="inline-start" />Applied</> : 'Review'}
+                      <Button
+                        size="sm"
+                        variant={done ? 'secondary' : 'default'}
+                        className={
+                          done
+                            ? 'border border-emerald-500/30 text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
+                        }
+                        onClick={() => toggleOptimization(item.id)}
+                      >
+                        {done ? (
+                          <>
+                            <Check className="mr-1 size-3.5 text-emerald-400" />
+                            Applied
+                          </>
+                        ) : (
+                          'Enact'
+                        )}
                       </Button>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            )
+            );
           })}
         </div>
       )}

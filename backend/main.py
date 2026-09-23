@@ -788,6 +788,9 @@ def _frontend_optimizations():
                 "savings": f.get("monthly_savings", 0.0),
                 "effort": f.get("effort", "Low"),
                 "action": f.get("action", ""),
+                "is_alternative": f.get("is_alternative", False),
+                "conflict_note": f.get("conflict_note", ""),
+                "alternative_to": f.get("alternative_to"),
                 "ai_rationale": ai_rationale or f.get("description", ""),
             }
         )

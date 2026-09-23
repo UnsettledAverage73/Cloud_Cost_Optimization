@@ -27,6 +27,30 @@ class FinOpsAnalyzer:
         db_findings = DatabaseOptimizer.analyze(inventory)
         commitment_findings = CommitmentOptimizer.analyze(inventory)
 
+        # Identify mutually exclusive items and tag alternative options
+        # 1. Compute resource: Idle terminate/stop vs Graviton migration / downsizing
+        idle_resource_ids = {
+            item.get("resource_id"): item
+            for item in waste_findings
+            if item.get("action") in ("stop", "terminate") and item.get("resource_id")
+        }
+
+        for item in rightsizing_findings:
+            res_id = item.get("resource_id")
+            if res_id and res_id in idle_resource_ids:
+                item["is_alternative"] = True
+                item["alternative_to"] = idle_resource_ids[res_id].get("id")
+                item["conflict_note"] = "Alternative strategy: apply only if workload must remain running and cannot be stopped."
+
+        # 2. Commitment plans: 3-Year is primary (max savings), 1-Year is flexible alternative horizon
+        has_3yr_plan = any(item.get("id") == "commitment-savings-plan-3yr" for item in commitment_findings)
+        if has_3yr_plan:
+            for item in commitment_findings:
+                if item.get("id") == "commitment-savings-plan-1yr":
+                    item["is_alternative"] = True
+                    item["alternative_to"] = "commitment-savings-plan-3yr"
+                    item["conflict_note"] = "Alternative 1-Year commitment horizon. Do not stack with 3-Year plan."
+
         # Merge and deduplicate by resource_id + action
         all_findings: List[Dict[str, Any]] = []
         seen_keys = set()
@@ -44,7 +68,23 @@ class FinOpsAnalyzer:
         quick_wins = [f for f in all_findings if f.get("effort") == "Quick Win" or f.get("risk") == "NONE"]
         architectural = [f for f in all_findings if f not in quick_wins]
 
-        total_potential_savings = round(sum(f.get("monthly_savings", 0.0) for f in all_findings), 2)
+        # Calculate primary non-conflicting savings so alternative options are not double-counted
+        primary_findings = [f for f in all_findings if not f.get("is_alternative")]
+        total_potential_savings = round(sum(f.get("monthly_savings", 0.0) for f in primary_findings), 2)
+        if total_potential_savings == 0.0 and all_findings:
+            total_potential_savings = round(sum(f.get("monthly_savings", 0.0) for f in all_findings), 2)
+
+        # Track applied status and realized vs pending savings
+        applied_ids = set(inventory.get("applied_optimizations", []))
+        for f in all_findings:
+            f["is_applied"] = f["id"] in applied_ids
+
+        applied_primary = [f for f in primary_findings if f["id"] in applied_ids]
+        pending_primary = [f for f in primary_findings if f["id"] not in applied_ids]
+
+        realized_monthly_savings = round(sum(f.get("monthly_savings", 0.0) for f in applied_primary), 2)
+        pending_potential_savings = round(sum(f.get("monthly_savings", 0.0) for f in pending_primary), 2)
+
         total_monthly_spend = inventory.get("summary", {}).get("estimated_monthly_spend", 0.0)
         if total_monthly_spend == 0.0:
             total_monthly_spend = round(sum(n.get("cost", 0.0) for n in inventory.get("nodes", [])), 2) or 100.0
@@ -63,6 +103,10 @@ class FinOpsAnalyzer:
             "quick_wins": quick_wins,
             "architectural_improvements": architectural,
             "total_potential_monthly_savings": total_potential_savings,
+            "pending_potential_savings": pending_potential_savings,
+            "realized_monthly_savings": realized_monthly_savings,
+            "applied_count": len([f for f in all_findings if f["id"] in applied_ids]),
+            "pending_count": len([f for f in all_findings if f["id"] not in applied_ids]),
             "total_monthly_spend": total_monthly_spend,
             "savings_percentage": min(95.0, savings_percentage),
             "health_score": health_breakdown["overall_score"],
