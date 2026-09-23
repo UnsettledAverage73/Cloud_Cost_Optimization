@@ -180,8 +180,11 @@ _INSTANCE_MONTHLY_RATES = {
 }
 
 
+revoked_security_groups: set = set()
+
+
 def _load_persisted_state():
-    global active_credentials, connected_accounts
+    global active_credentials, connected_accounts, revoked_security_groups
 
     if not STATE_FILE.exists():
         return
@@ -199,11 +202,16 @@ def _load_persisted_state():
     if isinstance(accounts, list):
         connected_accounts[:] = [item for item in accounts if isinstance(item, dict)]
 
+    revoked = state.get("revoked_security_groups", [])
+    if isinstance(revoked, list):
+        revoked_security_groups.update(revoked)
+
 
 def _persist_state():
     state = {
         "active_connection": active_credentials.get("default"),
         "connected_accounts": connected_accounts,
+        "revoked_security_groups": list(revoked_security_groups),
     }
     try:
         STATE_FILE.write_text(json.dumps(state, indent=2, default=str))
@@ -479,6 +487,10 @@ def _refresh_live_aws_state(force: bool = False):
         db["network_interfaces"] = data["network_interfaces"]
         db["load_balancers"] = data.get("load_balancers", [])
         db["security_groups"] = data["security_groups"]
+        for sg in db["security_groups"]:
+            if sg.get("group_id") in revoked_security_groups:
+                sg["is_publicly_exposed"] = False
+                sg["exposed_ports"] = []
         db["amis"] = data["amis"]
         db["cloudwatch_log_groups"] = data["cloudwatch_log_groups"]
         db["daily_spend"] = data.get("daily_spend", [])
@@ -934,13 +946,77 @@ async def get_frontend_applied_optimizations():
 @app.post("/api/security/revoke")
 async def revoke_security_group(payload: dict):
     group_id = payload.get("groupId")
+    if not group_id:
+        raise HTTPException(status_code=400, detail="Missing groupId")
+
+    # 1. Persist revocation so future background synchronizations never resurrect public exposure
+    revoked_security_groups.add(group_id)
+    _persist_state()
+
     db = _db()
-    sg = next((item for item in db["security_groups"] if item["group_id"] == group_id), None)
-    if not sg:
-        raise HTTPException(status_code=404, detail="Security group not found")
-    sg["is_publicly_exposed"] = False
-    sg["exposed_ports"] = []
-    return {"status": "revoked", "groupId": group_id}
+
+    # 2. Attempt live AWS EC2 revoke if credentials are configured
+    aws_live_revoked = False
+    aws_note = "Local state updated"
+    session = _build_aws_session()
+    if session:
+        try:
+            region = session.region_name or "us-east-1"
+            ec2 = session.client("ec2", region_name=region)
+            resp = ec2.describe_security_groups(GroupIds=[group_id])
+            sgs = resp.get("SecurityGroups", [])
+            if sgs:
+                to_revoke = []
+                for perm in sgs[0].get("IpPermissions", []):
+                    pub_ipv4 = [r for r in perm.get("IpRanges", []) if r.get("CidrIp") == "0.0.0.0/0"]
+                    pub_ipv6 = [r for r in perm.get("Ipv6Ranges", []) if r.get("CidrIpv6") == "::/0"]
+                    if pub_ipv4 or pub_ipv6:
+                        rule = {"IpProtocol": perm.get("IpProtocol")}
+                        if "FromPort" in perm:
+                            rule["FromPort"] = perm["FromPort"]
+                        if "ToPort" in perm:
+                            rule["ToPort"] = perm["ToPort"]
+                        if pub_ipv4:
+                            rule["IpRanges"] = [{"CidrIp": "0.0.0.0/0"}]
+                        if pub_ipv6:
+                            rule["Ipv6Ranges"] = [{"CidrIpv6": "::/0"}]
+                        to_revoke.append(rule)
+                if to_revoke:
+                    ec2.revoke_security_group_ingress(GroupId=group_id, IpPermissions=to_revoke)
+                    aws_live_revoked = True
+                    aws_note = f"Revoked {len(to_revoke)} ingress permission(s) on AWS EC2."
+        except Exception as e:
+            logger.warning(f"Could not execute live EC2 ingress revocation: {e}")
+            aws_note = f"Live AWS EC2 sync skipped/denied: {e}"
+
+    # 3. Update in-memory DB
+    found = False
+    for sg in db.get("security_groups", []):
+        if sg.get("group_id") == group_id:
+            sg["is_publicly_exposed"] = False
+            sg["exposed_ports"] = []
+            found = True
+
+    if not found:
+        db.setdefault("security_groups", []).append({
+            "group_id": group_id,
+            "group_name": payload.get("groupName", group_id),
+            "is_publicly_exposed": False,
+            "exposed_ports": []
+        })
+
+    # 4. Synchronize critical security risks count in summary
+    if "summary" in db and isinstance(db["summary"], dict):
+        db["summary"]["critical_security_risks"] = sum(
+            1 for s in db.get("security_groups", []) if s.get("is_publicly_exposed")
+        )
+
+    return {
+        "status": "revoked",
+        "groupId": group_id,
+        "aws_live_revoked": aws_live_revoked,
+        "note": aws_note
+    }
 
 
 @app.post("/api/optimizations/apply")

@@ -100,6 +100,7 @@ export interface DashboardStoreState {
   lastFetchedAt: number | null
   cacheTtlMs: number
   invalidateCache: () => void
+  revokeSecurityGroupLocally: (groupId: string) => void
 
   // Async Data Fetching & Caching Orchestration
   fetchData: (apiUrl: (path: string) => string, force?: boolean) => Promise<void>
@@ -215,6 +216,52 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
   lastFetchedAt: null,
   cacheTtlMs: 20000, // 20s caching to prevent rapid duplicate fetches
   invalidateCache: () => set({ lastFetchedAt: null }),
+  revokeSecurityGroupLocally: (groupId: string) => {
+    set((prev) => {
+      const currentAudit = prev.securityAudit
+      const updatedExposed = (currentAudit?.exposed_security_groups || []).filter(
+        (sg: any) => sg.group_id !== groupId
+      )
+      const updatedAudit = currentAudit
+        ? { ...currentAudit, exposed_security_groups: updatedExposed }
+        : currentAudit
+
+      const currentSummary = prev.summary
+      const updatedSummary = currentSummary
+        ? {
+            ...currentSummary,
+            critical_security_risks: Math.max(0, updatedExposed.length),
+          }
+        : currentSummary
+
+      const currentDetail = prev.selectedNodeDetail
+      let updatedDetail = currentDetail
+      if (currentDetail) {
+        const updateSgList = (list: any[]) =>
+          list.map((sg) =>
+            sg.group_id === groupId
+              ? { ...sg, is_publicly_exposed: false, exposed_ports: [] }
+              : sg
+          )
+        updatedDetail = {
+          ...currentDetail,
+          security_groups_detail: Array.isArray(currentDetail.security_groups_detail)
+            ? updateSgList(currentDetail.security_groups_detail)
+            : currentDetail.security_groups_detail,
+          security_groups: Array.isArray(currentDetail.security_groups)
+            ? updateSgList(currentDetail.security_groups)
+            : currentDetail.security_groups,
+        }
+      }
+
+      return {
+        securityAudit: updatedAudit,
+        summary: updatedSummary,
+        selectedNodeDetail: updatedDetail,
+        lastFetchedAt: null,
+      }
+    })
+  },
 
   // Data Fetching & Caching Orchestrator with Graceful Degradation
   fetchData: async (apiUrl, force = false) => {

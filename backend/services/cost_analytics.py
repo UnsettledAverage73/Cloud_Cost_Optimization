@@ -1,6 +1,18 @@
-import numpy as np
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
+
+try:
+    import numpy as np
+    def _mean(seq):
+        return float(np.mean(seq))
+    def _std(seq):
+        return float(np.std(seq))
+except ImportError:
+    import statistics
+    def _mean(seq):
+        return float(statistics.mean(seq)) if seq else 0.0
+    def _std(seq):
+        return float(statistics.stdev(seq)) if len(seq) > 1 else 1.0
 
 from engines.finops_analyzer import FinOpsAnalyzer
 
@@ -35,8 +47,8 @@ def detect_cost_anomalies(spend_rows: List[Dict[str, Any]]) -> List[Dict[str, An
 
     for i in range(3, len(amounts)):
         window = amounts[max(0, i-7):i]
-        mean = float(np.mean(window))
-        std = float(np.std(window)) or 1.0
+        mean = _mean(window)
+        std = _std(window) or 1.0
         current = amounts[i]
 
         if current > mean * 1.25 and current > (mean + 1.8 * std):
@@ -69,7 +81,7 @@ def calculate_spend_forecast(spend_rows: List[Dict[str, Any]], monthly_budget: f
 
     recent_days = spend_rows[-7:] if len(spend_rows) >= 7 else spend_rows
     daily_rates = [float(row.get("aws", 0.0)) for row in recent_days]
-    avg_daily_burn = float(np.mean(daily_rates)) if daily_rates else 10.0
+    avg_daily_burn = _mean(daily_rates) if daily_rates else 10.0
     projected_month_end = round(avg_daily_burn * 30.0, 2)
     variance = round(monthly_budget - projected_month_end, 2)
     runway_days = int(monthly_budget / avg_daily_burn) if avg_daily_burn > 0 else 999

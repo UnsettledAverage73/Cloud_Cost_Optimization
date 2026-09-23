@@ -227,6 +227,7 @@ export default function Page() {
     alerts, setAlerts,
     optimizations, setOptimizations,
     securityAudit, setSecurityAudit,
+    revokeSecurityGroupLocally,
     summary, setSummary,
     loading, setLoading,
     dataError, setDataError,
@@ -278,7 +279,36 @@ export default function Page() {
   // Core Data Fetching Handler with caching
   const fetchData = useCallback(async (force = false) => {
     await storeFetchData(apiUrl, force);
-  }, [storeFetchData]);
+  }, [storeFetchData, apiUrl]);
+
+  const [revokingDrawerSg, setRevokingDrawerSg] = useState<string | null>(null);
+  const [drawerFeedback, setDrawerFeedback] = useState<string | null>(null);
+
+  const handleDrawerRevoke = useCallback(async (sg: any) => {
+    if (!sg?.group_id) return;
+    setRevokingDrawerSg(sg.group_id);
+    setDrawerFeedback(null);
+    try {
+      const endpoint = apiUrl ? apiUrl('/api/security/revoke') : '/api/security/revoke';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: sg.group_id, groupName: sg.group_name })
+      });
+      if (res.ok) {
+        revokeSecurityGroupLocally?.(sg.group_id);
+        setDrawerFeedback(`Successfully revoked public ingress for ${sg.group_name || sg.group_id}.`);
+        await storeFetchData(apiUrl, true);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setDrawerFeedback(`Revocation error: ${err.detail || 'Failed to revoke'}`);
+      }
+    } catch (e: any) {
+      setDrawerFeedback(`Error: ${e?.message || 'Network error'}`);
+    } finally {
+      setRevokingDrawerSg(null);
+    }
+  }, [apiUrl, revokeSecurityGroupLocally, storeFetchData]);
 
   useEffect(() => {
     fetchData();
@@ -896,6 +926,7 @@ export default function Page() {
                       sectionStatus={dataSources.security?.status || (syncing ? 'loading' : 'idle')}
                       apiUrl={apiUrl}
                       onRefresh={fetchData}
+                      revokeSecurityGroupLocally={revokeSecurityGroupLocally}
                     />
                   </SectionErrorBoundary>
                 )}
@@ -1093,38 +1124,84 @@ export default function Page() {
                       <span className="text-[10px] text-muted-foreground">
                         {Array.isArray(selectedNodeDetail?.security_groups_detail) && selectedNodeDetail.security_groups_detail.length > 0
                           ? `${selectedNodeDetail.security_groups_detail.length} attached`
-                          : Array.isArray(selectedNodeDetail?.security_groups) ? `${selectedNodeDetail.security_groups.length} attached` : 'Default'}
+                          : Array.isArray(selectedNodeDetail?.security_groups) && selectedNodeDetail.security_groups.length > 0
+                            ? `${selectedNodeDetail.security_groups.length} attached`
+                            : 'None'}
                       </span>
                     </div>
 
+                    {drawerFeedback && (
+                      <div className="mb-2.5 flex items-center justify-between rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-300">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="size-3.5 shrink-0 text-emerald-400" />
+                          <span>{drawerFeedback}</span>
+                        </div>
+                        <Button variant="ghost" size="icon" className="size-4 hover:bg-transparent text-muted-foreground hover:text-white" onClick={() => setDrawerFeedback(null)}>
+                          <X className="size-3" />
+                        </Button>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
-                      {(selectedNodeDetail?.security_groups_detail && selectedNodeDetail.security_groups_detail.length > 0
-                        ? selectedNodeDetail.security_groups_detail
-                        : (selectedNodeDetail?.security_groups || [{ group_id: 'sg-0019f98a431bd7762', group_name: 'launch-wizard-1', is_publicly_exposed: true, exposed_ports: [22, 3389, 5901, 6080] }])
-                      ).map((sg: any, idx: number) => {
-                        const ports = sg.exposed_ports || [22, 3389, 5901, 6080];
-                        const isExposed = sg.is_publicly_exposed ?? (ports.length > 0);
-                        return (
-                          <div key={sg.group_id || idx} className="rounded border border-white/5 bg-black/20 p-2 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono text-cyan-300">{sg.group_id || 'sg-default'}</span>
-                              <span className="text-muted-foreground">{sg.group_name || 'default'}</span>
+                      {(() => {
+                        const sgs = (selectedNodeDetail?.security_groups_detail && selectedNodeDetail.security_groups_detail.length > 0)
+                          ? selectedNodeDetail.security_groups_detail
+                          : (selectedNodeDetail?.security_groups && selectedNodeDetail.security_groups.length > 0)
+                            ? selectedNodeDetail.security_groups
+                            : [];
+
+                        if (sgs.length === 0) {
+                          return (
+                            <div className="rounded border border-dashed border-white/10 p-3 text-center text-xs text-muted-foreground">
+                              No security groups attached to this instance
                             </div>
-                            {isExposed && (
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                                <span className="text-[10px] text-red-400 flex items-center gap-1">
-                                  <ShieldAlert className="size-3" /> Exposed ports:
-                                </span>
-                                {ports.map((p: any) => (
-                                  <Badge key={p} variant="outline" className="text-[10px] px-1 py-0 border-red-500/40 text-red-300 bg-red-500/10">
-                                    {p}
-                                  </Badge>
-                                ))}
+                          );
+                        }
+
+                        return sgs.map((sg: any, idx: number) => {
+                          const ports = Array.isArray(sg.exposed_ports) ? sg.exposed_ports : [];
+                          const isExposed = Boolean(sg.is_publicly_exposed && ports.length > 0);
+                          const isRevoking = revokingDrawerSg === sg.group_id;
+                          return (
+                            <div key={sg.group_id || idx} className="rounded border border-white/5 bg-black/20 p-2.5 text-xs space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-cyan-300 font-medium">{sg.group_id || 'sg-default'}</span>
+                                <span className="text-muted-foreground">{sg.group_name || 'default'}</span>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                              {isExposed ? (
+                                <div className="space-y-2 pt-1 border-t border-white/5">
+                                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                    <div className="flex flex-wrap items-center gap-1">
+                                      <span className="text-[10px] text-red-400 flex items-center gap-1 font-medium">
+                                        <ShieldAlert className="size-3" /> Publicly Exposed:
+                                      </span>
+                                      {ports.map((p: any) => (
+                                        <Badge key={p} variant="outline" className="text-[10px] px-1 py-0 border-red-500/40 text-red-300 bg-red-500/10 font-mono">
+                                          {p}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      className="h-6 text-[11px] px-2"
+                                      disabled={isRevoking}
+                                      onClick={() => handleDrawerRevoke(sg)}
+                                    >
+                                      {isRevoking ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+                                      Revoke Ingress
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400">
+                                  <ShieldCheck className="size-3" /> Protected (No public internet ingress)
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 </TabsContent>
@@ -1757,7 +1834,7 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
   )
 }
 
-function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiUrl, onRefresh }: any) {
+function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiUrl, onRefresh, revokeSecurityGroupLocally }: any) {
   const exposedSecurityGroups = audit?.exposed_security_groups || [];
   const unattachedElasticIPs = audit?.unattached_elastic_ips || [];
   const orphanedEbsVolumes = audit?.orphaned_ebs_volumes || [];
@@ -1781,15 +1858,16 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId: selectedGroupToRevoke.group_id })
+        body: JSON.stringify({ groupId: selectedGroupToRevoke.group_id, groupName: selectedGroupToRevoke.group_name })
       });
       if (res.ok) {
+        revokeSecurityGroupLocally?.(selectedGroupToRevoke.group_id);
         setFeedback({
           type: 'success',
           message: `Public ingress (0.0.0.0/0) successfully revoked for ${selectedGroupToRevoke.group_name || selectedGroupToRevoke.group_id}.`
         });
         setRevokeModalOpen(false);
-        onRefresh?.();
+        onRefresh?.(true);
       } else {
         const err = await res.json().catch(() => ({}));
         setFeedback({
