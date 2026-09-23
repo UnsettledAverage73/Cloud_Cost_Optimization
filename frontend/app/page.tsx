@@ -472,9 +472,6 @@ export default function Page() {
       failed.forEach(item => {
         updateDataSource(item.key, { status: 'error', error: item.error });
       });
-      if (failed.length > 0 && connectionAccessMode !== 'limited') {
-        setDataError(`Loaded ${Object.keys(requests).length - failed.length}/${Object.keys(requests).length} data sources. Some AWS APIs are unavailable for this account.`);
-      }
     } finally {
       setSyncing(false);
       setLoading(false);
@@ -1033,11 +1030,6 @@ export default function Page() {
                       </div>
                     </CardContent>
                   </Card>
-                )}
-                {connectionAccessMode !== 'limited' && dataError && (
-                  <div className="mb-6 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
-                    {dataError}
-                  </div>
                 )}
                 {view === 'overview' && (
                   <Overview
