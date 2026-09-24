@@ -1218,7 +1218,7 @@ class FinOpsNotificationEngine:
         target_channels = channels or [ch for ch, en in enabled_ch.items() if en]
 
         # Check rule toggles if not a test event
-        if event_type != "test":
+        if event_type not in ("test", "test_ping"):
             rule_map = {
                 "waste_alert": rules.get("on_waste_found", True),
                 "batch_digest": rules.get("on_batch_digest", True),
@@ -1310,7 +1310,7 @@ class FinOpsNotificationEngine:
         elif event_type == "gitops_pr":
             slack_card = self.format_slack_gitops_pr_alert(data)
             teams_card = self.format_teams_gitops_pr_alert(data)
-        elif event_type == "test":
+        elif event_type in ("test", "test_ping"):
             slack_card = self.format_slack_test_alert()
             teams_card = self.format_teams_test_alert()
 
