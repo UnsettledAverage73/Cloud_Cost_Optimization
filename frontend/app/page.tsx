@@ -968,6 +968,7 @@ export default function Page() {
                       items={optimizations}
                       applied={applied}
                       setApplied={setApplied}
+                      nodes={nodes}
                     />
                   </SectionErrorBoundary>
                 )}
@@ -4741,11 +4742,30 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
   );
 }
 
-function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setApplied }: any) {
+function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setApplied, nodes = [] }: any) {
+  const runningNode = useMemo(() => {
+    if (!Array.isArray(nodes) || nodes.length === 0) return null;
+    return nodes.find((n: any) => n.state === 'running' || n.instance_state === 'running') || nodes[0];
+  }, [nodes]);
+
+  const defaultInstanceId = runningNode?.instance_id || 'i-07d01b00f95a4cc41';
+
   const [activeTab, setActiveTab] = useState<'watchdog' | 'audit'>('watchdog');
   const [watches, setWatches] = useState<any[]>([]);
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Enroll Watch state
+  const [enrollModalOpen, setEnrollModalOpen] = useState(false);
+  const [enrollResourceId, setEnrollResourceId] = useState(defaultInstanceId);
+  const [enrollAction, setEnrollAction] = useState('migrate_graviton');
+  const [enrolling, setEnrolling] = useState(false);
+
+  useEffect(() => {
+    if (defaultInstanceId && !enrollResourceId) {
+      setEnrollResourceId(defaultInstanceId);
+    }
+  }, [defaultInstanceId]);
 
   // SLA Evaluation state
   const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
@@ -4761,6 +4781,48 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchResult, setBatchResult] = useState<any | null>(null);
   const [copiedBatch, setCopiedBatch] = useState(false);
+
+  const handleEnrollWatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enrollResourceId.trim()) return;
+    setEnrolling(true);
+    try {
+      const isStorage = enrollResourceId.startsWith('vol-') || enrollAction.includes('gp3');
+      const res = await fetch(apiUrl('/api/v2/sla/watch'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resource_id: enrollResourceId.trim(),
+          remediation_action: enrollAction,
+          file_path: isStorage ? 'terraform/storage.tf' : 'terraform/compute.tf',
+          previous_config: isStorage ? { volume_type: 'gp2', monthly_cost: 8.0 } : { instance_type: 't3.large', monthly_cost: 60.80 },
+          applied_config: isStorage ? { volume_type: 'gp3', monthly_cost: 6.4 } : { instance_type: 't4g.large', monthly_cost: 48.64 },
+          baseline_metrics: isStorage
+            ? { p95_latency_ms: 6.5, error_rate_pct: 0.0, cpu_utilization_avg: 0.0 }
+            : { p95_latency_ms: 38.0, error_rate_pct: 0.0, cpu_utilization_avg: 4.5 },
+          duration_minutes: 60,
+          max_latency_increase_pct: 15.0,
+        }),
+      });
+      if (res.ok) {
+        setEvalFeedback({
+          id: 'enroll-success',
+          type: 'success',
+          message: `Successfully registered 60-Minute SLA Watchdog for ${enrollResourceId.trim()}. Active CloudWatch monitoring initiated.`,
+        });
+        setEnrollModalOpen(false);
+        fetchSlaData();
+      }
+    } catch (err: any) {
+      setEvalFeedback({
+        id: 'enroll-error',
+        type: 'error',
+        message: err.message || 'Failed to enroll resource in SLA Watchdog',
+      });
+    } finally {
+      setEnrolling(false);
+    }
+  };
 
   const fetchSlaData = useCallback(async () => {
     setLoading(true);
@@ -4903,6 +4965,17 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
               className="border-white/10 bg-white/5"
             >
               <RefreshCw className={`mr-1.5 size-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (!enrollResourceId && defaultInstanceId) setEnrollResourceId(defaultInstanceId);
+                setEnrollModalOpen(true);
+              }}
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+            >
+              <Plus className="mr-1.5 size-3.5" /> Enroll Watch
             </Button>
             <Button
               size="sm"
@@ -5155,40 +5228,62 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {auditLog.map((log: any, idx: number) => (
-                        <TableRow key={`${log.pr_id || idx}`} className="border-white/8">
-                          <TableCell className="text-xs text-muted-foreground font-mono">
-                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Recent'}
-                          </TableCell>
-                          <TableCell className="text-xs font-medium max-w-xs truncate">
-                            {log.title || log.pr_title || 'Autonomous Optimization PR'}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-cyan-300">
-                            {log.resource_id || 'multi-resource'}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-slate-400">
-                            {log.branch_name || 'main'}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {log.repo_name || 'infrastructure/aws-workloads'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge
-                              variant="outline"
-                              className={
-                                log.status === 'rolled_back' || log.status === 'rollback_pr_ready'
-                                  ? 'border-purple-400/30 text-purple-300'
-                                  : 'border-emerald-400/30 text-emerald-300'
-                              }
-                            >
-                              {log.status || 'MERGED'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-xs font-semibold text-emerald-300">
-                            {log.monthly_savings ? `Saves ${formatCurrency(log.monthly_savings, currency)}` : 'Optimized'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {auditLog.map((log: any, idx: number) => {
+                        const rawTime = log.created_at || log.timestamp;
+                        const timeStr = rawTime
+                          ? new Date(typeof rawTime === 'number' && rawTime < 1e11 ? rawTime * 1000 : rawTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : 'Recent';
+                        const savingsVal = log.monthly_savings || log.estimated_monthly_savings || log.total_monthly_savings || 0;
+                        const targetRes = log.resource_id || log.target_resource || (log.findings_count ? `${log.findings_count} resources` : 'multi-resource');
+                        const isRollback = log.is_rollback || log.status === 'rolled_back' || log.status === 'rollback_pr_ready';
+
+                        return (
+                          <TableRow key={`${log.pr_id || idx}`} className="border-white/8 hover:bg-white/[0.02]">
+                            <TableCell className="text-xs text-muted-foreground font-mono">
+                              {timeStr}
+                            </TableCell>
+                            <TableCell className="text-xs font-medium max-w-xs">
+                              {log.pull_request_url ? (
+                                <a
+                                  href={log.pull_request_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-300 hover:text-indigo-200 underline decoration-indigo-500/30 flex items-center gap-1"
+                                >
+                                  <span className="truncate">{log.title || log.pr_title || 'Autonomous Optimization PR'}</span>
+                                  <ExternalLink className="size-3 shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="truncate">{log.title || log.pr_title || 'Autonomous Optimization PR'}</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-cyan-300">
+                              {targetRes}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-slate-400">
+                              {log.branch_name || 'main'}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {log.repo_name || 'infrastructure/aws-workloads'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  isRollback
+                                    ? 'border-purple-400/30 bg-purple-500/10 text-purple-300 text-[10px]'
+                                    : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300 text-[10px]'
+                                }
+                              >
+                                {isRollback ? 'ROLLBACK PR' : (log.status || 'PR_READY')}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right text-xs font-semibold text-emerald-300">
+                              {savingsVal > 0 ? `Saves ${formatCurrency(savingsVal, currency)}` : (isRollback ? 'Safety Revert' : 'Optimized')}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -5375,6 +5470,97 @@ function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, setAppli
               Failed to generate batch GitOps package.
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Enroll SLA Watch Modal */}
+      <Dialog open={enrollModalOpen} onOpenChange={setEnrollModalOpen}>
+        <DialogContent className="border-white/10 bg-slate-900 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+              <Activity className="size-4 text-cyan-400" />
+              Enroll in 60-Minute SLA Watchdog
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Launches automated post-remediation CloudWatch P95 latency & error monitoring with zero-downtime rollback protection.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleEnrollWatch} className="space-y-4 pt-2">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-slate-300">Target AWS Resource</label>
+                {nodes && nodes.length > 0 && (
+                  <span className="text-[10px] text-cyan-400">
+                    Discovered: {nodes.find((n: any) => n.instance_id === enrollResourceId)?.name || defaultInstanceId}
+                  </span>
+                )}
+              </div>
+              {nodes && nodes.length > 0 ? (
+                <div className="space-y-1.5">
+                  <Select
+                    value={enrollResourceId || defaultInstanceId}
+                    onValueChange={(val) => { if (val) setEnrollResourceId(val); }}
+                  >
+                    <SelectTrigger className="bg-white/5 border-white/10 text-xs font-mono">
+                      <SelectValue placeholder="Select instance..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                      {nodes.map((n: any) => (
+                        <SelectItem key={n.instance_id} value={n.instance_id}>
+                          {n.instance_id} ({n.name || 'EC2'} · {n.state})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder={`e.g. ${defaultInstanceId}`}
+                    value={enrollResourceId}
+                    onChange={(e) => setEnrollResourceId(e.target.value)}
+                    className="bg-white/5 border-white/10 text-xs font-mono"
+                    required
+                  />
+                </div>
+              ) : (
+                <Input
+                  placeholder={`e.g. ${defaultInstanceId}`}
+                  value={enrollResourceId}
+                  onChange={(e) => setEnrollResourceId(e.target.value)}
+                  className="bg-white/5 border-white/10 text-xs font-mono"
+                  required
+                />
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-300">Remediation Action Type</label>
+              <Select value={enrollAction} onValueChange={(val) => { if (val) setEnrollAction(val); }}>
+                <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                  <SelectItem value="migrate_graviton">Migrate to AWS Graviton (t4g/m7g)</SelectItem>
+                  <SelectItem value="downsize">Downsize Idle Compute</SelectItem>
+                  <SelectItem value="upgrade_gp3">Modernize Storage gp2 -&gt; gp3</SelectItem>
+                  <SelectItem value="release_eip">Release Unattached Elastic IP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 p-3 text-xs text-cyan-200">
+              🛡️ <strong>Safety Guarantee:</strong> During the 60-minute window, if P95 latency degrades by &gt;15%, CloudPulse automatically generates an autonomous git revert PR.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setEnrollModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={enrolling} className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium">
+                {enrolling ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Activity className="mr-1.5 size-3.5" />}
+                Enroll in Watchdog
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </>

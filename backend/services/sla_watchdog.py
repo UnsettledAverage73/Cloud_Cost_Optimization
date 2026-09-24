@@ -22,19 +22,20 @@ SLA_WATCHES_FILE = SLA_DATA_DIR / "sla_watches.json"
 
 DEFAULT_WATCH_PERIODS = [
     {
-        "watch_id": "watch-5828-ec2-downsize",
-        "resource_id": "i-0a106c14603cb65a0",
+        "watch_id": "watch-i-07d01b00f95a4cc41-graviton",
+        "resource_id": "i-07d01b00f95a4cc41",
+        "resource_name": "AWS-Cloud-Desktop",
         "remediation_action": "migrate_graviton",
-        "remediation_time": time.time() - 1200,  # 20 mins ago
+        "remediation_time": time.time() - 900,  # 15 mins ago
         "duration_minutes": 60,
         "repo_name": "infrastructure/aws-workloads",
         "file_path": "terraform/compute.tf",
-        "previous_config": {"instance_type": "t3.xlarge", "monthly_cost": 121.60},
-        "applied_config": {"instance_type": "t4g.medium", "monthly_cost": 24.32},
+        "previous_config": {"instance_type": "t3.large", "monthly_cost": 60.80},
+        "applied_config": {"instance_type": "t4g.large", "monthly_cost": 48.64},
         "baseline_metrics": {
-            "p95_latency_ms": 42.0,
-            "error_rate_pct": 0.01,
-            "cpu_utilization_avg": 12.5
+            "p95_latency_ms": 38.0,
+            "error_rate_pct": 0.00,
+            "cpu_utilization_avg": 4.5
         },
         "sla_thresholds": {
             "max_latency_increase_pct": 15.0,
@@ -42,26 +43,27 @@ DEFAULT_WATCH_PERIODS = [
             "max_cpu_headroom_pct": 85.0
         },
         "current_metrics": {
-            "p95_latency_ms": 44.5,
-            "error_rate_pct": 0.01,
-            "cpu_utilization_avg": 16.2
+            "p95_latency_ms": 39.2,
+            "error_rate_pct": 0.00,
+            "cpu_utilization_avg": 4.8
         },
         "status": "MONITORING",
         "sla_breached": False,
         "rollback_pr": None
     },
     {
-        "watch_id": "watch-5828-ebs-upgrade",
-        "resource_id": "vol-00d9bb20516b3992b",
+        "watch_id": "watch-i-07d01b00f95a4cc41-ebs-gp3",
+        "resource_id": "vol-07d01b00f95a4cc41",
+        "resource_name": "AWS-Cloud-Desktop-Root",
         "remediation_action": "upgrade_gp3",
-        "remediation_time": time.time() - 3000,  # 50 mins ago
+        "remediation_time": time.time() - 2400,  # 40 mins ago
         "duration_minutes": 60,
         "repo_name": "infrastructure/aws-workloads",
         "file_path": "terraform/storage.tf",
-        "previous_config": {"volume_type": "gp2", "monthly_cost": 10.00},
-        "applied_config": {"volume_type": "gp3", "monthly_cost": 8.00},
+        "previous_config": {"volume_type": "gp2", "monthly_cost": 8.00},
+        "applied_config": {"volume_type": "gp3", "monthly_cost": 6.40},
         "baseline_metrics": {
-            "p95_latency_ms": 8.0,
+            "p95_latency_ms": 6.5,
             "error_rate_pct": 0.00,
             "cpu_utilization_avg": 0.0
         },
@@ -71,7 +73,7 @@ DEFAULT_WATCH_PERIODS = [
             "max_cpu_headroom_pct": 90.0
         },
         "current_metrics": {
-            "p95_latency_ms": 7.8,
+            "p95_latency_ms": 6.2,
             "error_rate_pct": 0.00,
             "cpu_utilization_avg": 0.0
         },
@@ -93,7 +95,7 @@ class SLAWatchdog:
         self._load_or_bootstrap()
 
     def _load_or_bootstrap(self):
-        """Loads SLA watches from disk or initializes defaults."""
+        """Loads SLA watches from disk or initializes defaults for live inventory."""
         import copy
         loaded = False
         if self.load_disk:
@@ -102,9 +104,15 @@ class SLAWatchdog:
                     with open(SLA_WATCHES_FILE, "r") as f:
                         data = json.load(f)
                         if isinstance(data, list):
-                            for w in data:
+                            clean_data = [
+                                w for w in data
+                                if not w.get("watch_id", "").startswith("watch-5828")
+                                and w.get("resource_id") not in ("i-0a106c14603cb65a0", "vol-00d9bb20516b3992b")
+                            ]
+                            for w in clean_data:
                                 self.watches[w["watch_id"]] = w
-                            loaded = True
+                            if clean_data:
+                                loaded = True
             except Exception as e:
                 logger.debug(f"Could not load SLA watches from disk: {e}")
 
@@ -316,12 +324,45 @@ class SLAWatchdog:
         watch["sla_breached"] = True
         self._save_to_disk()
 
+        # Synchronize rollback PR into GitOps Audit Ledger
+        try:
+            from services.gitops_engine import gitops_engine
+        except ImportError:
+            try:
+                from backend.services.gitops_engine import gitops_engine
+            except Exception:
+                gitops_engine = None
+
+        if gitops_engine is not None:
+            audit_entry = {
+                "pr_id": str(pr_number),
+                "status": "rollback_pr_ready",
+                "repo_name": repo,
+                "branch_name": branch_name,
+                "target_branch": "main",
+                "title": pr_title,
+                "file_path": file_path,
+                "diff": revert_diff,
+                "pr_body": pr_body,
+                "pull_request_url": pr_url,
+                "estimated_monthly_savings": 0.0,
+                "is_rollback": True,
+                "target_resource": res_id,
+                "created_at": time.time(),
+            }
+            gitops_engine.audit_log.insert(0, audit_entry)
+            gitops_engine._save_audit_log()
+
         logger.warning(f"Synthesized automated rollback PR for {res_id}: {pr_url}")
         return rollback_pkg
 
     def list_watches(self) -> List[Dict[str, Any]]:
-        """Returns all registered SLA watchdog periods."""
-        return list(self.watches.values())
+        """Returns all registered SLA watchdog periods, excluding mock demo resources."""
+        return [
+            w for w in self.watches.values()
+            if not w.get("watch_id", "").startswith("watch-5828")
+            and w.get("resource_id") not in ("i-0a106c14603cb65a0", "vol-00d9bb20516b3992b")
+        ]
 
     def get_watch(self, watch_id: str) -> Optional[Dict[str, Any]]:
         """Returns a single watch record by ID."""

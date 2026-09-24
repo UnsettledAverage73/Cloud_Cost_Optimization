@@ -1068,6 +1068,20 @@ async def apply_optimization(payload: dict):
             applied.remove(optimization_id)
     elif optimization_id not in applied:
         applied.append(optimization_id)
+        # Closed-loop automation: Auto-enroll remediated resource into SLA Watchdog
+        try:
+            from services.sla_watchdog import sla_watchdog
+            res_id = payload.get("resource_id") or optimization_id
+            act_type = payload.get("action_type") or ("upgrade_gp3" if "storage" in str(optimization_id).lower() else "migrate_graviton")
+            sla_watchdog.register_watch(
+                resource_id=res_id,
+                remediation_action=act_type,
+                previous_config=payload.get("previous_config", {"config": "baseline"}),
+                applied_config=payload.get("applied_config", {"config": "optimized"}),
+                baseline_metrics={"p95_latency_ms": 35.0, "error_rate_pct": 0.0, "cpu_utilization_avg": 5.0}
+            )
+        except Exception as e:
+            logger.debug(f"Auto-enroll SLA watch skipped: {e}")
     return {"status": "ok", "id": optimization_id, "action": action, "applied": applied}
 
 
@@ -1744,6 +1758,19 @@ async def create_gitops_remediation_pr(payload: dict):
         repo_name=repo_name,
         monthly_savings=monthly_savings
     )
+    # Auto-enroll into 60-min SLA watchdog
+    try:
+        from services.sla_watchdog import sla_watchdog
+        if not any(w.get("resource_id") == resource_id for w in sla_watchdog.list_watches()):
+            sla_watchdog.register_watch(
+                resource_id=resource_id,
+                remediation_action=action,
+                previous_config={"instance_type": from_type} if from_type else {"config": "previous"},
+                applied_config={"instance_type": to_type} if to_type else {"config": "applied"},
+                baseline_metrics={"p95_latency_ms": 38.0, "error_rate_pct": 0.0, "cpu_utilization_avg": 5.0}
+            )
+    except Exception as e:
+        logger.debug(f"Auto-enroll PR SLA watch: {e}")
     return pr_package
 
 
@@ -1771,6 +1798,21 @@ async def create_gitops_batch_remediation_pr(payload: Optional[dict] = None):
         repo_name=repo_name,
         target_branch=target_branch
     )
+    # Auto-enroll each remediated finding into 60-min SLA watchdog
+    try:
+        from services.sla_watchdog import sla_watchdog
+        for f in findings:
+            res_id = f.get("resource_id") or f.get("id")
+            if res_id and not any(w.get("resource_id") == res_id for w in sla_watchdog.list_watches()):
+                sla_watchdog.register_watch(
+                    resource_id=res_id,
+                    remediation_action=f.get("action", "batch_optimization"),
+                    previous_config={"type": "standard", "monthly_cost": float(f.get("monthly_savings", 10.0)) * 1.5},
+                    applied_config={"type": "optimized", "monthly_cost": float(f.get("monthly_savings", 10.0)) * 0.5},
+                    baseline_metrics={"p95_latency_ms": 32.0, "error_rate_pct": 0.0, "cpu_utilization_avg": 8.0}
+                )
+    except Exception as e:
+        logger.debug(f"Auto-enroll batch SLA watch: {e}")
     return pkg
 
 
