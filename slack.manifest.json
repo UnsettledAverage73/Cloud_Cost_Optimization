@@ -1,0 +1,47 @@
+{
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
+  "display_information": {
+    "name": "CloudPulse FinOps",
+    "description": "Enterprise multi-cloud cost optimization, autonomous GitOps remediation & telemetry alert bot",
+    "background_color": "#0d1117",
+    "long_description": "CloudPulse connects to AWS, Azure, and Google Cloud to detect runaway idle infrastructure, calculate dual-currency financial waste, deliver 10-minute pre-stop scheduler warnings, and trigger autonomous 1-click Terraform GitOps remediations."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "CloudPulse",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/cloudpulse",
+        "url": "https://localhost:8000/api/v2/notifications/interactive/callback",
+        "description": "Trigger CloudPulse FinOps digest or audit",
+        "usage_hint": "digest | scan | health",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "channels:read",
+        "incoming-webhook",
+        "commands"
+      ]
+    }
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://localhost:8000/api/v2/notifications/interactive/callback"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
