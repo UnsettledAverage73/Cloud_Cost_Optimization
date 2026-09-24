@@ -3895,9 +3895,15 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
       if (res.ok) {
         const data = await res.json();
         setFeedback({ type: 'success', message: data.message || 'Override registered successfully!' });
+        // Optimistically dismiss the grace period alert for this instance
+        setJobs((prev: any[]) =>
+          prev.map((j: any) =>
+            j.id === jobId ? { ...j, status: action === 'KEEP_RUNNING' ? 'OVERRIDDEN' : 'EXECUTING' } : j
+          )
+        );
         fetchSchedulerData();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         setFeedback({ type: 'error', message: err.detail || 'Override failed' });
       }
     } catch (err: any) {
@@ -3912,7 +3918,6 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
         method: 'POST',
       });
       if (res.ok) {
-        const data = await res.json();
         setFeedback({ type: 'success', message: `Evaluation complete! Checked active operational schedules.` });
         fetchSchedulerData();
       }
@@ -4001,8 +4006,23 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
     }
   };
 
-  // Find active grace period alerts
-  const notifyingJobs = jobs.filter(j => j.status === 'NOTIFYING' || (j.status === 'PENDING' && j.action === 'STOP'));
+  // Find active grace period alerts (deduplicated by instance_id, showing only real active instances)
+  const notifyingJobs = useMemo(() => {
+    const active = jobs.filter(
+      (j: any) =>
+        (j.status === 'NOTIFYING' || (j.status === 'PENDING' && j.action === 'STOP')) &&
+        j.instance_id !== 'i-0a1b2c3d4e5f60718'
+    );
+    const seen = new Set<string>();
+    const unique: any[] = [];
+    for (const j of active) {
+      if (!seen.has(j.instance_id)) {
+        seen.add(j.instance_id);
+        unique.push(j);
+      }
+    }
+    return unique;
+  }, [jobs]);
 
   return (
     <div className="space-y-6">

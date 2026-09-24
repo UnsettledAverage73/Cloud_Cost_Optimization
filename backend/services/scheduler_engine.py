@@ -35,31 +35,7 @@ class SchedulerEngine:
         # In-memory stores for resilience / offline mode
         self._memory_schedules: Dict[str, Dict[str, Any]] = {}
         self._memory_jobs: List[Dict[str, Any]] = []
-        # Seed an initial default schedule for demo if empty
-        self._seed_default_demo_schedule()
-
-    def _seed_default_demo_schedule(self):
-        demo_id = "sched-default-ec2-01"
-        self._memory_schedules[demo_id] = {
-            "id": demo_id,
-            "instance_id": "i-0a1b2c3d4e5f60718",
-            "organization_id": None,
-            "timezone": "Asia/Kolkata",
-            "start_time": "08:00",
-            "stop_time": "20:00",
-            "monday": True,
-            "tuesday": True,
-            "wednesday": True,
-            "thursday": True,
-            "friday": True,
-            "saturday": False,
-            "sunday": False,
-            "prewarm_minutes": 15,
-            "grace_period_minutes": 10,
-            "enabled": True,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
+        # Strictly realtime: no hardcoded demo schedules seeded
 
     # -------------------------------------------------------------
     # Schedule CRUD
@@ -161,12 +137,13 @@ class SchedulerEngine:
     # Jobs Management & Audit
     # -------------------------------------------------------------
     def list_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Retrieves list of scheduled execution jobs."""
+        """Retrieves list of scheduled execution jobs (realtime only, excludes mock demo instance)."""
         try:
             if ping_database():
                 with SyncSessionLocal() as session:
                     db_jobs = (
                         session.query(ScheduledJob)
+                        .filter(ScheduledJob.instance_id != "i-0a1b2c3d4e5f60718")
                         .order_by(ScheduledJob.scheduled_at.desc())
                         .limit(limit)
                         .all()
@@ -176,8 +153,12 @@ class SchedulerEngine:
         except Exception as e:
             logger.debug(f"DB read jobs fallback to memory: {e}")
 
+        clean_mem = [
+            j for j in self._memory_jobs
+            if j.get("instance_id") != "i-0a1b2c3d4e5f60718"
+        ]
         sorted_mem = sorted(
-            self._memory_jobs,
+            clean_mem,
             key=lambda x: x.get("scheduled_at", ""),
             reverse=True
         )
@@ -240,6 +221,29 @@ class SchedulerEngine:
         parts = t_str.strip().split(":")
         return int(parts[0]), int(parts[1])
 
+    def _has_recent_job(
+        self,
+        instance_id: str,
+        action: str,
+        statuses: Optional[List[str]] = None,
+        window_minutes: int = 15
+    ) -> bool:
+        """Checks if a job was already dispatched for this instance & action recently to prevent duplicate spam."""
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+        for job in self.list_jobs(limit=100):
+            if job.get("instance_id") == instance_id and job.get("action") == action:
+                if statuses and job.get("status") not in statuses:
+                    continue
+                time_str = job.get("scheduled_at") or job.get("created_at")
+                if time_str:
+                    try:
+                        dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+                        if dt >= recent_cutoff:
+                            return True
+                    except Exception:
+                        pass
+        return False
+
     def evaluate_schedules(
         self,
         now_dt: Optional[datetime] = None,
@@ -248,6 +252,7 @@ class SchedulerEngine:
         """
         Evaluates active schedules against current time.
         Determines if an instance should START, PREWARM, enter NOTIFYING (10-min grace), or STOP.
+        Prevents duplicate alerts through recent-window deduplication.
         """
         now_utc = now_dt or datetime.now(timezone.utc)
         generated_jobs = []
@@ -282,36 +287,40 @@ class SchedulerEngine:
             grace_lead = timedelta(minutes=sched.get("grace_period_minutes", 10))
             grace_trigger = today_stop - grace_lead
 
-            # Window check: within ±3 minutes of trigger
+            # Window check: within ±3 minutes of trigger with deduplication
             # 1. PREWARM trigger
             if abs((local_dt - prewarm_trigger).total_seconds()) <= 180:
-                job = self._create_job_dict(
-                    sched, "PREWARM", local_dt, "Predictive Pre-Warming lead time initiated"
-                )
-                generated_jobs.append(job)
+                if not self._has_recent_job(instance_id, "PREWARM", window_minutes=20):
+                    job = self._create_job_dict(
+                        sched, "PREWARM", local_dt, "Predictive Pre-Warming lead time initiated"
+                    )
+                    generated_jobs.append(job)
 
             # 2. START trigger
             elif abs((local_dt - today_start).total_seconds()) <= 180:
-                job = self._create_job_dict(
-                    sched, "START", local_dt, "Scheduled business start time reached"
-                )
-                generated_jobs.append(job)
+                if not self._has_recent_job(instance_id, "START", window_minutes=20):
+                    job = self._create_job_dict(
+                        sched, "START", local_dt, "Scheduled business start time reached"
+                    )
+                    generated_jobs.append(job)
 
             # 3. NOTIFYING (Grace period alert)
             elif abs((local_dt - grace_trigger).total_seconds()) <= 180:
-                job = self._create_job_dict(
-                    sched, "STOP", local_dt, "10-minute pre-stop grace period initiated",
-                    initial_status="NOTIFYING"
-                )
-                generated_jobs.append(job)
+                if not self._has_recent_job(instance_id, "STOP", statuses=["NOTIFYING", "OVERRIDDEN", "EXECUTING", "SUCCESS"], window_minutes=20):
+                    job = self._create_job_dict(
+                        sched, "STOP", local_dt, "10-minute pre-stop grace period initiated",
+                        initial_status="NOTIFYING"
+                    )
+                    generated_jobs.append(job)
 
             # 4. STOP trigger
             elif abs((local_dt - today_stop).total_seconds()) <= 180:
-                job = self._create_job_dict(
-                    sched, "STOP", local_dt, "Scheduled evening shutdown window reached",
-                    initial_status="PENDING"
-                )
-                generated_jobs.append(job)
+                if not self._has_recent_job(instance_id, "STOP", statuses=["PENDING", "EXECUTING", "SUCCESS"], window_minutes=20):
+                    job = self._create_job_dict(
+                        sched, "STOP", local_dt, "Scheduled evening shutdown window reached",
+                        initial_status="PENDING"
+                    )
+                    generated_jobs.append(job)
 
         return generated_jobs
 
@@ -421,18 +430,32 @@ class SchedulerEngine:
     ) -> Dict[str, Any]:
         """
         Allows developer/operator to click [KEEP RUNNING] or [STOP NOW]
-        during the 10-minute grace period.
+        during the 10-minute grace period. Checks memory and PostgreSQL database.
         """
         target_job = None
         for job in self._memory_jobs:
-            if job["id"] == job_id:
+            if job.get("id") == job_id:
                 target_job = job
                 break
+
+        # Check DB if not found in memory
+        if not target_job and ping_database():
+            try:
+                with SyncSessionLocal() as session:
+                    job_uuid = uuid.UUID(job_id) if isinstance(job_id, str) and len(job_id) == 36 else None
+                    if job_uuid:
+                        db_j = session.query(ScheduledJob).filter(ScheduledJob.id == job_uuid).first()
+                        if db_j:
+                            target_job = db_j.to_dict()
+                            self._memory_jobs.append(target_job)
+            except Exception as e:
+                logger.debug(f"DB lookup failed: {e}")
 
         if not target_job:
             raise ValueError(f"Job {job_id} not found")
 
         override_upper = override_type.upper().strip()
+        instance_id = target_job.get("instance_id")
 
         if override_upper in ["KEEP_RUNNING", "OVERRIDE"]:
             target_job["status"] = "OVERRIDDEN"
@@ -440,20 +463,34 @@ class SchedulerEngine:
             target_job["reason"] = f"Overridden by developer: Keep running for {extension_hours}h (until {until_time.strftime('%H:%M UTC')})"
             target_job["execution_details"]["override_until"] = until_time.isoformat()
             self._record_job(target_job)
+
+            # Clear/override all other duplicate NOTIFYING alerts for this instance
+            for other in self._memory_jobs:
+                if other.get("instance_id") == instance_id and other.get("status") == "NOTIFYING":
+                    other["status"] = "OVERRIDDEN"
+                    self._record_job(other)
+
             return {
                 "success": True,
                 "job": target_job,
-                "message": f"Instance will remain running for {extension_hours} hours."
+                "message": f"Instance {instance_id} will remain running for {extension_hours} hours."
             }
 
         elif override_upper in ["STOP_NOW", "IMMEDIATE"]:
             target_job["status"] = "PENDING"
             target_job["reason"] = "Developer bypassed grace period: Stop requested immediately"
             self._record_job(target_job)
+
+            # Clear other duplicate NOTIFYING alerts for this instance
+            for other in self._memory_jobs:
+                if other.get("id") != target_job.get("id") and other.get("instance_id") == instance_id and other.get("status") == "NOTIFYING":
+                    other["status"] = "CANCELLED"
+                    self._record_job(other)
+
             return {
                 "success": True,
                 "job": target_job,
-                "message": "Instance stop queued for immediate Guardian validation."
+                "message": f"Instance {instance_id} stop queued for immediate Guardian validation."
             }
 
         else:
