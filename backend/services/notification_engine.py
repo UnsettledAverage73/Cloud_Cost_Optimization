@@ -46,12 +46,13 @@ class FinOpsNotificationEngine:
         """Loads configuration from persistent disk or falls back to environment variables."""
         defaults = {
             "slack_webhook_url": os.getenv("SLACK_WEBHOOK_URL", ""),
-            "slack_bot_token": os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_TOKEN", ""),
+            "slack_bot_token": os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN") or os.getenv("SLACK_TOKEN", ""),
+            "slack_refresh_token": os.getenv("SLACK_REFRESH_TOKEN", ""),
             "slack_channel": os.getenv("SLACK_CHANNEL", "#finops-alerts"),
             "teams_webhook_url": os.getenv("TEAMS_WEBHOOK_URL") or os.getenv("MICROSOFT_TEAMS_WEBHOOK_URL", ""),
             "whatsapp_to": os.getenv("WHATSAPP_ALERT_TO", ""),
             "enabled_channels": {
-                "slack": bool(os.getenv("SLACK_WEBHOOK_URL") or os.getenv("SLACK_BOT_TOKEN")),
+                "slack": bool(os.getenv("SLACK_WEBHOOK_URL") or os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN")),
                 "teams": bool(os.getenv("TEAMS_WEBHOOK_URL")),
                 "whatsapp": bool(os.getenv("WHATSAPP_ALERT_TO"))
             },
@@ -82,6 +83,8 @@ class FinOpsNotificationEngine:
             os.environ["TEAMS_WEBHOOK_URL"] = defaults["teams_webhook_url"]
         if defaults.get("slack_bot_token"):
             os.environ["SLACK_BOT_TOKEN"] = defaults["slack_bot_token"]
+        if defaults.get("slack_refresh_token"):
+            os.environ["SLACK_REFRESH_TOKEN"] = defaults["slack_refresh_token"]
         if defaults.get("slack_channel"):
             os.environ["SLACK_CHANNEL"] = defaults["slack_channel"]
         if defaults.get("whatsapp_to"):
@@ -97,8 +100,10 @@ class FinOpsNotificationEngine:
             cfg["slack_webhook_url"] = os.getenv("SLACK_WEBHOOK_URL")
         if os.getenv("TEAMS_WEBHOOK_URL"):
             cfg["teams_webhook_url"] = os.getenv("TEAMS_WEBHOOK_URL")
-        if os.getenv("SLACK_BOT_TOKEN"):
-            cfg["slack_bot_token"] = os.getenv("SLACK_BOT_TOKEN")
+        if os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN"):
+            cfg["slack_bot_token"] = os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN")
+        if os.getenv("SLACK_REFRESH_TOKEN"):
+            cfg["slack_refresh_token"] = os.getenv("SLACK_REFRESH_TOKEN")
         if os.getenv("SLACK_CHANNEL"):
             cfg["slack_channel"] = os.getenv("SLACK_CHANNEL")
         if os.getenv("WHATSAPP_ALERT_TO"):
@@ -107,6 +112,8 @@ class FinOpsNotificationEngine:
         # Mask sensitive token
         raw_token = cfg.get("slack_bot_token", "")
         cfg["slack_bot_token_masked"] = f"••••••••{raw_token[-4:]}" if len(raw_token) > 4 else ("••••••••" if raw_token else "")
+        raw_refresh = cfg.get("slack_refresh_token", "")
+        cfg["slack_refresh_token_masked"] = f"••••••••{raw_refresh[-4:]}" if len(raw_refresh) > 4 else ("••••••••" if raw_refresh else "")
         return cfg
 
     def update_config(self, new_cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -119,6 +126,11 @@ class FinOpsNotificationEngine:
             token_val = str(new_cfg["slack_bot_token"]).strip()
             if not token_val.startswith("••••"):
                 self._config["slack_bot_token"] = token_val
+
+        if "slack_refresh_token" in new_cfg and new_cfg["slack_refresh_token"]:
+            token_val = str(new_cfg["slack_refresh_token"]).strip()
+            if not token_val.startswith("••••"):
+                self._config["slack_refresh_token"] = token_val
 
         if "enabled_channels" in new_cfg and isinstance(new_cfg["enabled_channels"], dict):
             self._config.setdefault("enabled_channels", {}).update(new_cfg["enabled_channels"])
@@ -133,6 +145,8 @@ class FinOpsNotificationEngine:
             os.environ["TEAMS_WEBHOOK_URL"] = self._config["teams_webhook_url"]
         if self._config.get("slack_bot_token"):
             os.environ["SLACK_BOT_TOKEN"] = self._config["slack_bot_token"]
+        if self._config.get("slack_refresh_token"):
+            os.environ["SLACK_REFRESH_TOKEN"] = self._config["slack_refresh_token"]
         if self._config.get("slack_channel"):
             os.environ["SLACK_CHANNEL"] = self._config["slack_channel"]
         if self._config.get("whatsapp_to"):
@@ -1153,8 +1167,14 @@ class FinOpsNotificationEngine:
                 success = bool(res_json.get("ok"))
                 if not success:
                     err_msg = res_json.get("error", "unknown_error")
-                    logger.error(f"Slack API error: {err_msg}")
-                    print(f"❌ [NOTIFIER] Slack API error: {err_msg}")
+                    if err_msg == "missing_scope":
+                        needed = res_json.get("needed", "chat:write")
+                        provided = res_json.get("provided", "")
+                        logger.warning(f"Slack token missing scope '{needed}'. Provided: '{provided}'.")
+                        print(f"⚠️ [NOTIFIER] Slack API token is missing scope '{needed}'. Provided scopes: '{provided}'. Please ensure 'chat:write' is granted in api.slack.com/apps.")
+                    else:
+                        logger.error(f"Slack API error: {err_msg}")
+                        print(f"❌ [NOTIFIER] Slack API error: {err_msg}")
                 self.record_history({
                     "channel": "slack_api",
                     "target": channel,
