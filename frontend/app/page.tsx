@@ -956,6 +956,7 @@ export default function Page() {
                     <SchedulerPrewarmView
                       currency={currency}
                       apiUrl={apiUrl}
+                      nodes={nodes}
                     />
                   </SectionErrorBoundary>
                 )}
@@ -3780,7 +3781,14 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
   )
 }
 
-function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
+function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
+  const runningNode = useMemo(() => {
+    if (!Array.isArray(nodes) || nodes.length === 0) return null;
+    return nodes.find((n: any) => n.state === 'running' || n.instance_state === 'running') || nodes[0];
+  }, [nodes]);
+
+  const defaultInstanceId = runningNode?.instance_id || 'i-07d01b00f95a4cc41';
+
   const [schedules, setSchedules] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3791,7 +3799,7 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
 
   // New Schedule Form state
-  const [formInstanceId, setFormInstanceId] = useState('');
+  const [formInstanceId, setFormInstanceId] = useState(defaultInstanceId);
   const [formTimezone, setFormTimezone] = useState('Asia/Kolkata');
   const [formStartTime, setFormStartTime] = useState('08:00');
   const [formStopTime, setFormStopTime] = useState('20:00');
@@ -3808,10 +3816,17 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
   const [formGraceMins, setFormGraceMins] = useState(10);
 
   // Manual Trigger state
-  const [manualInstanceId, setManualInstanceId] = useState('');
+  const [manualInstanceId, setManualInstanceId] = useState(defaultInstanceId);
   const [manualAction, setManualAction] = useState('STOP');
   const [manualDryRun, setManualDryRun] = useState(true);
   const [triggering, setTriggering] = useState(false);
+
+  useEffect(() => {
+    if (defaultInstanceId) {
+      if (!formInstanceId) setFormInstanceId(defaultInstanceId);
+      if (!manualInstanceId) setManualInstanceId(defaultInstanceId);
+    }
+  }, [defaultInstanceId]);
 
   const fetchSchedulerData = useCallback(async () => {
     setLoading(true);
@@ -3968,13 +3983,14 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
   const handleAnalyzeTelemetry = async () => {
     setAnalyzingTelemetry(true);
     try {
-      const res = await fetch(apiUrl('/api/v2/schedules/predictive/recommendations?days=14'));
+      const targetId = formInstanceId.trim() || defaultInstanceId;
+      const res = await fetch(apiUrl(`/api/v2/schedules/predictive/recommendations?instance_id=${encodeURIComponent(targetId)}&days=14`));
       if (res.ok) {
         const data = await res.json();
         setPredictiveRecommendation(data.recommendation);
         setFeedback({
           type: 'success',
-          message: `Analyzed ${data.telemetry_points_analyzed} telemetry points across 14 days. Recurrence confidence: ${data.recommendation.confidence * 100}%.`
+          message: `Analyzed ${data.telemetry_points_analyzed} telemetry points for ${targetId} across 14 days. Recurrence confidence: ${Math.round(data.recommendation.confidence * 100)}%.`
         });
       }
     } catch (err: any) {
@@ -4478,14 +4494,48 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
 
           <form onSubmit={handleSaveSchedule} className="space-y-4 pt-2">
             <div>
-              <label className="text-xs font-medium text-slate-300">EC2 Instance ID</label>
-              <Input
-                placeholder="e.g. i-0a1b2c3d4e5f60718"
-                value={formInstanceId}
-                onChange={(e) => setFormInstanceId(e.target.value)}
-                className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
-                required
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-300">EC2 Instance ID</label>
+                {nodes && nodes.length > 0 && (
+                  <span className="text-[10px] text-cyan-400">
+                    Discovered: {nodes.find((n: any) => n.instance_id === formInstanceId)?.name || defaultInstanceId}
+                  </span>
+                )}
+              </div>
+              {nodes && nodes.length > 0 ? (
+                <div className="space-y-1.5 mt-1">
+                  <Select
+                    value={formInstanceId || defaultInstanceId}
+                    onValueChange={(val) => { if (val) setFormInstanceId(val); }}
+                  >
+                    <SelectTrigger className="bg-white/5 border-white/10 text-xs font-mono">
+                      <SelectValue placeholder="Select instance..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                      {nodes.map((n: any) => (
+                        <SelectItem key={n.instance_id} value={n.instance_id}>
+                          {n.instance_id} ({n.name || 'EC2'} · {n.state})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder={`e.g. ${defaultInstanceId}`}
+                    value={formInstanceId}
+                    onChange={(e) => setFormInstanceId(e.target.value)}
+                    className="bg-white/5 border-white/10 text-xs font-mono"
+                    required
+                  />
+                </div>
+              ) : (
+                <Input
+                  placeholder={`e.g. ${defaultInstanceId}`}
+                  value={formInstanceId}
+                  onChange={(e) => setFormInstanceId(e.target.value)}
+                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  required
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -4595,14 +4645,48 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl }: any) {
 
           <form onSubmit={handleManualTrigger} className="space-y-4 pt-2">
             <div>
-              <label className="text-xs font-medium text-slate-300">EC2 Instance ID</label>
-              <Input
-                placeholder="e.g. i-0a1b2c3d4e5f60718"
-                value={manualInstanceId}
-                onChange={(e) => setManualInstanceId(e.target.value)}
-                className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
-                required
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-300">EC2 Instance ID</label>
+                {nodes && nodes.length > 0 && (
+                  <span className="text-[10px] text-cyan-400">
+                    Discovered: {nodes.find((n: any) => n.instance_id === manualInstanceId)?.name || defaultInstanceId}
+                  </span>
+                )}
+              </div>
+              {nodes && nodes.length > 0 ? (
+                <div className="space-y-1.5 mt-1">
+                  <Select
+                    value={manualInstanceId || defaultInstanceId}
+                    onValueChange={(val) => { if (val) setManualInstanceId(val); }}
+                  >
+                    <SelectTrigger className="bg-white/5 border-white/10 text-xs font-mono">
+                      <SelectValue placeholder="Select instance..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                      {nodes.map((n: any) => (
+                        <SelectItem key={n.instance_id} value={n.instance_id}>
+                          {n.instance_id} ({n.name || 'EC2'} · {n.state})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder={`e.g. ${defaultInstanceId}`}
+                    value={manualInstanceId}
+                    onChange={(e) => setManualInstanceId(e.target.value)}
+                    className="bg-white/5 border-white/10 text-xs font-mono"
+                    required
+                  />
+                </div>
+              ) : (
+                <Input
+                  placeholder={`e.g. ${defaultInstanceId}`}
+                  value={manualInstanceId}
+                  onChange={(e) => setManualInstanceId(e.target.value)}
+                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  required
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

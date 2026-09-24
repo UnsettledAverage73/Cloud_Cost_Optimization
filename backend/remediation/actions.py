@@ -1,8 +1,13 @@
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    boto3 = None
+    BotoCoreError = Exception
+    ClientError = Exception
 
 try:
     from data.finops_database import record_remediation_audit, get_remediation_audit_logs
@@ -23,12 +28,12 @@ class SafeRemediationExecutor:
     remediation rollback metadata tagging, and audit ledger persistence.
     """
 
-    def __init__(self, session: Optional[boto3.Session] = None, region: str = "us-east-1"):
+    def __init__(self, session: Optional[Any] = None, region: str = "us-east-1"):
         self.session = session
         self.region = region
 
     def _ensure_session(self) -> bool:
-        if not self.session:
+        if not self.session and boto3:
             try:
                 self.session = boto3.Session(region_name=self.region)
             except Exception as e:

@@ -1,8 +1,13 @@
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
-import boto3
-from botocore.exceptions import ClientError, BotoCoreError
+try:
+    import boto3
+    from botocore.exceptions import ClientError, BotoCoreError
+except ImportError:
+    boto3 = None
+    ClientError = Exception
+    BotoCoreError = Exception
 
 try:
     from remediation.guardrails import RemediationGuardrails
@@ -23,7 +28,7 @@ class GuardianValidator:
     async def has_active_ssh(
         cls,
         instance_id: str,
-        session: Optional[boto3.Session] = None,
+        session: Optional[Any] = None,
         tags: Optional[Dict[str, str]] = None
     ) -> Tuple[bool, str]:
         """
@@ -54,7 +59,7 @@ class GuardianValidator:
     async def backup_running(
         cls,
         instance_id: str,
-        session: Optional[boto3.Session] = None,
+        session: Optional[Any] = None,
         tags: Optional[Dict[str, str]] = None
     ) -> Tuple[bool, str]:
         """
@@ -134,7 +139,7 @@ class GuardianValidator:
         instance_id: str,
         action: str = "STOP",
         tags: Optional[Dict[str, str]] = None,
-        session: Optional[boto3.Session] = None,
+        session: Optional[Any] = None,
         allow_force: bool = False
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """

@@ -2692,11 +2692,16 @@ async def manual_trigger_job(payload: Request):
 
 
 @app.get("/api/v2/schedules/predictive/recommendations")
-async def get_predictive_recommendations(instance_id: str = "i-0a817b3c4d5e6f001", days: int = 14):
+async def get_predictive_recommendations(instance_id: Optional[str] = None, days: int = 14):
     """
     Analyzes multi-day historical telemetry to detect recurring diurnal workload patterns,
     activity onset, and computes pre-warming schedules.
     """
+    if not instance_id:
+        nodes = _db().get("nodes", [])
+        running = [n["instance_id"] for n in nodes if n.get("state") == "running" and n.get("instance_id")]
+        instance_id = running[0] if running else "i-07d01b00f95a4cc41"
+
     try:
         from services.predictive_prewarm import PredictivePrewarmEngine
     except ImportError:
@@ -2717,7 +2722,12 @@ async def apply_predictive_recommendation(payload: Request):
     Takes an analyzed pattern recommendation and activates it as an operational schedule.
     """
     body = await payload.json()
-    instance_id = body.get("instance_id", "i-0a817b3c4d5e6f001")
+    instance_id = body.get("instance_id")
+    if not instance_id:
+        nodes = _db().get("nodes", [])
+        running = [n["instance_id"] for n in nodes if n.get("state") == "running" and n.get("instance_id")]
+        instance_id = running[0] if running else "i-07d01b00f95a4cc41"
+
     start_time = body.get("start_time", "07:35")
     stop_time = body.get("stop_time", "20:00")
     prewarm_minutes = int(body.get("prewarm_minutes", 15))

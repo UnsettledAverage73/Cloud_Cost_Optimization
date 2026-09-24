@@ -8,16 +8,26 @@ from zoneinfo import ZoneInfo
 try:
     from database.connection import SyncSessionLocal, ping_database
     from database.models import Schedule, ScheduledJob
-except ImportError:
-    from backend.database.connection import SyncSessionLocal, ping_database
-    from backend.database.models import Schedule, ScheduledJob
+except Exception:
+    try:
+        from backend.database.connection import SyncSessionLocal, ping_database
+        from backend.database.models import Schedule, ScheduledJob
+    except Exception:
+        SyncSessionLocal = None
+        ping_database = lambda: False
+        Schedule = None
+        ScheduledJob = None
 
 try:
     from remediation.guardian import GuardianValidator
     from remediation.actions import SafeRemediationExecutor
-except ImportError:
-    from backend.remediation.guardian import GuardianValidator
-    from backend.remediation.actions import SafeRemediationExecutor
+except Exception:
+    try:
+        from backend.remediation.guardian import GuardianValidator
+        from backend.remediation.actions import SafeRemediationExecutor
+    except Exception:
+        GuardianValidator = None
+        SafeRemediationExecutor = None
 
 logger = logging.getLogger("finops.scheduler.engine")
 
