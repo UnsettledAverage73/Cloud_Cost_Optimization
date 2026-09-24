@@ -2108,6 +2108,42 @@ async def ingest_kubernetes_opencost_payload(payload: dict):
     return {"status": "success", "ingested_workloads": count}
 
 
+@app.get("/api/v2/kubernetes/status")
+async def get_kubernetes_status():
+    """Returns real-time Kubernetes cluster connection status, provider, and sync state."""
+    return opencost_engine.get_status()
+
+
+@app.post("/api/v2/kubernetes/sync")
+async def sync_kubernetes_realtime(force_provider: Optional[str] = None):
+    """Triggers immediate real-time sync with OpenCost endpoint or live kubectl cluster."""
+    result = opencost_engine.sync_realtime()
+    return result
+
+
+@app.post("/api/v2/kubernetes/config")
+async def update_kubernetes_config(payload: dict):
+    """Updates OpenCost endpoint URL, cluster name, or telemetry mode."""
+    if "opencost_url" in payload:
+        opencost_engine.opencost_url = str(payload["opencost_url"]).strip()
+    if "cluster_name" in payload:
+        opencost_engine.cluster_name = str(payload["cluster_name"]).strip()
+    if "mode" in payload:
+        opencost_engine.mode = str(payload["mode"]).strip()
+    opencost_engine._save_config()
+    # If URL was provided, attempt sync immediately
+    if "opencost_url" in payload:
+        opencost_engine.fetch_live_opencost()
+    return opencost_engine.get_status()
+
+
+@app.post("/api/v2/kubernetes/clear-demo")
+async def clear_kubernetes_demo():
+    """Flushes all mock workloads and enforces strict real-time telemetry mode."""
+    return opencost_engine.clear_mock_data()
+
+
+
 
 # =====================================================================
 # 🐙 NATIVE GITHUB APP & CI/CD FINOPS GUARDRAILS APIS

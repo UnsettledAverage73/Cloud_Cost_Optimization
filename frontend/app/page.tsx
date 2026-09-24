@@ -2720,46 +2720,93 @@ function Optimization({ accessMode, items = [], applied = [], setApplied, sectio
 
 function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiUrl: (path: string) => string }) {
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [status, setStatus] = useState<any>(null);
   const [efficiency, setEfficiency] = useState<any>(null);
   const [allocations, setAllocations] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState('all');
   const [activeYamlDiff, setActiveYamlDiff] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [customOpencostUrl, setCustomOpencostUrl] = useState('');
+  const [configSaving, setConfigSaving] = useState(false);
+
+  const fetchK8s = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [effRes, allocRes, recRes, statusRes] = await Promise.all([
+        fetch(apiUrl(`/api/v2/kubernetes/efficiency?currency=${currency}&rate=84.0`)),
+        fetch(apiUrl(`/api/v2/kubernetes/allocations?currency=${currency}&rate=84.0`)),
+        fetch(apiUrl(`/api/v2/kubernetes/recommendations?currency=${currency}&rate=84.0`)),
+        fetch(apiUrl('/api/v2/kubernetes/status')),
+      ]);
+      if (effRes.ok) setEfficiency(await effRes.json());
+      if (allocRes.ok) {
+        const a = await allocRes.json();
+        setAllocations(Array.isArray(a) ? a : a.allocations || []);
+      }
+      if (recRes.ok) {
+        const r = await recRes.json();
+        setRecommendations(Array.isArray(r) ? r : r.recommendations || []);
+      }
+      if (statusRes.ok) {
+        const s = await statusRes.json();
+        setStatus(s);
+        if (s.opencost_url) setCustomOpencostUrl(s.opencost_url);
+      }
+    } catch (err) {
+      console.error('Failed to load Kubernetes data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [currency, apiUrl]);
 
   useEffect(() => {
-    let cancelled = false;
-    const fetchK8s = async () => {
-      setLoading(true);
-      try {
-        const [effRes, allocRes, recRes] = await Promise.all([
-          fetch(apiUrl(`/api/v2/kubernetes/efficiency?currency=${currency}&rate=84.0`)),
-          fetch(apiUrl(`/api/v2/kubernetes/allocations?currency=${currency}&rate=84.0`)),
-          fetch(apiUrl(`/api/v2/kubernetes/recommendations?currency=${currency}&rate=84.0`)),
-        ]);
-        if (!cancelled) {
-          if (effRes.ok) setEfficiency(await effRes.json());
-          if (allocRes.ok) {
-            const a = await allocRes.json();
-            setAllocations(Array.isArray(a) ? a : a.allocations || []);
-          }
-          if (recRes.ok) {
-            const r = await recRes.json();
-            setRecommendations(Array.isArray(r) ? r : r.recommendations || []);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load Kubernetes data:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
     fetchK8s();
-    return () => {
-      cancelled = true;
-    };
-  }, [currency, apiUrl]);
+  }, [fetchK8s]);
+
+  const handleSyncTelemetry = async () => {
+    setSyncing(true);
+    try {
+      await fetch(apiUrl('/api/v2/kubernetes/sync'), { method: 'POST' });
+      await fetchK8s();
+    } catch (e) {
+      console.error('Telemetry sync failed:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setConfigSaving(true);
+    try {
+      await fetch(apiUrl('/api/v2/kubernetes/config'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opencost_url: customOpencostUrl, mode: 'realtime' })
+      });
+      setShowConfigModal(false);
+      await fetchK8s();
+    } catch (e) {
+      console.error('Config save failed:', e);
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const handleClearDemoData = async () => {
+    setClearing(true);
+    try {
+      await fetch(apiUrl('/api/v2/kubernetes/clear-demo'), { method: 'POST' });
+      await fetchK8s();
+    } catch (e) {
+      console.error('Clear demo failed:', e);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const namespaces = useMemo(() => {
     const set = new Set<string>();
@@ -2774,18 +2821,99 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
     return allocations.filter(a => a.namespace === selectedNamespace);
   }, [allocations, selectedNamespace]);
 
+  const isConnected = Boolean(status?.connected);
+  const providerLabel = status?.provider === 'opencost'
+    ? 'Live OpenCost API'
+    : status?.provider === 'kubectl'
+    ? 'Live Kubernetes Cluster (kubectl)'
+    : status?.provider === 'ingested'
+    ? 'Live Ingested Telemetry'
+    : status?.provider === 'demo'
+    ? 'Demo Simulation'
+    : 'No Live Telemetry Stream';
+
   return (
     <>
       <SectionTitle
         eyebrow="Container FinOps"
         title="Kubernetes & OpenCost Workload Allocation"
-        description="Container-level resource rightsizing, idle waste attribution, and 1-click YAML patch diffs."
+        description="Real-time container-level resource rightsizing, idle waste attribution, and 1-click YAML patch diffs."
         status={
-          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
-            OpenCost FOCUS 1.0
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className={
+                isConnected
+                  ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300'
+                  : 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+              }
+            >
+              <span className={`mr-1.5 inline-block size-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              {providerLabel}
+            </Badge>
+            <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 text-xs">
+              OpenCost FOCUS 1.0
+            </Badge>
+          </div>
         }
       />
+
+      {/* Real-Time Telemetry Control Strip */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-white/8 bg-card/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${isConnected ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/5 text-muted-foreground'}`}>
+            <Cpu className="size-4" />
+          </div>
+          <div>
+            <div className="text-xs font-medium text-foreground">
+              {isConnected ? (
+                <span>Connected: <span className="font-mono text-cyan-300">{status?.cluster_name || 'Kubernetes Cluster'}</span> via <span className="font-semibold text-emerald-400">{status?.provider?.toUpperCase()}</span></span>
+              ) : (
+                <span>Cluster Stream: <span className="text-muted-foreground">Waiting for Live OpenCost / K8s Telemetry</span></span>
+              )}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {status?.last_sync ? `Last Synced: ${new Date(status.last_sync).toLocaleTimeString()}` : 'No active cluster telemetry stream'}
+              {status?.opencost_url && ` • Endpoint: ${status.opencost_url}`}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={syncing}
+            onClick={handleSyncTelemetry}
+            className="border-cyan-400/30 bg-cyan-400/10 text-xs text-cyan-300 hover:bg-cyan-400/20"
+          >
+            <RefreshCw className={`mr-1.5 size-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing...' : 'Sync Telemetry'}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowConfigModal(true)}
+            className="border-white/10 bg-white/5 text-xs text-foreground hover:bg-white/10"
+          >
+            <Settings className="mr-1.5 size-3.5 text-muted-foreground" />
+            Configure Endpoint
+          </Button>
+
+          {status?.provider === 'demo' && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={clearing}
+              onClick={handleClearDemoData}
+              className="border-amber-400/30 bg-amber-400/10 text-xs text-amber-300 hover:bg-amber-400/20"
+            >
+              {clearing ? 'Clearing...' : 'Remove Mock Data'}
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-white/8 bg-card/70">
@@ -2795,7 +2923,7 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
               <Cpu className="size-4 text-cyan-400" />
             </div>
             <div className="mt-3 text-2xl font-bold text-cyan-300">
-              {efficiency?.overall_efficiency_pct ? `${efficiency.overall_efficiency_pct.toFixed(1)}%` : '24.5%'}
+              {efficiency?.overall_efficiency_pct ? `${efficiency.overall_efficiency_pct.toFixed(1)}%` : '0.0%'}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">Active utilization vs requests</div>
           </CardContent>
@@ -2808,7 +2936,7 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
               <CircleDollarSign className="size-4 text-slate-400" />
             </div>
             <div className="mt-3 text-2xl font-bold">
-              {formatCurrency(efficiency?.monthly_requested_cost || 741.81, currency)}
+              {formatCurrency(efficiency?.monthly_requested_cost || 0.0, currency)}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">Allocated cluster cost/mo</div>
           </CardContent>
@@ -2821,7 +2949,7 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
               <AlertTriangle className="size-4 text-amber-400" />
             </div>
             <div className="mt-3 text-2xl font-bold text-amber-400">
-              {formatCurrency(efficiency?.monthly_idle_waste || 559.86, currency)}/mo
+              {formatCurrency(efficiency?.monthly_idle_waste || 0.0, currency)}/mo
             </div>
             <div className="mt-1 text-xs text-muted-foreground">Unused reserved CPU & memory</div>
           </CardContent>
@@ -2834,9 +2962,9 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
               <Server className="size-4 text-emerald-400" />
             </div>
             <div className="mt-3 text-2xl font-bold text-emerald-300">
-              {formatInteger(efficiency?.total_workloads || allocations.length || 7)}
+              {formatInteger(efficiency?.total_workloads || allocations.length || 0)}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">Across {namespaces.length - 1 || 4} namespaces</div>
+            <div className="mt-1 text-xs text-muted-foreground">Across {namespaces.length > 1 ? namespaces.length - 1 : 0} namespaces</div>
           </CardContent>
         </Card>
       </div>
@@ -2929,19 +3057,49 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
           {loading ? (
             <TableSkeleton rows={5} cols={8} />
           ) : filteredAllocations.length === 0 ? (
-            <EmptyState
-              icon={Server}
-              title="No Workload Allocations Found"
-              description={`No pods or deployments found in namespace "${selectedNamespace}".`}
-              action={
-                selectedNamespace !== 'all' ? (
+            selectedNamespace !== 'all' ? (
+              <EmptyState
+                icon={Server}
+                title="No Workload Allocations Found"
+                description={`No pods or deployments found in namespace "${selectedNamespace}".`}
+                action={
                   <Button variant="outline" size="sm" onClick={() => setSelectedNamespace('all')}>
                     Show all namespaces
                   </Button>
-                ) : undefined
-              }
-              className="my-4 border-0"
-            />
+                }
+                className="my-4 border-0"
+              />
+            ) : (
+              <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-8 text-center my-4">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 mb-4">
+                  <Cpu className="size-6" />
+                </div>
+                <h3 className="text-base font-semibold text-foreground">Waiting for Live Kubernetes Telemetry</h3>
+                <p className="mt-1.5 max-w-md mx-auto text-xs text-muted-foreground">
+                  CloudPulse is running in 100% real-time mode with all mock data removed. Connect your OpenCost endpoint or trigger a cluster scan to stream live pod allocations.
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <Button
+                    size="sm"
+                    onClick={() => setShowConfigModal(true)}
+                    className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs"
+                  >
+                    <Settings className="mr-1.5 size-3.5" />
+                    Configure OpenCost Endpoint
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={syncing}
+                    onClick={handleSyncTelemetry}
+                    className="border-white/10 bg-white/5 text-xs text-foreground hover:bg-white/10"
+                  >
+                    <RefreshCw className={`mr-1.5 size-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Scanning Cluster...' : 'Scan Cluster (kubectl)'}
+                  </Button>
+                </div>
+              </div>
+            )
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -3030,6 +3188,59 @@ function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR';
           <div className="flex justify-end pt-2">
             <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => setActiveYamlDiff(null)}>
               Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Configure OpenCost Telemetry Endpoint Dialog */}
+      <Dialog open={showConfigModal} onOpenChange={setShowConfigModal}>
+        <DialogContent className="border-white/10 bg-slate-950 text-foreground max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Settings className="size-4 text-cyan-400" />
+              Configure Live OpenCost Telemetry
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Connect CloudPulse directly to your live Kubernetes cluster OpenCost API or in-cluster proxy.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">OpenCost Allocation Endpoint</label>
+              <Input
+                value={customOpencostUrl}
+                onChange={e => setCustomOpencostUrl(e.target.value)}
+                placeholder="http://localhost:9003"
+                className="font-mono text-xs border-white/10 bg-white/5"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Default OpenCost port is 9003. When using port-forward: <code className="text-cyan-300">kubectl port-forward -n opencost svc/opencost 9003:9003</code>
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs space-y-2">
+              <div className="font-semibold text-slate-200">How to stream real-time cluster telemetry:</div>
+              <div className="text-[11px] text-muted-foreground space-y-1">
+                <div>1. <b>Install OpenCost</b>: <code className="text-emerald-300">helm install opencost --repo https://opencost.github.io/opencost-helm-chart opencost --namespace opencost --create-namespace</code></div>
+                <div>2. <b>Port-Forward</b>: <code className="text-emerald-300">kubectl port-forward -n opencost svc/opencost 9003:9003</code></div>
+                <div>3. <b>Direct Scan</b>: If your kubectl has an active context, CloudPulse automatically discovers pods, deployments, and node allocations.</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowConfigModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={configSaving}
+              onClick={handleSaveConfig}
+              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+            >
+              {configSaving ? 'Connecting...' : 'Connect & Sync'}
             </Button>
           </div>
         </DialogContent>
