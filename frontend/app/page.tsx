@@ -3446,25 +3446,71 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
   const [slackBotToken, setSlackBotToken] = useState('');
   const [slackChannel, setSlackChannel] = useState('#general');
   const [whatsappTo, setWhatsappTo] = useState('');
+  const [alertRules, setAlertRules] = useState({
+    on_waste_found: true,
+    on_batch_digest: true,
+    on_anomaly: true,
+    on_grace_period: true,
+    on_sla_breach: true,
+    on_gitops_pr: true,
+  });
+  const [deliveryHistory, setDeliveryHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testingChannel, setTestingChannel] = useState<string | null>(null);
   const [testFeedback, setTestFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(apiUrl('/api/v2/notifications/history'));
+      const data = await res.json();
+      if (Array.isArray(data?.history)) {
+        setDeliveryHistory(data.history);
+      }
+    } catch {
+      // Ignore background error
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [apiUrl]);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadSettings = async () => {
       try {
-        const res = await fetch(apiUrl('/api/settings'));
-        const data = await res.json();
-        if (!cancelled) {
+        const [settingsRes, configRes, historyRes] = await Promise.allSettled([
+          fetch(apiUrl('/api/settings')),
+          fetch(apiUrl('/api/v2/notifications/config')),
+          fetch(apiUrl('/api/v2/notifications/history')),
+        ]);
+
+        if (!cancelled && settingsRes.status === 'fulfilled') {
+          const data = await settingsRes.value.json();
           setOrgName(data?.organization || '');
           setSlackWebhookUrl(data?.slack_webhook_url || '');
           setTeamsWebhookUrl(data?.teams_webhook_url || '');
           setSlackBotToken(data?.slack_bot_token || '');
           setSlackChannel(data?.slack_channel || '#general');
           setWhatsappTo(data?.whatsapp_to || '');
+        }
+
+        if (!cancelled && configRes.status === 'fulfilled') {
+          const cfg = await configRes.value.json();
+          if (cfg?.alert_rules) {
+            setAlertRules(prev => ({ ...prev, ...cfg.alert_rules }));
+          }
+          if (cfg?.slack_webhook_url && !slackWebhookUrl) setSlackWebhookUrl(cfg.slack_webhook_url);
+          if (cfg?.teams_webhook_url && !teamsWebhookUrl) setTeamsWebhookUrl(cfg.teams_webhook_url);
+        }
+
+        if (!cancelled && historyRes.status === 'fulfilled') {
+          const hist = await historyRes.value.json();
+          if (Array.isArray(hist?.history)) {
+            setDeliveryHistory(hist.history);
+          }
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -3486,19 +3532,39 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
     setSaving(true);
     setTestFeedback(null);
     try {
-      await fetch(apiUrl('/api/settings'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgName,
-          slackWebhookUrl,
-          teamsWebhookUrl,
-          slackBotToken,
-          slackChannel,
-          whatsappTo,
+      await Promise.all([
+        fetch(apiUrl('/api/settings'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgName,
+            slackWebhookUrl,
+            teamsWebhookUrl,
+            slackBotToken,
+            slackChannel,
+            whatsappTo,
+          }),
         }),
-      });
-      setTestFeedback({ type: 'success', message: 'All workspace & notification settings saved successfully.' });
+        fetch(apiUrl('/api/v2/notifications/config'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slack_webhook_url: slackWebhookUrl,
+            teams_webhook_url: teamsWebhookUrl,
+            slack_bot_token: slackBotToken,
+            slack_channel: slackChannel,
+            whatsapp_to: whatsappTo,
+            alert_rules: alertRules,
+            enabled_channels: {
+              slack: Boolean(slackWebhookUrl || slackBotToken),
+              teams: Boolean(teamsWebhookUrl),
+              whatsapp: Boolean(whatsappTo),
+            },
+          }),
+        }),
+      ]);
+      setTestFeedback({ type: 'success', message: 'All workspace & multi-channel notification policies saved successfully.' });
+      fetchHistory();
     } catch (e: any) {
       setTestFeedback({ type: 'error', message: `Failed to save settings: ${e.message || e}` });
     } finally {
@@ -3537,6 +3603,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
           message: `⚠️ Card generated, but target webhook URL was not reachable. Please verify your ${channel.toUpperCase()} webhook URL.`,
         });
       }
+      fetchHistory();
     } catch (err: any) {
       setTestFeedback({
         type: 'error',
@@ -3589,9 +3656,14 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
                 <Bell className="size-4 text-cyan-400" />
                 Slack & Teams Escalations
               </CardTitle>
-              <Badge variant="outline" className="border-cyan-400/30 text-cyan-300">
-                Multi-Channel
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="outline" className={slackWebhookUrl || slackBotToken ? "border-emerald-400/40 text-emerald-300 bg-emerald-500/10" : "border-white/10 text-muted-foreground"}>
+                  Slack: {slackWebhookUrl || slackBotToken ? 'Connected' : 'Offline'}
+                </Badge>
+                <Badge variant="outline" className={teamsWebhookUrl ? "border-indigo-400/40 text-indigo-300 bg-indigo-500/10" : "border-white/10 text-muted-foreground"}>
+                  Teams: {teamsWebhookUrl ? 'Connected' : 'Offline'}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -3646,6 +3718,58 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
               />
             </label>
 
+            {/* Notification Policy Toggles */}
+            <div className="pt-2 border-t border-white/10">
+              <div className="text-xs font-medium text-slate-200 mb-2">Automated Alert Triggers</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={alertRules.on_anomaly}
+                    onChange={e => setAlertRules({ ...alertRules, on_anomaly: e.target.checked })}
+                    className="rounded border-white/20 bg-white/5 accent-cyan-400"
+                  />
+                  <span>Spend Anomalies & Runaway Spikes</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={alertRules.on_grace_period}
+                    onChange={e => setAlertRules({ ...alertRules, on_grace_period: e.target.checked })}
+                    className="rounded border-white/20 bg-white/5 accent-cyan-400"
+                  />
+                  <span>10-Min Pre-Stop Grace Period Warnings</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={alertRules.on_sla_breach}
+                    onChange={e => setAlertRules({ ...alertRules, on_sla_breach: e.target.checked })}
+                    className="rounded border-white/20 bg-white/5 accent-cyan-400"
+                  />
+                  <span>Post-Remediation SLA Degradation</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={alertRules.on_gitops_pr}
+                    onChange={e => setAlertRules({ ...alertRules, on_gitops_pr: e.target.checked })}
+                    className="rounded border-white/20 bg-white/5 accent-cyan-400"
+                  />
+                  <span>GitOps Remediation PR Delivery</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={alertRules.on_batch_digest}
+                    onChange={e => setAlertRules({ ...alertRules, on_batch_digest: e.target.checked })}
+                    className="rounded border-white/20 bg-white/5 accent-cyan-400"
+                  />
+                  <span>Weekly / Scheduled Batch Digests</span>
+                </label>
+              </div>
+            </div>
+
             {testFeedback && (
               <div
                 className={`rounded-lg p-3 text-xs ${
@@ -3665,7 +3789,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
                 onClick={handleSave}
                 disabled={saving || !loaded}
               >
-                {saving ? 'Saving...' : 'Save Channels'}
+                {saving ? 'Saving...' : 'Save Channels & Policies'}
               </Button>
               <Button
                 variant="outline"
@@ -3688,6 +3812,68 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
                 Test Teams
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Notification Delivery Audit Log */}
+        <Card className="border-white/8 bg-card/70 lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <History className="size-4 text-cyan-400" />
+              Recent Notification Deliveries & Audit Trail
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/10 bg-white/5 text-xs"
+              onClick={fetchHistory}
+              disabled={loadingHistory}
+            >
+              <RefreshCw className={`mr-1 size-3 ${loadingHistory ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {deliveryHistory.length === 0 ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                No recent notification deliveries recorded. Test channels or wait for scheduled alerts.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-white/10 hover:bg-transparent">
+                      <TableHead className="text-xs">Time (UTC)</TableHead>
+                      <TableHead className="text-xs">Channel</TableHead>
+                      <TableHead className="text-xs">Target Destination</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deliveryHistory.slice(0, 8).map((d: any, idx: number) => (
+                      <TableRow key={d.id || idx} className="border-white/5 text-xs">
+                        <TableCell className="font-mono text-muted-foreground">
+                          {d.iso_time || (d.timestamp ? new Date(d.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19) : 'Just now')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={d.channel?.includes('slack') ? 'border-cyan-400/30 text-cyan-300' : 'border-indigo-400/30 text-indigo-300'}>
+                            {d.channel?.toUpperCase() || 'WEBHOOK'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          {d.target || '#finops-alerts'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={d.status === 'DELIVERED' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}>
+                            {d.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -839,7 +839,12 @@ def cmd_apply(args):
     # -------------------------------------------------------------
     if is_batch:
         if getattr(args, "demo", False):
-            inv = {}
+            try:
+                from data.cloud_simulator import CloudSimulator
+                inv = CloudSimulator.generate_full_environment()
+            except ImportError:
+                from backend.data.cloud_simulator import CloudSimulator
+                inv = CloudSimulator.generate_full_environment()
         else:
             inv = resolve_cli_inventory()
         try:

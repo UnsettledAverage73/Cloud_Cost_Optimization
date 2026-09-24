@@ -1771,6 +1771,12 @@ async def create_gitops_remediation_pr(payload: dict):
             )
     except Exception as e:
         logger.debug(f"Auto-enroll PR SLA watch: {e}")
+    # Dispatch GitOps PR notification to Slack & Teams
+    try:
+        notification_engine.dispatch_event("gitops_pr", pr_package)
+    except Exception as notif_e:
+        logger.debug(f"GitOps PR notification notice: {notif_e}")
+
     return pr_package
 
 
@@ -1813,6 +1819,13 @@ async def create_gitops_batch_remediation_pr(payload: Optional[dict] = None):
                 )
     except Exception as e:
         logger.debug(f"Auto-enroll batch SLA watch: {e}")
+
+    # Dispatch GitOps Batch PR notification to Slack & Teams
+    try:
+        notification_engine.dispatch_event("gitops_pr", pkg)
+    except Exception as notif_e:
+        logger.debug(f"GitOps batch PR notification notice: {notif_e}")
+
     return pkg
 
 
@@ -1958,9 +1971,94 @@ async def send_teams_batch_finops_digest(payload: dict = None):
     return {"status": "success", "dispatched": dispatched, "payload": card}
 
 
+@app.get("/api/v2/notifications/config")
+async def get_notification_config():
+    """Returns active notification channels, webhooks, and alert routing policies."""
+    return notification_engine.get_config()
+
+
+@app.post("/api/v2/notifications/config")
+async def update_notification_config(payload: dict):
+    """Updates and persists multi-channel notification settings."""
+    updated = notification_engine.update_config(payload)
+    meta = _db().setdefault("metadata", {})
+    if "slack_webhook_url" in updated:
+        meta["slack_webhook_url"] = updated["slack_webhook_url"]
+    if "teams_webhook_url" in updated:
+        meta["teams_webhook_url"] = updated["teams_webhook_url"]
+    if "slack_channel" in updated:
+        meta["slack_channel"] = updated["slack_channel"]
+    return updated
+
+
+@app.get("/api/v2/notifications/history")
+async def get_notification_history(limit: int = 50):
+    """Returns audit log of all notification deliveries and statuses."""
+    return {"count": len(notification_engine.get_history(limit)), "history": notification_engine.get_history(limit)}
+
+
+@app.post("/api/v2/notifications/test")
+async def test_notification_channels(payload: dict = None):
+    """Sends a live test notification card to Slack and/or Microsoft Teams."""
+    payload = payload or {}
+    channels = payload.get("channels")
+    if not channels and payload.get("channel"):
+        channels = [payload.get("channel")]
+    res = notification_engine.dispatch_event("test", {}, channels=channels)
+    return res
+
+
+@app.post("/api/v2/notifications/dispatch")
+async def dispatch_notification_event(payload: dict):
+    """Universal notification dispatcher routing alerts across all CloudPulse functionalities."""
+    event_type = payload.get("event_type", "waste_alert")
+    data = payload.get("data", payload)
+    channels = payload.get("channels")
+    res = notification_engine.dispatch_event(event_type, data, channels=channels)
+    return res
+
+
+@app.post("/api/v2/notifications/anomaly")
+async def send_anomaly_notification(payload: dict):
+    """Generates and dispatches spend anomaly alerts to Slack and Teams."""
+    res = notification_engine.dispatch_event("anomaly", payload)
+    return res
+
+
+@app.post("/api/v2/notifications/grace-period")
+async def send_grace_period_notification(payload: dict):
+    """Generates and dispatches 10-minute scheduler grace period alert."""
+    res = notification_engine.dispatch_event("grace_period", payload)
+    return res
+
+
+@app.post("/api/v2/notifications/sla")
+async def send_sla_breach_notification(payload: dict):
+    """Generates and dispatches post-remediation SLA breach alert."""
+    res = notification_engine.dispatch_event("sla_breach", payload)
+    return res
+
+
 @app.post("/api/v2/notifications/interactive/callback")
-async def handle_notification_interactive_callback(payload: dict):
+async def handle_notification_interactive_callback(request: Request):
     """Receives interactive button action callbacks from Slack / Teams."""
+    content_type = request.headers.get("content-type", "")
+    if "application/x-www-form-urlencoded" in content_type:
+        form_data = await request.form()
+        payload_raw = form_data.get("payload")
+        if payload_raw:
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {"payload": payload_raw}
+        else:
+            payload = dict(form_data)
+    else:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
     result = notification_engine.handle_interactive_callback(payload)
     return result
 

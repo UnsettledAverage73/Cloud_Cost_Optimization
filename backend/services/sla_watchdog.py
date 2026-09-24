@@ -223,6 +223,18 @@ class SLAWatchdog:
             rollback_pkg = self.trigger_automated_rollback(watch_id, breach_reasons)
             watch["rollback_pr"] = rollback_pkg
             watch["status"] = "ROLLED_BACK"
+            try:
+                try:
+                    from services.notification_engine import notification_engine
+                except ImportError:
+                    from backend.services.notification_engine import notification_engine
+                notification_engine.dispatch_event("sla_breach", {
+                    "watch": watch,
+                    "breach_reasons": breach_reasons,
+                    "rollback_pr": rollback_pkg
+                })
+            except Exception as notif_err:
+                logger.debug(f"SLA breach notification notice: {notif_err}")
         elif not is_breached and watch["status"] != "ROLLED_BACK":
             # Check elapsed time
             elapsed = (time.time() - watch["remediation_time"]) / 60.0

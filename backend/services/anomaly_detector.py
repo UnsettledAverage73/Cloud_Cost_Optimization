@@ -262,6 +262,29 @@ class FinOpsAnomalyDetector:
         sev_upper = severity.upper()
         return [a for a in self.cached_anomalies if a.get("severity", "").upper() == sev_upper]
 
+    def notify_detected_anomalies(self, anomalies: Optional[List[Dict[str, Any]]] = None, min_severity: str = "MEDIUM") -> List[Dict[str, Any]]:
+        """Dispatches real-time Slack and Teams alerts for discovered cost anomalies."""
+        target_list = anomalies if anomalies is not None else self.cached_anomalies
+        sev_rank = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+        min_threshold = sev_rank.get(min_severity.upper(), 2)
+
+        results = []
+        try:
+            try:
+                from services.notification_engine import notification_engine
+            except ImportError:
+                from backend.services.notification_engine import notification_engine
+        except Exception:
+            return results
+
+        for anom in target_list:
+            anom_sev = sev_rank.get(anom.get("severity", "MEDIUM").upper(), 2)
+            if anom_sev >= min_threshold:
+                dispatch_res = notification_engine.dispatch_event("anomaly", anom)
+                results.append({"anomaly_id": anom.get("anomaly_id"), "dispatch": dispatch_res})
+
+        return results
+
 
 # Global Singleton
 anomaly_detector = FinOpsAnomalyDetector()

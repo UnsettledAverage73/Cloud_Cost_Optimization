@@ -322,6 +322,14 @@ class SchedulerEngine:
                         initial_status="NOTIFYING"
                     )
                     generated_jobs.append(job)
+                    try:
+                        try:
+                            from services.notification_engine import notification_engine
+                        except ImportError:
+                            from backend.services.notification_engine import notification_engine
+                        notification_engine.dispatch_event("grace_period", {"job": job})
+                    except Exception as notif_err:
+                        logger.debug(f"Grace period notification notice: {notif_err}")
 
             # 4. STOP trigger
             elif abs((local_dt - today_stop).total_seconds()) <= 180:
