@@ -2869,11 +2869,165 @@ async def deploy_agent_via_ssm(payload: Optional[Dict[str, Any]] = None):
         }
     except Exception as e:
         err_msg = str(e)
+        target_id = instance_ids[0] if instance_ids else "your-instance"
+        pub_ip = None
+        key_nm = None
+        try:
+            nodes = _db().get("nodes", [])
+            matched = next((n for n in nodes if n.get("instance_id") == target_id or n.get("id") == target_id), None)
+            if matched:
+                pub_ip = matched.get("public_ip")
+                key_nm = matched.get("key_name") or matched.get("tags", {}).get("KeyName")
+        except Exception:
+            pass
+
+        curl_cmd = f"curl -fsSL '{backend_url}/api/v2/agent/install-script?os=linux&interval={interval}&token={token}' | sudo bash"
+        ssh_cmd = f"ssh -i '{key_nm or 'your-key'}.pem' ubuntu@{pub_ip or '<instance-public-ip>'} \"{curl_cmd}\""
+
         return {
             "status": "ssm_fallback",
+            "is_invalid_instance": "InvalidInstanceId" in err_msg or "not in a valid state" in err_msg,
             "message": f"SSM note: {err_msg}. You can run the 1-click script directly on your instance or attach the AmazonSSMManagedInstanceCore IAM policy.",
-            "curl_fallback": f"curl -fsSL '{backend_url}/api/v2/agent/install-script?os=linux&interval={interval}' | bash",
+            "instance_id": target_id,
+            "public_ip": pub_ip,
+            "key_name": key_nm,
+            "curl_fallback": curl_cmd,
+            "ssh_fallback": ssh_cmd,
+            "can_auto_fix": True,
             "auto_deployed": False,
+        }
+
+
+@app.post("/api/v2/agent/attach-ssm-role")
+async def attach_ssm_role(payload: Optional[Dict[str, Any]] = None):
+    """
+    Automated Remediation for SSM InvalidInstanceId:
+    Attaches the AmazonSSMManagedInstanceCore IAM policy to the target EC2 instance,
+    enabling it to become a managed instance in AWS Systems Manager.
+    """
+    payload = payload or {}
+    instance_id = payload.get("instance_id")
+    if not instance_id:
+        raise HTTPException(status_code=400, detail="Missing instance_id in payload.")
+
+    session = _build_aws_session()
+    if not session:
+        return {
+            "status": "simulation",
+            "instance_id": instance_id,
+            "message": "AWS session not active. Simulated IAM attachment of AmazonSSMManagedInstanceCore succeeded.",
+            "success": True,
+        }
+
+    try:
+        ec2 = session.client("ec2")
+        iam = session.client("iam")
+        ssm_policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+
+        # 1. Describe instance to inspect existing IAM instance profile
+        desc = ec2.describe_instances(InstanceIds=[instance_id])
+        reservations = desc.get("Reservations", [])
+        if not reservations or not reservations[0].get("Instances"):
+            raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found in AWS.")
+
+        inst = reservations[0]["Instances"][0]
+        iam_profile = inst.get("IamInstanceProfile")
+
+        if iam_profile and iam_profile.get("Arn"):
+            profile_arn = iam_profile["Arn"]
+            profile_name = profile_arn.split("/")[-1]
+            try:
+                prof_res = iam.get_instance_profile(InstanceProfileName=profile_name)
+                roles = prof_res.get("InstanceProfile", {}).get("Roles", [])
+                if roles:
+                    role_name = roles[0]["RoleName"]
+                    iam.attach_role_policy(RoleName=role_name, PolicyArn=ssm_policy_arn)
+                    return {
+                        "status": "attached_existing",
+                        "instance_id": instance_id,
+                        "role_name": role_name,
+                        "instance_profile": profile_name,
+                        "message": f"Successfully attached 'AmazonSSMManagedInstanceCore' to existing role '{role_name}'. The SSM agent will auto-register within 60-90 seconds.",
+                        "success": True,
+                    }
+            except Exception as e_prof:
+                logger.warning(f"Could not attach policy to existing profile {profile_name}: {e_prof}")
+
+        # 2. Instance has no instance profile: create/ensure CloudPulseSSMRole & Profile
+        role_name = "CloudPulseEC2SSMRole"
+        profile_name = "CloudPulseEC2SSMProfile"
+
+        try:
+            iam.get_role(RoleName=role_name)
+        except Exception:
+            trust_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "ec2.amazonaws.com"},
+                        "Action": "sts:AssumeRole"
+                    }
+                ]
+            }
+            try:
+                iam.create_role(
+                    RoleName=role_name,
+                    AssumeRolePolicyDocument=json.dumps(trust_policy),
+                    Description="Automated SSM access role created by CloudPulse Cost Optimization"
+                )
+            except Exception as e_cr:
+                logger.info(f"Role creation notice: {e_cr}")
+
+        try:
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=ssm_policy_arn)
+        except Exception as e_att:
+            logger.info(f"Policy attach notice: {e_att}")
+
+        try:
+            iam.get_instance_profile(InstanceProfileName=profile_name)
+        except Exception:
+            try:
+                iam.create_instance_profile(InstanceProfileName=profile_name)
+            except Exception as e_cp:
+                logger.info(f"Profile creation notice: {e_cp}")
+
+        try:
+            iam.add_role_to_instance_profile(InstanceProfileName=profile_name, RoleName=role_name)
+        except Exception:
+            pass
+
+        # Brief delay for IAM propagation
+        time.sleep(2)
+
+        ec2.associate_iam_instance_profile(
+            IamInstanceProfile={"Name": profile_name},
+            InstanceId=instance_id
+        )
+
+        return {
+            "status": "associated_new",
+            "instance_id": instance_id,
+            "role_name": role_name,
+            "instance_profile": profile_name,
+            "message": f"Successfully associated '{profile_name}' with {instance_id}. The AWS Systems Manager agent will register within 60-90 seconds.",
+            "success": True,
+        }
+
+    except Exception as e:
+        err_str = str(e)
+        logger.error(f"Error attaching SSM role to {instance_id}: {err_str}")
+        return {
+            "status": "error",
+            "instance_id": instance_id,
+            "message": f"Could not auto-attach IAM role: {err_str}.",
+            "success": False,
+            "aws_console_steps": [
+                "1. Open AWS EC2 Console",
+                f"2. Select instance {instance_id}",
+                "3. Click Actions > Security > Modify IAM role",
+                "4. Select an IAM role with 'AmazonSSMManagedInstanceCore' attached and click Update IAM role"
+            ]
         }
 
 
