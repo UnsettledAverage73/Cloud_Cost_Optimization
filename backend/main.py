@@ -440,6 +440,14 @@ def _estimate_ebs_monthly_cost(volume: dict) -> float:
 def _build_aws_session():
     creds = _saved_credentials()
     if not creds or creds.get("provider", "").upper() != "AWS":
+        # Fallback to standard AWS environment variables if present
+        if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
+            return boto3.Session(
+                region_name=os.environ.get("AWS_DEFAULT_REGION", os.environ.get("AWS_REGION", "us-east-1")),
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
+            )
         return None
 
     session_kwargs = {
@@ -2755,7 +2763,9 @@ async def ingest_agent_telemetry(payload: dict):
 async def stream_instance_telemetry(websocket: WebSocket, instance_id: str):
     """Pushes real-time CPU, RAM, Disk, and Network ticks to the browser with sub-second latency."""
     from services.telemetry_streamer import telemetry_hub
-    await telemetry_hub.register_listener(instance_id, websocket)
+    aws_session = _build_aws_session()
+    aws_region = (_saved_credentials() or {}).get("region", "us-east-1") if _saved_credentials() else os.environ.get("AWS_REGION", "us-east-1")
+    await telemetry_hub.register_listener(instance_id, websocket, session=aws_session, region_name=aws_region)
     try:
         while True:
             # Handle client keep-alive pings or timeframe switch commands
@@ -2768,7 +2778,9 @@ async def stream_instance_telemetry(websocket: WebSocket, instance_id: str):
 async def get_live_instance_telemetry(instance_id: str):
     """Returns the current in-memory ring-buffer points for the instance."""
     from services.telemetry_streamer import telemetry_hub
-    telemetry_hub._seed_buffer_if_empty(instance_id)
+    aws_session = _build_aws_session()
+    aws_region = (_saved_credentials() or {}).get("region", "us-east-1") if _saved_credentials() else os.environ.get("AWS_REGION", "us-east-1")
+    telemetry_hub._seed_buffer_if_empty(instance_id, session=aws_session, region_name=aws_region)
     return {
         "instance_id": instance_id,
         "datapoints": list(telemetry_hub.buffers[instance_id])

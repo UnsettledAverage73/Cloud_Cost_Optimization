@@ -66,3 +66,11 @@ def test_live_telemetry_rest_fallback():
     assert data["instance_id"] == instance_id
     assert "datapoints" in data
     assert len(data["datapoints"]) > 0
+
+
+def test_dual_path_cloudwatch_extraction_fallback():
+    """Verify that fetch_real_aws_cloudwatch_datapoints safely returns list without crashing on simulated/absent credentials."""
+    from services.telemetry_streamer import fetch_real_aws_cloudwatch_datapoints
+    points = fetch_real_aws_cloudwatch_datapoints("i-test-absent-cw", session=None)
+    assert isinstance(points, list)
+

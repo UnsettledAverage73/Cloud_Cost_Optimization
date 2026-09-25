@@ -2,16 +2,77 @@
 CloudPulse Real-Time Telemetry Streaming Hub
 Maintains high-speed in-memory FIFO ring buffers (maxlen=120) per instance
 and broadcasts low-latency sub-second metric ticks to connected WebSocket clients.
-Supports both Hypervisor (Path A) and In-Guest Host Metrics (Path B).
+Supports both Hypervisor (Path A: AWS CloudWatch) and In-Guest Host Metrics (Path B: Agent Ingest).
 """
 
 import asyncio
 import math
 import random
 from collections import defaultdict, deque
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Set, Any, Optional
 from fastapi import WebSocket
+
+
+def fetch_real_aws_cloudwatch_datapoints(
+    instance_id: str,
+    session: Optional[Any] = None,
+    region_name: str = "us-east-1",
+    hours: int = 2
+) -> list:
+    """
+    Path A: Extract Hypervisor metrics from AWS CloudWatch via Boto3 get_metric_data.
+    Queries:
+      - CPUUtilization (%)
+      - NetworkIn (Bytes)
+      - NetworkOut (Bytes)
+      - NetworkPacketsIn (Count)
+      - NetworkPacketsOut (Count)
+      - CPUCreditBalance
+    """
+    try:
+        import boto3
+
+        if session is None:
+            session = boto3.Session()
+
+        cw = session.client('cloudwatch', region_name=region_name)
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(hours=hours)
+
+        queries = [
+            {'Id': 'cpu', 'MetricStat': {'Metric': {'Namespace': 'AWS/EC2', 'MetricName': 'CPUUtilization', 'Dimensions': [{'Name': 'InstanceId', 'Value': instance_id}]}, 'Period': 300, 'Stat': 'Average'}},
+            {'Id': 'net_in', 'MetricStat': {'Metric': {'Namespace': 'AWS/EC2', 'MetricName': 'NetworkIn', 'Dimensions': [{'Name': 'InstanceId', 'Value': instance_id}]}, 'Period': 300, 'Stat': 'Average'}},
+            {'Id': 'net_out', 'MetricStat': {'Metric': {'Namespace': 'AWS/EC2', 'MetricName': 'NetworkOut', 'Dimensions': [{'Name': 'InstanceId', 'Value': instance_id}]}, 'Period': 300, 'Stat': 'Average'}},
+            {'Id': 'pkts_in', 'MetricStat': {'Metric': {'Namespace': 'AWS/EC2', 'MetricName': 'NetworkPacketsIn', 'Dimensions': [{'Name': 'InstanceId', 'Value': instance_id}]}, 'Period': 300, 'Stat': 'Average'}},
+            {'Id': 'pkts_out', 'MetricStat': {'Metric': {'Namespace': 'AWS/EC2', 'MetricName': 'NetworkPacketsOut', 'Dimensions': [{'Name': 'InstanceId', 'Value': instance_id}]}, 'Period': 300, 'Stat': 'Average'}},
+            {'Id': 'credits', 'MetricStat': {'Metric': {'Namespace': 'AWS/EC2', 'MetricName': 'CPUCreditBalance', 'Dimensions': [{'Name': 'InstanceId', 'Value': instance_id}]}, 'Period': 300, 'Stat': 'Average'}},
+        ]
+        res = cw.get_metric_data(MetricDataQueries=queries, StartTime=start, EndTime=now)
+        data_by_id = {r['Id']: dict(zip(r.get('Timestamps', []), r.get('Values', []))) for r in res.get('MetricDataResults', [])}
+
+        all_timestamps = sorted(list(set(ts for d in data_by_id.values() for ts in d.keys())))
+        if not all_timestamps:
+            return []
+
+        points = []
+        for ts in all_timestamps:
+            points.append({
+                'timestamp': ts.strftime('%H:%M:%S'),
+                'cpu': round(data_by_id.get('cpu', {}).get(ts, 0.0), 2),
+                'mem': 0.0,  # Hypervisors cannot inspect guest RAM without CWAgent or CloudPulse daemon
+                'disk': 0.0, # Hypervisors cannot inspect guest filesystem without CWAgent or CloudPulse daemon
+                'net_in_bytes': int(data_by_id.get('net_in', {}).get(ts, 0)),
+                'net_out_bytes': int(data_by_id.get('net_out', {}).get(ts, 0)),
+                'packets_in': int(data_by_id.get('pkts_in', {}).get(ts, 0)),
+                'packets_out': int(data_by_id.get('pkts_out', {}).get(ts, 0)),
+                'cpu_credits': round(data_by_id.get('credits', {}).get(ts, 864.0), 1),
+                'is_real_cloudwatch': True,
+                'is_guest_agent': False,
+            })
+        return points
+    except Exception:
+        return []
 
 
 class TelemetryHub:
@@ -26,9 +87,17 @@ class TelemetryHub:
         self._ticker_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 
-    def _seed_buffer_if_empty(self, instance_id: str):
-        """Pre-populates 30 historical points if buffer is empty so graphs render immediately."""
+    def _seed_buffer_if_empty(self, instance_id: str, session: Optional[Any] = None, region_name: str = "us-east-1"):
+        """Populates historical points. Attempts real CloudWatch first, then falls back to realistic simulation."""
         if len(self.buffers[instance_id]) == 0:
+            # 1. Attempt real CloudWatch extraction via Boto3 (Path A)
+            real_pts = fetch_real_aws_cloudwatch_datapoints(instance_id, session=session, region_name=region_name)
+            if real_pts:
+                for pt in real_pts:
+                    self.buffers[instance_id].append(pt)
+                return
+
+            # 2. Fallback to synthetic progression when AWS credentials not configured
             now = datetime.now(timezone.utc)
             base_cpu = 12.0 + (hash(instance_id) % 25)
             base_mem = 42.0 + (hash(instance_id) % 30)
@@ -36,7 +105,6 @@ class TelemetryHub:
 
             for i in range(30, 0, -1):
                 past_time = datetime.fromtimestamp(now.timestamp() - (i * 3), timezone.utc)
-                # gentle variance
                 cpu = max(1.5, min(95.0, base_cpu + math.sin(i * 0.4) * 8.0 + random.uniform(-2, 2)))
                 mem = max(5.0, min(92.0, base_mem + math.cos(i * 0.2) * 3.0))
                 disk = base_disk + (30 - i) * 0.05
@@ -57,16 +125,17 @@ class TelemetryHub:
                     "packets_out": packets_out,
                     "cpu_credits": round(cpu_credits, 1),
                     "is_guest_agent": True,
+                    "is_real_cloudwatch": False,
                 }
                 self.buffers[instance_id].append(pt)
 
-    async def register_listener(self, instance_id: str, websocket: WebSocket):
+    async def register_listener(self, instance_id: str, websocket: WebSocket, session: Optional[Any] = None, region_name: str = "us-east-1"):
         """Registers a WebSocket listener and replays recent history."""
         await websocket.accept()
         self.listeners[instance_id].add(websocket)
 
         # Ensure buffer has initial points for instant rendering
-        self._seed_buffer_if_empty(instance_id)
+        self._seed_buffer_if_empty(instance_id, session=session, region_name=region_name)
 
         # Immediately replay recent points so graphs don't start empty
         if self.buffers[instance_id]:
@@ -118,9 +187,7 @@ class TelemetryHub:
         prev_mem = prev.get("mem", 45.0) if prev else 45.0
         prev_disk = prev.get("disk", 38.0) if prev else 38.0
 
-        # Organic random walk
         cpu_delta = random.uniform(-3.5, 3.5)
-        # Occasional microsecond burst
         if random.random() < 0.08:
             cpu_delta += random.uniform(15.0, 35.0)
         cpu = max(1.0, min(98.5, prev_cpu + cpu_delta))
@@ -147,6 +214,7 @@ class TelemetryHub:
             "packets_out": packets_out,
             "cpu_credits": round(cpu_credits, 1),
             "is_guest_agent": True,
+            "is_real_cloudwatch": False,
         }
 
     def ensure_ticker(self):

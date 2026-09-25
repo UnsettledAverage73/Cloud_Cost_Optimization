@@ -19,6 +19,7 @@ interface Ec2MonitoringGridProps {
   instanceName?: string;
   instanceType?: string;
   apiUrl?: (path: string) => string;
+  inDrawer?: boolean;
 }
 
 function formatBytes(bytes: number) {
@@ -34,6 +35,7 @@ export function Ec2MonitoringGrid({
   instanceName = 'EC2 Instance',
   instanceType = 't3.micro',
   apiUrl,
+  inDrawer = false,
 }: Ec2MonitoringGridProps) {
   const {
     points,
@@ -61,37 +63,39 @@ export function Ec2MonitoringGrid({
   return (
     <div className="space-y-4">
       {/* Real-Time Monitoring Header & Controls */}
-      <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-card/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className={`flex flex-col gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:flex-row sm:items-center sm:justify-between ${inDrawer ? 'text-xs' : ''}`}>
         <div className="flex items-center gap-2.5">
-          <div className="relative flex size-3">
+          <div className="relative flex size-2.5 shrink-0">
             {isLive ? (
               <>
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-3 rounded-full bg-emerald-500" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
               </>
             ) : (
-              <span className="relative inline-flex size-3 rounded-full bg-amber-500" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-amber-500" />
             )}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold text-foreground">
-                AWS EC2 Monitoring Console
+                AWS Live Telemetry
               </span>
               <Badge
                 variant="outline"
-                className={`text-[10px] font-mono ${
+                className={`text-[9px] px-1.5 py-0 font-mono ${
                   connectionMode === 'websocket'
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                     : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
                 }`}
               >
-                {connectionMode === 'websocket' ? 'LIVE WS STREAM (2s)' : 'FALLBACK POLLING'}
+                {connectionMode === 'websocket' ? 'LIVE STREAM (2s)' : 'FALLBACK POLLING'}
               </Badge>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Instance: <span className="font-mono text-cyan-300">{instanceId}</span> ({instanceName} • {instanceType})
-            </p>
+            {!inDrawer && (
+              <p className="text-[11px] text-muted-foreground truncate">
+                Instance: <span className="font-mono text-cyan-300">{instanceId}</span> ({instanceName} • {instanceType})
+              </p>
+            )}
           </div>
         </div>
 
@@ -100,24 +104,24 @@ export function Ec2MonitoringGrid({
           {/* CWAgent Toggle */}
           <button
             onClick={() => setCwAgentEnabled(!cwAgentEnabled)}
-            className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors ${
               cwAgentEnabled
                 ? 'border-purple-500/40 bg-purple-500/15 text-purple-300'
                 : 'border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10'
             }`}
           >
             <Layers className="size-3 text-purple-400" />
-            <span>CWAgent / In-Guest Metrics</span>
+            <span>In-Guest CWAgent</span>
             <span className={`size-1.5 rounded-full ${cwAgentEnabled ? 'bg-purple-400' : 'bg-white/30'}`} />
           </button>
 
           {/* Timeframe Presets */}
-          <div className="flex items-center rounded-md border border-white/10 bg-white/5 p-0.5">
+          <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
             {timeframes.map((tf) => (
               <button
                 key={tf}
                 onClick={() => setTimeframe(tf)}
-                className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                   timeframe === tf
                     ? 'bg-cyan-500 text-slate-950 font-semibold shadow-sm'
                     : 'text-muted-foreground hover:text-white'
@@ -131,7 +135,7 @@ export function Ec2MonitoringGrid({
       </div>
 
       {/* 8-Card Live Metric Grid (Exact AWS EC2 Console Specification) */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={inDrawer ? "grid grid-cols-1 sm:grid-cols-2 gap-2.5" : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"}>
 
         {/* CARD 1: CPU Utilization (%) */}
         <Card className="border-white/8 bg-card/60">
