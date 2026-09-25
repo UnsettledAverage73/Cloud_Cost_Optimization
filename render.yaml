@@ -38,6 +38,12 @@ services:
         sync: false
       - key: SLACK_WEBHOOK_URL
         sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_APP_TOKEN
+        sync: false
+      - key: SLACK_CHANNEL
+        value: "all-average"
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY

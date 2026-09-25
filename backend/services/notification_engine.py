@@ -27,6 +27,32 @@ CONFIG_FILE = CONFIG_DIR / "notification_config.json"
 HISTORY_FILE = CONFIG_DIR / "notification_history.json"
 
 
+DEFAULT_SLACK_CHANNEL = "all-average"
+
+
+def _read_env_defaults():
+    """Reads environment variables from .env if present without hardcoding secrets in source control."""
+    search_dirs = [Path.cwd(), Path.cwd().parent, Path(__file__).resolve().parent.parent, Path(__file__).resolve().parent.parent.parent]
+    for d in search_dirs:
+        env_file = d / ".env"
+        if env_file.exists():
+            try:
+                with open(env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k, v = k.strip(), v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+
+_read_env_defaults()
+
+
 class FinOpsNotificationEngine:
     """
     Enterprise multi-channel notification engine for Slack and Microsoft Teams.
@@ -44,15 +70,18 @@ class FinOpsNotificationEngine:
     # ------------------------------------------------------------------
     def _load_initial_config(self) -> Dict[str, Any]:
         """Loads configuration from persistent disk or falls back to environment variables."""
+        _read_env_defaults()
+        bot_token = os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN") or os.getenv("SLACK_TOKEN", "")
+        channel = os.getenv("SLACK_CHANNEL") or DEFAULT_SLACK_CHANNEL
         defaults = {
             "slack_webhook_url": os.getenv("SLACK_WEBHOOK_URL", ""),
-            "slack_bot_token": os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN") or os.getenv("SLACK_TOKEN", ""),
+            "slack_bot_token": bot_token,
             "slack_refresh_token": os.getenv("SLACK_REFRESH_TOKEN", ""),
-            "slack_channel": os.getenv("SLACK_CHANNEL", "all-average"),
+            "slack_channel": channel,
             "teams_webhook_url": os.getenv("TEAMS_WEBHOOK_URL") or os.getenv("MICROSOFT_TEAMS_WEBHOOK_URL", ""),
             "whatsapp_to": os.getenv("WHATSAPP_ALERT_TO", ""),
             "enabled_channels": {
-                "slack": bool(os.getenv("SLACK_WEBHOOK_URL") or os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN")),
+                "slack": bool(os.getenv("SLACK_WEBHOOK_URL") or bot_token),
                 "teams": bool(os.getenv("TEAMS_WEBHOOK_URL")),
                 "whatsapp": bool(os.getenv("WHATSAPP_ALERT_TO"))
             },
@@ -106,6 +135,8 @@ class FinOpsNotificationEngine:
             cfg["slack_refresh_token"] = os.getenv("SLACK_REFRESH_TOKEN")
         if os.getenv("SLACK_CHANNEL"):
             cfg["slack_channel"] = os.getenv("SLACK_CHANNEL")
+        elif not cfg.get("slack_channel"):
+            cfg["slack_channel"] = DEFAULT_SLACK_CHANNEL
         if os.getenv("WHATSAPP_ALERT_TO"):
             cfg["whatsapp_to"] = os.getenv("WHATSAPP_ALERT_TO")
 

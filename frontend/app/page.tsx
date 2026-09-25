@@ -2655,15 +2655,13 @@ function Optimization({ accessMode, items = [], applied = [], setApplied, sectio
                     const res = await fetch(apiUrl(ep), {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ currency, rate: 84.0 })
+                      body: JSON.stringify({ currency, rate: 84.0, channel: 'all-average' })
                     });
                     const data = await res.json();
                     if (data.dispatched) {
-                      setBroadcastResult(`✅ Broadcast delivered successfully to ${broadcastTarget === 'slack' ? 'Slack' : 'Microsoft Teams'}!`);
-                    } else if (data.status === 'success') {
-                      setBroadcastResult(`✅ Card generated! Check that your ${broadcastTarget === 'slack' ? 'SLACK_WEBHOOK_URL' : 'TEAMS_WEBHOOK_URL'} is configured in Settings.`);
+                      setBroadcastResult(`✅ Broadcast delivered successfully to ${broadcastTarget === 'slack' ? 'Slack #all-average' : 'Microsoft Teams'}! Check your channel.`);
                     } else {
-                      setBroadcastResult(`❌ Dispatch failed: ${data.message || 'Remote rejected request'}`);
+                      setBroadcastResult(`⚠️ Broadcast generated, but delivery failed. Please verify Slack credentials in Settings.`);
                     }
                   } catch (e: any) {
                     setBroadcastResult(`❌ Failed to broadcast: ${e.message || e}`);
