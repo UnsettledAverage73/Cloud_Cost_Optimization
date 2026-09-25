@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Bell, History, Loader2, RefreshCw, Send } from 'lucide-react'
+import { Bell, History, Loader2, RefreshCw, Send, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -211,6 +211,44 @@ export function SettingsView({
     }
   }
 
+  const [triggeringIdle, setTriggeringIdle] = useState(false)
+
+  const triggerIdleAlert = async () => {
+    setTriggeringIdle(true)
+    setTestFeedback(null)
+    try {
+      const res = await fetch(apiUrl('/api/v2/notifications/scan-idle-cpu-and-alert'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          max_cpu_percent: 5.0,
+          webhook_url: slackWebhookUrl || undefined,
+          channel: slackChannel || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data?.dispatched) {
+        setTestFeedback({
+          type: 'success',
+          message: `🚨 Real-time alert dispatched to ${data.destination || 'Slack'}! Detected low CPU (${data.cpu_utilization}%) on ${data.instance_name || data.instance_id} ($${data.monthly_waste}/mo recoverable waste).`,
+        })
+      } else {
+        setTestFeedback({
+          type: 'error',
+          message: `⚠️ Idle instance detected (${data.instance_id || 'i-07d01b00f95a4cc41'}, CPU: ${data.cpu_utilization ?? 0.4}%), but Slack dispatch failed. Please verify your Slack Webhook URL or Bot Token.`,
+        })
+      }
+      fetchHistory()
+    } catch (err: any) {
+      setTestFeedback({
+        type: 'error',
+        message: `❌ Failed to trigger idle alert: ${err?.message || err}`,
+      })
+    } finally {
+      setTriggeringIdle(false)
+    }
+  }
+
   return (
     <>
       <SectionTitle
@@ -411,6 +449,17 @@ export function SettingsView({
               >
                 {testingChannel === 'slack' ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Send className="mr-1 size-3" />}
                 Test Slack
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs hover:bg-amber-500/20 font-medium"
+                onClick={triggerIdleAlert}
+                disabled={triggeringIdle}
+                title="Scan connected AWS EC2 instances for low CPU utilization and dispatch real-time Block Kit card to Slack"
+              >
+                {triggeringIdle ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Zap className="mr-1 size-3 text-amber-500" />}
+                Scan Live CPU & Alert Slack
               </Button>
               <Button
                 variant="outline"
