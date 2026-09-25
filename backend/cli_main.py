@@ -466,7 +466,7 @@ def cmd_recommend(args):
     live_inv = None
     try:
         live_inv = fetch_inventory_data(backend_url)
-    except Exception:
+    except (Exception, SystemExit):
         pass
 
     report_data = None

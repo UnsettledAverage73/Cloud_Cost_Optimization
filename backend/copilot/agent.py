@@ -18,9 +18,17 @@ except ImportError:
 try:
     from services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
     from services.finops_rag import finops_rag_pipeline
+    from services.vector_store import vector_knowledge_store
+    from services.opencost_engine import opencost_engine
+    from engines.focus_lakehouse import focus_lakehouse
+    from services.currency_converter import currency_converter
 except ImportError:
     from backend.services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
     from backend.services.finops_rag import finops_rag_pipeline
+    from backend.services.vector_store import vector_knowledge_store
+    from backend.services.opencost_engine import opencost_engine
+    from backend.engines.focus_lakehouse import focus_lakehouse
+    from backend.services.currency_converter import currency_converter
 
 logger = logging.getLogger("cloudpulse.copilot.agent")
 
@@ -81,6 +89,27 @@ class FinOpsAutonomousCopilot:
                 recommended_config=arguments.get("recommended_config", {}),
                 monthly_savings=float(arguments.get("monthly_savings", 50.0))
             )
+        elif tool_name == "kubernetes_allocations":
+            if opencost_engine:
+                return {
+                    "efficiency": opencost_engine.get_cluster_efficiency(),
+                    "workloads": opencost_engine.get_workload_allocations(),
+                    "rightsizing": opencost_engine.get_rightsizing_recommendations()
+                }
+            return {"error": "OpenCost engine not available"}
+        elif tool_name == "focus_lakehouse":
+            if focus_lakehouse:
+                return {
+                    "spend_by_service": focus_lakehouse.get_spend_by_service(),
+                    "top_drivers": focus_lakehouse.get_top_cost_drivers(limit=5)
+                }
+            return {"error": "FOCUS Lakehouse engine not available"}
+        elif tool_name == "vector_knowledge":
+            if vector_knowledge_store:
+                q = arguments.get("query", "")
+                limit = int(arguments.get("limit", 3))
+                return {"results": vector_knowledge_store.search(query=q, top_k=limit)}
+            return {"error": "Vector knowledge store not available"}
         return {"error": f"Unknown tool: {tool_name}"}
 
     def _get_cloud_context(self) -> str:
@@ -212,24 +241,115 @@ class FinOpsAutonomousCopilot:
                 "model": active_model
             }
 
-        # Route 3: General Spend / Cost analysis query -> sql_analytics tool
+        # Route 3: Kubernetes Container Efficiency & OpenCost Rightsizing
+        if any(w in msg_lower for w in ["kubernetes", "k8s", "container", "pod", "deployment", "namespace", "opencost"]):
+            tool_res = self.run_tool("kubernetes_allocations", {})
+            eff = tool_res.get("efficiency", {})
+            rightsizing = tool_res.get("rightsizing", [])
+            workloads = tool_res.get("workloads", [])
+
+            cluster_eff = eff.get("overall_efficiency_pct", 0.0)
+            req_cost = eff.get("monthly_requested_cost", 0.0)
+            idle_cost = eff.get("monthly_idle_waste", 0.0)
+
+            k8s_text = (
+                f"☸️ **Kubernetes & CNCF OpenCost Telemetry (Live EKS Cluster):**\n\n"
+                f"- **Overall Cluster Efficiency:** **{cluster_eff}%**\n"
+                f"- **Monthly Container Allocated Cost:** **${req_cost:.2f}/mo**\n"
+                f"- **Quantified Idle Waste:** **${idle_cost:.2f}/month** (${idle_cost*12:.2f}/yr)\n"
+                f"- **Active Monitored Workloads:** {len(workloads)} across {len(eff.get('namespaces', []))} namespaces\n\n"
+                f"### 🎯 Top Over-Provisioned Pod Rightsizing Targets:\n"
+            )
+            for r in rightsizing[:4]:
+                k8s_text += (
+                    f"- **`{r.get('namespace')}/{r.get('workload')}`** ({r.get('container')}):\n"
+                    f"  Efficiency: {r.get('overall_efficiency_pct')}%. Downsize to save **${r.get('monthly_savings', 0.0):.2f}/mo**.\n"
+                )
+
+            llm_k8s_insight = ""
+            if self.engine and self.engine.is_available():
+                prompt = (
+                    f"Analyze this Kubernetes cluster efficiency: {cluster_eff}% overall efficiency, ${idle_cost}/mo idle waste.\n"
+                    f"Top overprovisioned workloads: {json.dumps(rightsizing[:3])}\n"
+                    f"Provide 2 concise FinOps container recommendations for the platform engineering team."
+                )
+                rep = self.engine.chat_completion([
+                    {"role": "system", "content": "You are a Principal Kubernetes FinOps Architect."},
+                    {"role": "user", "content": prompt}
+                ], max_tokens=250, temperature=0.2)
+                if rep:
+                    llm_k8s_insight = f"\n💡 **Copilot Container Strategy ({active_model}):**\n{rep}"
+
+            k8s_text += llm_k8s_insight
+            return {
+                "answer": k8s_text,
+                "tool_called": "kubernetes_allocations",
+                "tool_result": tool_res,
+                "provider": self.provider,
+                "model": active_model
+            }
+
+        # Route 4: General Spend / Cost analysis query -> sql_analytics with FOCUS Lakehouse fallback
         if any(w in msg_lower for w in ["spend", "cost", "bill", "breakdown", "top", "how much", "expensive"]):
             sql = generate_finops_sql_template("daily_spend_by_service")
             tool_res = self.run_tool("sql_analytics", {"query": sql})
+
+            rows = tool_res.get("data", [])
+            # Fallback to FOCUS Lakehouse DuckDB if TimescaleDB has no rows or is disconnected
+            if not rows:
+                lake_res = self.run_tool("focus_lakehouse", {})
+                lake_rows = lake_res.get("spend_by_service", [])
+                if lake_rows:
+                    summary_text = (
+                        "Here is your consolidated cloud spend breakdown from the **FOCUS 1.0 Lakehouse (DuckDB)**:\n\n"
+                        "| Service Name | Monthly Effective Cost | Monitored Resources | Provider |\n"
+                        "|:---|:---|:---|:---|\n"
+                    )
+                    for row in lake_rows[:6]:
+                        cost_val = float(row.get("TotalEffectiveCost", 0))
+                        dual_str = currency_converter.format_dual(cost_val)
+                        summary_text += f"| **{row.get('ServiceName')}** | {dual_str} | {row.get('ResourceCount', 1)} | {row.get('ProviderName', 'AWS')} |\n"
+
+                    llm_insight = ""
+                    if self.engine and self.engine.is_available():
+                        prompt = f"Analyze this FOCUS 1.0 spend breakdown:\n{json.dumps(lake_rows[:5])}\nProvide 2 quick FinOps recommendations."
+                        rep = self.engine.chat_completion([{"role": "system", "content": "You are a FinOps Architect."}, {"role": "user", "content": prompt}], max_tokens=250, temperature=0.2)
+                        if rep:
+                            llm_insight = f"\n💡 **FinOps Copilot Insights ({active_model}):**\n{rep}"
+                    summary_text += llm_insight
+                    return {
+                        "answer": summary_text,
+                        "tool_called": "focus_lakehouse",
+                        "tool_result": lake_res,
+                        "provider": self.provider,
+                        "model": active_model
+                    }
+                else:
+                    # Direct to RAG pipeline for full grounded telemetry answer
+                    rag_res = finops_rag_pipeline.ask(query=user_message)
+                    if rag_res and rag_res.get("answer"):
+                        return {
+                            "answer": rag_res.get("answer"),
+                            "tool_called": "finops_rag_pipeline",
+                            "tool_result": rag_res,
+                            "provider": rag_res.get("provider", self.provider),
+                            "model": rag_res.get("model", active_model),
+                            "pipeline": "RAG"
+                        }
 
             summary_text = (
                 "Here is your recent AWS spend breakdown from the TimescaleDB ledger:\n\n"
                 "| Service Name | Daily Billed Cost | Spend Date |\n"
                 "|:---|:---|:---|\n"
             )
-            for row in tool_res.get("data", [])[:5]:
+            for row in rows[:5]:
                 summary_text += f"| **{row.get('service_name')}** | `${float(row.get('total_billed', 0)):.2f}` | {row.get('spend_date')} |\n"
 
             # Enrich with Groq LLM FinOps insights
             llm_insight = ""
             if self.engine and self.engine.is_available():
                 prompt = (
-                    f"Analyze this daily spend breakdown:\n{json.dumps(tool_res.get('data', [])[:5])}\n"
+                    f"Analyze this daily spend breakdown:\n{json.dumps(rows[:5])}\n"
                     f"Provide 2 crisp bullet points of FinOps recommendations to reduce this run rate."
                 )
                 rep = self.engine.chat_completion([
@@ -250,6 +370,41 @@ class FinOpsAutonomousCopilot:
                 "provider": self.provider,
                 "model": active_model
             }
+
+        # Route 5: Well-Architected Framework & Enterprise Policy Guidelines
+        if any(w in msg_lower for w in ["well-architected", "policy", "guideline", "tagging", "compliance", "standard", "wa-cost"]):
+            tool_res = self.run_tool("vector_knowledge", {"query": user_message, "limit": 2})
+            policies = tool_res.get("results", [])
+
+            if policies:
+                policy_text = "📚 **AWS Well-Architected Framework & Enterprise Policy Guidance:**\n\n"
+                for p in policies:
+                    policy_text += f"### {p.get('title')}\n"
+                    policy_text += f"*{p.get('content')}*\n\n"
+
+                llm_policy_insight = ""
+                if self.engine and self.engine.is_available():
+                    prompt = (
+                        f"Explain how to operationalize this Well-Architected policy for the DevOps team:\n"
+                        f"{json.dumps(policies)}\n"
+                        f"User inquiry: {user_message}\n"
+                        f"Give a 2-sentence actionable implementation playbook."
+                    )
+                    rep = self.engine.chat_completion([
+                        {"role": "system", "content": "You are a Principal Cloud Architect."},
+                        {"role": "user", "content": prompt}
+                    ], max_tokens=250, temperature=0.2)
+                    if rep:
+                        llm_policy_insight = f"💡 **Implementation Strategy ({active_model}):**\n{rep}"
+
+                policy_text += llm_policy_insight
+                return {
+                    "answer": policy_text,
+                    "tool_called": "vector_knowledge",
+                    "tool_result": tool_res,
+                    "provider": self.provider,
+                    "model": active_model
+                }
 
         # Route 4: Remediation / Pull Request / Terraform
         if any(w in msg_lower for w in ["pr", "pull request", "terraform", "iac", "fix", "remediate", "remediation"]):

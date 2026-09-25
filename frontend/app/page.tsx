@@ -3495,15 +3495,47 @@ function LakehouseView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; 
 }
 
 function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; model?: string; tool?: string }>>([
+  const [messages, setMessages] = useState<Array<{
+    role: 'user' | 'assistant';
+    text: string;
+    model?: string;
+    tool?: string;
+    citations?: string[];
+    formattedSavings?: string;
+  }>>([
     {
       role: 'assistant',
-      text: "👋 Welcome to **CloudPulse Autonomous FinOps Copilot**, powered by **Groq Cloud LLM** (compound-mini / compound / Qwen 27B) and live TimescaleDB telemetry.\n\nI can analyze your live AWS inventory, explain spend surges, evaluate Graviton modernization ROI, and generate ready-to-merge Terraform/OpenTofu Pull Requests.\n\nAsk me anything or click one of the quick prompts below!",
-      model: 'groq/compound-mini'
+      text: "👋 Welcome to **CloudPulse Autonomous FinOps Copilot**, powered by **Groq Cloud LLM** (compound-mini / compound / Qwen 27B) and our unified multi-domain RAG pipeline.\n\nI continuously retrieve and correlate:\n- ⚡ **Live AWS Telemetry** (EC2, EBS, EIP, SGs, CloudWatch, S3)\n- ☸️ **CNCF OpenCost Container Allocations** (pod CPU/RAM efficiency & rightsizing diffs)\n- 🏛️ **FOCUS 1.0 Lakehouse** (DuckDB in-memory OLAP spend analytics)\n- 📚 **AWS Well-Architected Framework & Enterprise Tagging Policies**\n\nAsk me anything or click one of the quick prompts below!",
+      model: 'groq/compound-mini',
+      citations: ['Live AWS EC2 Telemetry', 'CNCF OpenCost', 'FOCUS 1.0 Lakehouse', 'Well-Architected KB']
     }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ragStatus, setRagStatus] = useState<any>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+
+  // Fetch live RAG pipeline telemetry status
+  useEffect(() => {
+    let cancelled = false;
+    const fetchRagStatus = async () => {
+      try {
+        const res = await fetch(apiUrl('/api/v2/copilot/rag/status'));
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setRagStatus(data);
+        }
+      } catch {
+        // silent failover to default
+      }
+    };
+    fetchRagStatus();
+    const interval = setInterval(fetchRagStatus, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [apiUrl]);
 
   const sendMessage = async (queryText: string) => {
     const text = queryText.trim();
@@ -3524,8 +3556,10 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
         {
           role: 'assistant',
           text: data.answer || data.response || 'No response received from Copilot.',
-          model: data.model || 'groq',
-          tool: data.tool_called
+          model: data.model || ragStatus?.active_model || 'groq',
+          tool: data.tool_called,
+          citations: data.citations || (data.tool_result?.citations) || [],
+          formattedSavings: data.formatted_monthly_savings || (data.tool_result?.formatted_monthly_savings)
         }
       ]);
     } catch (err: any) {
@@ -3542,9 +3576,51 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
     }
   };
 
+  const generateExecutiveReport = async () => {
+    if (generatingReport || loading) return;
+    setGeneratingReport(true);
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', text: "📊 Generate Executive FinOps & Container Optimization Report across all live infrastructure." }
+    ]);
+
+    try {
+      const res = await fetch(apiUrl('/api/v2/copilot/rag/recommendations'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focus_domain: 'all' })
+      });
+      const data = await res.json();
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: data.report_markdown || "Report generation complete.",
+          model: data.model || 'groq/compound-mini',
+          tool: 'finops_rag_recommendations',
+          citations: data.citations || ['AWS EC2 Telemetry', 'CNCF OpenCost', 'FOCUS 1.0 Lakehouse'],
+          formattedSavings: data.formatted_monthly_savings
+        }
+      ]);
+    } catch (err: any) {
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `⚠️ Report generation failed: ${err?.message || err}`,
+          model: 'error'
+        }
+      ]);
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   const chips = [
-    "What is the cost footprint of our 9 t3.micro instances?",
+    "Analyze Kubernetes container rightsizing & idle waste",
+    "Show spend breakdown by service (FOCUS 1.0)",
     "Compare m5.2xlarge with Graviton pricing",
+    "S3 Intelligent-Tiering & lifecycle optimization",
     "Why did we have a spike in cloud spend?",
     "Generate Terraform PR to downsize idle compute",
     "/audit",
@@ -3555,16 +3631,69 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
   return (
     <>
       <SectionTitle
-        eyebrow="Autonomous Copilot"
-        title="AI FinOps Architect & Code Remediation"
-        description="Interact with the sovereign cloud economist powered by Groq LLM inference and TimescaleDB."
+        eyebrow="Autonomous Copilot & RAG Pipeline"
+        title="AI FinOps Architect & Telemetry Intelligence"
+        description="Multi-domain sovereign cloud economist powered by Groq LLM inference, CNCF OpenCost, DuckDB FOCUS 1.0 Lakehouse, and TimescaleDB."
         action={
-          <div className="flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-300">
-            <Sparkles className="size-3.5" />
-            <span>Active Backend: <strong>Groq LLM</strong></span>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={generateExecutiveReport}
+              disabled={generatingReport || loading}
+              variant="outline"
+              size="sm"
+              className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20 text-xs"
+            >
+              {generatingReport ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Synthesizing Report...
+                </>
+              ) : (
+                <>
+                  <FileText className="mr-1.5 size-3.5" />
+                  Generate Executive Report
+                </>
+              )}
+            </Button>
+            <div className="flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-300">
+              <Sparkles className="size-3.5" />
+              <span>Backend: <strong>{ragStatus?.active_model || 'Groq LLM'}</strong></span>
+            </div>
           </div>
         }
       />
+
+      {/* Real-Time RAG Pipeline Status Bar */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-card/60 px-4 py-2.5 backdrop-blur text-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex items-center gap-1.5 font-medium text-emerald-400">
+            <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+            RAG Pipeline Live
+          </span>
+          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground">
+            Model: <strong className="text-foreground font-mono">{ragStatus?.active_model || 'groq/compound-mini'}</strong>
+          </span>
+          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground">
+            Policies: <strong className="text-cyan-300">{ragStatus?.retrieval_sources?.indexed_finops_policies ?? 11} Indexed</strong>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="border-cyan-400/20 bg-cyan-400/5 text-[11px] text-cyan-300">
+            AWS Compute: {ragStatus?.retrieval_sources?.compute_nodes ?? 0}
+          </Badge>
+          <Badge variant="outline" className="border-cyan-400/20 bg-cyan-400/5 text-[11px] text-cyan-300">
+            EBS Volumes: {ragStatus?.retrieval_sources?.ebs_volumes ?? 0}
+          </Badge>
+          <Badge variant="outline" className="border-purple-400/20 bg-purple-400/5 text-[11px] text-purple-300">
+            K8s Pods: {ragStatus?.retrieval_sources?.kubernetes_workloads ?? 0}
+          </Badge>
+          <Badge variant="outline" className="border-amber-400/20 bg-amber-400/5 text-[11px] text-amber-300">
+            FOCUS Lakehouse: Active
+          </Badge>
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {chips.map((chip, i) => (
@@ -3599,14 +3728,21 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
                       : 'border border-white/8 bg-white/5 text-foreground'
                   }`}
                 >
-                  {m.role === 'assistant' && m.model && (
-                    <div className="mb-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono">
-                        {m.model}
-                      </span>
+                  {m.role === 'assistant' && (
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      {m.model && (
+                        <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono">
+                          {m.model}
+                        </span>
+                      )}
                       {m.tool && (
                         <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 font-mono text-cyan-300">
                           tool: {m.tool}
+                        </span>
+                      )}
+                      {m.formattedSavings && (
+                        <span className="rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-emerald-300">
+                          💰 Recoverable: {m.formattedSavings}
                         </span>
                       )}
                     </div>
@@ -3614,6 +3750,19 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
                   <div className="whitespace-pre-wrap font-sans space-y-2">
                     {m.text}
                   </div>
+                  {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
+                    <div className="mt-3 border-t border-white/8 pt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Grounded Sources:</span>
+                      {m.citations.map((c, ci) => (
+                        <span
+                          key={ci}
+                          className="rounded bg-cyan-400/10 border border-cyan-400/20 px-2 py-0.5 text-[10px] text-cyan-300 font-mono"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -3622,7 +3771,7 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
                 <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
                   <Loader2 className="size-4 animate-spin" />
                 </div>
-                <span>Copilot is reasoning with Groq LLM & analyzing live telemetry...</span>
+                <span>Copilot is reasoning with Groq LLM & synthesizing RAG telemetry across AWS, OpenCost, and FOCUS Lakehouse...</span>
               </div>
             )}
           </div>
@@ -3632,7 +3781,7 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
-              placeholder="Ask a question or type /audit, /optimize, /forecast, /pricing..."
+              placeholder="Ask a question about AWS, Kubernetes containers, FOCUS spend, or type /audit, /optimize..."
               disabled={loading}
               className="border-white/10 bg-white/5 text-foreground placeholder:text-muted-foreground"
             />

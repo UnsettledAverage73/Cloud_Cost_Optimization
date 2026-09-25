@@ -196,3 +196,34 @@ def test_cli_recommend_and_rag_test(capsys, tmp_path):
     out = capsys.readouterr().out
     assert "GROQ FINOPS RAG END-TO-END VERIFICATION" in out
     assert "100% OPERATIONAL" in out
+
+
+def test_rag_with_kubernetes_and_focus_lakehouse(sample_inventory):
+    pipeline = FinOpsRAGPipeline()
+    ret = pipeline.retrieve_context(query="Analyze Kubernetes container efficiency and FOCUS Lakehouse spend", inventory=sample_inventory)
+    
+    assert "kubernetes" in ret["domains"] or "lakehouse" in ret["domains"]
+    assert "citations" in ret
+    assert any("OpenCost" in c or "AWS" in c for c in ret["citations"])
+    
+    aug = pipeline.augment_context(ret)
+    assert "formatted_monthly_savings" in aug
+    assert "₹" in aug["formatted_monthly_savings"]
+    assert "$" in aug["formatted_monthly_savings"]
+    assert "citations" in aug
+
+
+def test_copilot_chat_extended_routes():
+    from copilot.agent import FinOpsAutonomousCopilot
+    copilot = FinOpsAutonomousCopilot()
+    
+    # 1. Kubernetes container routing
+    k8s_res = copilot.chat("Analyze our Kubernetes pods and container waste")
+    assert k8s_res["tool_called"] == "kubernetes_allocations"
+    assert "Kubernetes" in k8s_res["answer"]
+    
+    # 2. Well-Architected policy routing
+    policy_res = copilot.chat("What is our Well-Architected policy for idle compute?")
+    assert policy_res["tool_called"] == "vector_knowledge"
+    assert "Well-Architected" in policy_res["answer"]
+

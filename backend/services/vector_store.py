@@ -113,6 +113,43 @@ DEFAULT_FINOPS_POLICIES = [
             "eliminating 100% of NAT data processing fees."
         ),
         "tags": ["nat-gateway", "vpc-endpoint", "s3", "networking", "data-transfer"]
+    },
+    {
+        "id": "wa-cost-09-k8s-container-rightsizing",
+        "title": "Kubernetes & CNCF OpenCost Container Resource Optimization",
+        "category": "containers",
+        "content": (
+            "Kubernetes pod resource requests directly dictate node scaling and cluster bin-packing. Over-allocating "
+            "CPU and memory requests leads to extreme node sprawl and low cluster efficiency (often <25%). "
+            "FinOps best practice requires analyzing P95 container utilization over 14 days, setting resource requests "
+            "with a conservative 20-25% headroom, and establishing Horizontal Pod Autoscaling (HPA) to absorb traffic surges "
+            "while shrinking container idle waste by 40% to 65%."
+        ),
+        "tags": ["kubernetes", "k8s", "containers", "opencost", "rightsizing", "hpa", "requests"]
+    },
+    {
+        "id": "wa-cost-10-s3-lifecycle-intelligent-tiering",
+        "title": "Amazon S3 Storage Lifecycle & Intelligent-Tiering Automation",
+        "category": "storage",
+        "content": (
+            "Amazon S3 Standard storage costs $0.023 per GB-month. For datasets with unpredictable or infrequent access patterns, "
+            "activating S3 Intelligent-Tiering automatically moves objects between frequent, infrequent ($0.0125/GB), and archive "
+            "instant access ($0.004/GB) tiers with zero operational overhead and no retrieval fees. Enforcing lifecycle transition rules "
+            "to Glacier Flexible or Deep Archive ($0.00099/GB) for logs and compliance backups reduces storage spend by up to 95%."
+        ),
+        "tags": ["s3", "storage", "intelligent-tiering", "lifecycle", "glacier", "archive"]
+    },
+    {
+        "id": "wa-cost-11-rds-aurora-serverless",
+        "title": "Relational Database Rightsizing & Aurora Serverless v2 Scaling",
+        "category": "database",
+        "content": (
+            "Amazon RDS and Aurora instances frequently run 24/7 in staging and test environments despite zero traffic during "
+            "off-hours. Stopping non-production database instances on nights and weekends yields a ~68% cost reduction. "
+            "For variable production workloads, migrating to Aurora Serverless v2 enables instant fine-grained scaling in 0.5 ACU increments, "
+            "paying only for active database capacity and eliminating provisioned headroom overhead."
+        ),
+        "tags": ["rds", "aurora", "database", "serverless", "acu", "idle"]
     }
 ]
 
@@ -194,7 +231,20 @@ class VectorKnowledgeStore:
         except Exception as e:
             logger.warning(f"Failed to load vector store from disk: {e}")
 
-        if not loaded:
+        # Ensure all default policies are present even if loading from an older disk cache
+        missing_defaults = [p for p in DEFAULT_FINOPS_POLICIES if p["id"] not in self.documents]
+        if missing_defaults:
+            for p in missing_defaults:
+                self.add_document(
+                    doc_id=p["id"],
+                    title=p["title"],
+                    content=p["content"],
+                    category=p["category"],
+                    tags=p.get("tags", [])
+                )
+            self.save_to_disk()
+            logger.info(f"Synchronized {len(missing_defaults)} new default policies into vector store.")
+        elif not loaded:
             self.bootstrap_default_policies()
 
     def bootstrap_default_policies(self):

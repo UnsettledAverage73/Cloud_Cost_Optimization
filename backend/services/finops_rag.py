@@ -25,12 +25,30 @@ try:
     from engines.finops_analyzer import FinOpsAnalyzer
     from services.vector_store import vector_knowledge_store
     from services.query_cache import query_cache
+    from services.currency_converter import currency_converter
 except ImportError:
     from backend.services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
     from backend.copilot.tools.pricing_rag_tool import lookup_aws_pricing, AWS_INSTANCE_PRICING_TABLE, STORAGE_PRICING_TABLE
     from backend.engines.finops_analyzer import FinOpsAnalyzer
     from backend.services.vector_store import vector_knowledge_store
     from backend.services.query_cache import query_cache
+    from backend.services.currency_converter import currency_converter
+
+try:
+    from services.opencost_engine import opencost_engine
+except ImportError:
+    try:
+        from backend.services.opencost_engine import opencost_engine
+    except ImportError:
+        opencost_engine = None
+
+try:
+    from engines.focus_lakehouse import focus_lakehouse
+except ImportError:
+    try:
+        from backend.engines.focus_lakehouse import focus_lakehouse
+    except ImportError:
+        focus_lakehouse = None
 
 logger = logging.getLogger("cloudpulse.finops_rag")
 
@@ -48,7 +66,7 @@ class FinOpsRAGPipeline:
         self.engine = llm_engine
 
     def _get_inventory(self, inventory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Resolves the inventory dictionary from argument, data_store, or fleet_cache."""
+        """Resolves the inventory dictionary from argument, data_store, fleet_cache, or live DB."""
         if inventory:
             return inventory
         if self.data_store:
@@ -67,6 +85,18 @@ class FinOpsRAGPipeline:
                 for acc in scanned_accounts:
                     if acc.get("status") == "success" and acc.get("inventory"):
                         return acc["inventory"]
+        except Exception:
+            pass
+
+        # Try live DB from main
+        try:
+            try:
+                from main import _db
+            except ImportError:
+                from backend.main import _db
+            live = _db()
+            if live and isinstance(live, dict) and (live.get("nodes") or live.get("compute")):
+                return live
         except Exception:
             pass
 
@@ -92,8 +122,8 @@ class FinOpsRAGPipeline:
         focus_domain: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Retrieves relevant cloud inventory, telemetry, and pricing rate cards based
-        on query keywords or focus domain.
+        Retrieves relevant cloud inventory, telemetry, OpenCost container metrics,
+        FOCUS Lakehouse records, and pricing rate cards based on query keywords or focus domain.
         """
         inv = self._get_inventory(inventory)
         query_str = (query or "").lower().strip()
@@ -105,6 +135,7 @@ class FinOpsRAGPipeline:
         eips = ec2_other.get("elastic_ips") or inv.get("elastic_ips", [])
         sgs = ec2_other.get("security_groups") or inv.get("security_groups", [])
         cw_logs = ec2_other.get("cloudwatch_log_groups") or inv.get("cloudwatch_log_groups", [])
+        s3_buckets = ec2_other.get("s3_buckets") or inv.get("storage", {}).get("s3_buckets") or inv.get("s3_buckets", [])
         vpc_res = inv.get("vpc_resources", {})
         nat_gws = vpc_res.get("nat_gateways", [])
         metadata = inv.get("metadata", {"region": "us-east-1"})
@@ -117,7 +148,7 @@ class FinOpsRAGPipeline:
         if query_str:
             if any(w in query_str for w in ["ec2", "instance", "compute", "cpu", "node", "server", "rightsize", "graviton"]):
                 domain_matches.add("compute")
-            if any(w in query_str for w in ["ebs", "volume", "disk", "storage", "gp2", "gp3", "snapshot"]):
+            if any(w in query_str for w in ["ebs", "volume", "disk", "storage", "gp2", "gp3", "snapshot", "s3", "bucket", "intelligent-tiering", "glacier"]):
                 domain_matches.add("storage")
             if any(w in query_str for w in ["eip", "ip", "elastic ip", "nat", "network", "bandwidth", "ipv4"]):
                 domain_matches.add("network")
@@ -125,6 +156,12 @@ class FinOpsRAGPipeline:
                 domain_matches.add("security")
             if any(w in query_str for w in ["log", "cloudwatch", "retention", "logging"]):
                 domain_matches.add("logs")
+            if any(w in query_str for w in ["k8s", "kubernetes", "pod", "container", "namespace", "deployment", "opencost", "workload"]):
+                domain_matches.add("kubernetes")
+            if any(w in query_str for w in ["focus", "lakehouse", "duckdb", "cur", "parquet", "billing", "chargeback"]):
+                domain_matches.add("lakehouse")
+            if any(w in query_str for w in ["database", "rds", "aurora", "postgres", "sql"]):
+                domain_matches.add("database")
 
         # Default to full infrastructure retrieval if no specific domain matched
         is_broad_query = len(domain_matches) == 0 or "all" in domain_matches
@@ -134,6 +171,7 @@ class FinOpsRAGPipeline:
         retrieved_eips = eips if (is_broad_query or "network" in domain_matches) else []
         retrieved_sgs = sgs if (is_broad_query or "security" in domain_matches) else []
         retrieved_logs = cw_logs if (is_broad_query or "logs" in domain_matches) else []
+        retrieved_s3 = s3_buckets if (is_broad_query or "storage" in domain_matches) else []
 
         # Check for specific resource ID mentions in query (e.g. i-036358db85d245e3a or vol-0992817361abce)
         if query_str:
@@ -154,6 +192,30 @@ class FinOpsRAGPipeline:
             if itype not in pricing_rate_cards:
                 pricing_rate_cards[itype] = lookup_aws_pricing(itype)
 
+        # Retrieve Kubernetes & CNCF OpenCost live container allocations
+        k8s_efficiency = None
+        k8s_workloads = []
+        k8s_rightsizing = []
+        should_query_k8s = opencost_engine and (is_broad_query or "kubernetes" in domain_matches or "compute" in domain_matches)
+        if should_query_k8s:
+            try:
+                k8s_efficiency = opencost_engine.get_cluster_efficiency()
+                k8s_workloads = opencost_engine.get_workload_allocations()
+                k8s_rightsizing = opencost_engine.get_rightsizing_recommendations()
+            except Exception as e:
+                logger.debug(f"OpenCost retrieval exception: {e}")
+
+        # Retrieve FOCUS 1.0 Lakehouse Spend Breakdown (DuckDB)
+        focus_spend_by_service = []
+        focus_top_drivers = []
+        should_query_focus = focus_lakehouse and (is_broad_query or "lakehouse" in domain_matches or any(w in query_str for w in ["spend", "cost", "bill", "breakdown", "top", "expensive", "service"]))
+        if should_query_focus:
+            try:
+                focus_spend_by_service = focus_lakehouse.get_spend_by_service()
+                focus_top_drivers = focus_lakehouse.get_top_cost_drivers(limit=5)
+            except Exception as e:
+                logger.debug(f"FOCUS lakehouse retrieval exception: {e}")
+
         # Check for fleet-wide information
         fleet_summary = None
         try:
@@ -168,11 +230,11 @@ class FinOpsRAGPipeline:
 
         # Hybrid Semantic Vector Search across FinOps policies
         semantic_policies = []
-        if query_str:
-            try:
-                semantic_policies = vector_knowledge_store.search(query=query_str, top_k=2)
-            except Exception as e:
-                logger.debug(f"Vector search exception: {e}")
+        try:
+            pquery = query_str if query_str else "cost optimization well architected graviton ebs idle kubernetes"
+            semantic_policies = vector_knowledge_store.search(query=pquery, top_k=2)
+        except Exception as e:
+            logger.debug(f"Vector search exception: {e}")
 
         # Anomaly and Forecasting Signals
         anomalies = []
@@ -197,6 +259,27 @@ class FinOpsRAGPipeline:
             except Exception:
                 pass
 
+        # Grounded Citations collection
+        citations = []
+        if retrieved_nodes:
+            citations.append("Live AWS EC2 Telemetry")
+        if retrieved_vols:
+            citations.append("Live AWS EBS Telemetry")
+        if retrieved_eips:
+            citations.append("Live AWS VPC Elastic IPs")
+        if retrieved_sgs:
+            citations.append("Live AWS VPC Security Groups")
+        if retrieved_logs:
+            citations.append("Live AWS CloudWatch Logs")
+        if pricing_rate_cards:
+            citations.append("AWS Pricing Catalog (us-east-1)")
+        if k8s_workloads:
+            citations.append("CNCF OpenCost Container Allocations")
+        if focus_spend_by_service:
+            citations.append("FOCUS 1.0 Lakehouse (DuckDB OLAP)")
+        for p in semantic_policies:
+            citations.append(f"AWS Well-Architected: {p.get('id', 'wa-cost')}")
+
         return {
             "metadata": metadata,
             "domains": list(domain_matches) if domain_matches else ["all"],
@@ -206,12 +289,19 @@ class FinOpsRAGPipeline:
             "elastic_ips": retrieved_eips,
             "security_groups": retrieved_sgs,
             "cloudwatch_logs": retrieved_logs,
+            "s3_buckets": retrieved_s3,
             "nat_gateways": nat_gws,
             "pricing_rate_cards": pricing_rate_cards,
+            "k8s_efficiency": k8s_efficiency,
+            "k8s_workloads": k8s_workloads,
+            "k8s_rightsizing": k8s_rightsizing,
+            "focus_spend_by_service": focus_spend_by_service,
+            "focus_top_drivers": focus_top_drivers,
             "fleet_summary": fleet_summary,
             "semantic_policies": semantic_policies,
             "anomalies": anomalies,
             "forecast": forecast,
+            "citations": citations,
             "total_retrieved_items": (
                 len(retrieved_nodes) + len(retrieved_vols) + len(retrieved_eips) +
                 len(retrieved_sgs) + len(retrieved_logs)
@@ -224,7 +314,7 @@ class FinOpsRAGPipeline:
     def augment_context(self, retrieved: Dict[str, Any], user_query: Optional[str] = None) -> Dict[str, Any]:
         """
         Augments the retrieved raw entities with FinOps unit economics, calculated savings,
-        security risk assessments, and Well-Architected Framework guidelines.
+        security risk assessments, Kubernetes container rightsizing, and Well-Architected Framework guidelines.
         """
         nodes = retrieved.get("nodes", [])
         vols = retrieved.get("ebs_volumes", [])
@@ -368,17 +458,41 @@ class FinOpsRAGPipeline:
                 "savings": savings
             })
 
+        # Augment Kubernetes Container Rightsizing
+        k8s_rightsizing = retrieved.get("k8s_rightsizing", [])
+        k8s_efficiency = retrieved.get("k8s_efficiency")
+        augmented_k8s = []
+        total_k8s_savings = 0.0
+        if k8s_rightsizing:
+            for r in k8s_rightsizing:
+                sav = float(r.get("monthly_savings", 0.0))
+                total_k8s_savings += sav
+                augmented_k8s.append({
+                    "workload": r.get("workload"),
+                    "namespace": r.get("namespace"),
+                    "container": r.get("container"),
+                    "efficiency_pct": r.get("efficiency_pct"),
+                    "current_requests": f"{r.get('current_requested_cpu')} CPU, {r.get('current_requested_ram_gib')} GiB",
+                    "recommended_requests": f"{r.get('recommended_cpu')} CPU, {r.get('recommended_ram_gib')} GiB",
+                    "monthly_savings": sav,
+                    "yaml_diff": r.get("yaml_diff", "")
+                })
+
         total_recoverable_monthly = round(
-            total_compute_savings + total_storage_savings + total_network_savings + total_logs_savings, 2
+            total_compute_savings + total_storage_savings + total_network_savings + total_logs_savings + total_k8s_savings, 2
         )
         total_recoverable_annual = round(total_recoverable_monthly * 12.0, 2)
+
+        # Dual currency calculations ($ and ₹)
+        formatted_monthly = currency_converter.format_dual(total_recoverable_monthly)
+        formatted_annual = currency_converter.format_dual(total_recoverable_annual)
 
         # Build clean Markdown knowledge chunk for LLM ingestion
         knowledge_chunks = []
         knowledge_chunks.append("### 🌐 LIVE RETRIEVED TELEMETRY & FINOPS BENCHMARKS:")
 
         if augmented_compute:
-            knowledge_chunks.append("\n**Compute Instances (EC2):**")
+            knowledge_chunks.append("\n**Compute Instances (EC2):** [Source: Live AWS EC2]")
             for c in augmented_compute:
                 idle_tag = "⚠️ IDLE" if c["is_idle"] else "Active"
                 grav_tag = f" -> Graviton recommendation: {c['graviton_recommendation']['instance_type']} (Save ${c['graviton_recommendation']['monthly_savings']}/mo)" if c['graviton_recommendation'] else ""
@@ -387,28 +501,44 @@ class FinOpsRAGPipeline:
                 )
 
         if augmented_storage:
-            knowledge_chunks.append("\n**Storage Volumes (EBS):**")
+            knowledge_chunks.append("\n**Storage Volumes (EBS):** [Source: Live AWS EBS]")
             for s in augmented_storage:
                 knowledge_chunks.append(
                     f"- `{s['volume_id']}`: {s['type']}, {s['size_gb']} GB, Cost: ${s['cost_monthly']:.2f}/mo. Action: {s['action']}"
                 )
 
         if augmented_network:
-            knowledge_chunks.append("\n**Networking (Elastic IPs):**")
+            knowledge_chunks.append("\n**Networking (Elastic IPs):** [Source: Live AWS VPC]")
             for net in augmented_network:
                 status = "🚨 UNATTACHED ($0.005/hr waste)" if net["is_unattached"] else "Attached"
                 knowledge_chunks.append(f"- IP `{net['public_ip']}`: {status}. Potential Savings: ${net['savings']:.2f}/mo")
 
         if augmented_logs:
-            knowledge_chunks.append("\n**CloudWatch Log Groups:**")
+            knowledge_chunks.append("\n**CloudWatch Log Groups:** [Source: Live AWS CloudWatch]")
             for l in augmented_logs:
                 knowledge_chunks.append(f"- `{l['log_group_name']}`: Retention={l['retention_days']}, Stored={l['stored_gb']} GB, Cost=${l['monthly_cost']:.2f}/mo. Action: {l['action']}")
 
         if augmented_security:
-            knowledge_chunks.append("\n**Security Group Ingress Exposure:**")
+            knowledge_chunks.append("\n**Security Group Ingress Exposure:** [Source: Live AWS VPC Security]")
             for sec in augmented_security:
                 if sec["is_publicly_exposed"]:
                     knowledge_chunks.append(f"- 🚨 `{sec['group_id']}` ({sec['group_name']}): World-accessible ports: {sec['high_risk_ports']}")
+
+        # Augment Kubernetes / CNCF OpenCost
+        if k8s_efficiency and k8s_efficiency.get("total_workloads", 0) > 0:
+            knowledge_chunks.append("\n**Kubernetes Container Allocations (CNCF OpenCost):** [Source: CNCF OpenCost]")
+            knowledge_chunks.append(
+                f"- Cluster Efficiency: {k8s_efficiency.get('overall_efficiency_pct', 0.0)}% | Active Workloads: {k8s_efficiency.get('total_workloads', 0)}"
+            )
+            knowledge_chunks.append(
+                f"- Monthly Container Spend: ${k8s_efficiency.get('monthly_requested_cost', 0.0):.2f} | Idle Waste: ${k8s_efficiency.get('monthly_idle_waste', 0.0):.2f}/mo"
+            )
+            if augmented_k8s:
+                knowledge_chunks.append("  Top Over-provisioned Pods & YAML Rightsizing Targets:")
+                for k in augmented_k8s[:3]:
+                    knowledge_chunks.append(
+                        f"  • `{k['namespace']}/{k['workload']}` ({k['container']}): Eff {k['efficiency_pct']}%. Current: {k['current_requests']} -> Target: {k['recommended_requests']} (Save ${k['monthly_savings']:.2f}/mo)"
+                    )
 
         # Augment Multi-Account Fleet and FOCUS 1.0 specifications
         fleet_summary = retrieved.get("fleet_summary")
@@ -422,7 +552,7 @@ class FinOpsRAGPipeline:
                 "total_eips": fleet_summary.get("total_fleet_eips", 0),
                 "total_focus_records": fleet_summary.get("total_focus_records", 0)
             }
-            knowledge_chunks.append("\n**Multi-Account Cloud Fleet & FOCUS 1.0 Specification:**")
+            knowledge_chunks.append("\n**Multi-Account Cloud Fleet & FOCUS 1.0 Specification:** [Source: Fleet Engine]")
             knowledge_chunks.append(
                 f"- Accounts Monitored: {augmented_fleet['total_accounts']} | Gross Fleet Spend: ${augmented_fleet['total_spend']:.2f}/mo"
             )
@@ -433,10 +563,20 @@ class FinOpsRAGPipeline:
                 f"- FOCUS 1.0 Compliance: {augmented_fleet['total_focus_records']} normalized cost lines active"
             )
 
+        # Augment FOCUS 1.0 Lakehouse Spend Breakdown
+        focus_spend = retrieved.get("focus_spend_by_service", [])
+        if focus_spend:
+            knowledge_chunks.append("\n**FOCUS 1.0 Lakehouse Spend Breakdown (DuckDB OLAP):** [Source: FOCUS 1.0 Lakehouse]")
+            for row in focus_spend[:5]:
+                sname = row.get("ServiceName", "Unknown")
+                cost = float(row.get("TotalEffectiveCost", 0.0))
+                rcount = row.get("ResourceCount", 1)
+                knowledge_chunks.append(f"- Service `{sname}`: ${cost:.2f}/mo ({rcount} resources tracked)")
+
         # Augment Semantic Policies from Vector Knowledge Store
         semantic_policies = retrieved.get("semantic_policies", [])
         if semantic_policies:
-            knowledge_chunks.append("\n**AWS Well-Architected Framework & Enterprise Policy Guidelines:**")
+            knowledge_chunks.append("\n**AWS Well-Architected Framework & Enterprise Policy Guidelines:** [Source: Well-Architected Knowledge Base]")
             for p in semantic_policies:
                 knowledge_chunks.append(
                     f"- *{p['title']}* (Category: {p.get('category')}, Relevance: {p.get('similarity_score', 0):.2f}):\n  {p['content']}"
@@ -465,21 +605,27 @@ class FinOpsRAGPipeline:
 
         knowledge_chunks.append(
             f"\n**AGGREGATE QUANTIFIED RECOVERABLE SAVINGS:**\n"
-            f"• Monthly Potential Savings: **${total_recoverable_monthly:.2f}/month**\n"
-            f"• Annualized Potential Savings: **${total_recoverable_annual:.2f}/year**"
+            f"• Monthly Potential Savings: **${total_recoverable_monthly:.2f}/month** ({formatted_monthly})\n"
+            f"• Annualized Potential Savings: **${total_recoverable_annual:.2f}/year** ({formatted_annual})"
         )
 
         return {
             "augmented_prompt": "\n".join(knowledge_chunks),
             "total_monthly_savings": total_recoverable_monthly,
             "total_annual_savings": total_recoverable_annual,
+            "formatted_monthly_savings": formatted_monthly,
+            "formatted_annual_savings": formatted_annual,
             "compute": augmented_compute,
             "storage": augmented_storage,
             "network": augmented_network,
             "security": augmented_security,
             "logs": augmented_logs,
+            "kubernetes": augmented_k8s,
+            "k8s_efficiency": k8s_efficiency,
+            "focus_breakdown": focus_spend,
             "fleet": augmented_fleet,
             "semantic_policies": semantic_policies,
+            "citations": retrieved.get("citations", []),
             "retrieved_item_count": retrieved.get("total_retrieved_items", 0)
         }
 
@@ -504,9 +650,11 @@ class FinOpsRAGPipeline:
 
         sys_prompt = (
             f"{FINOPS_SYSTEM_PROMPT}\n\n"
-            f"You have direct real-time access to the user's AWS infrastructure retrieved below.\n"
-            f"Base your answers STRICTLY on these actual cloud metrics, instance IDs, and exact calculated figures.\n"
-            f"Do not invent fake resources. If an answer requires action, cite the specific resource ID, exact dollars saved, and risk rating."
+            f"You have direct real-time access to the user's multi-cloud telemetry and container infrastructure retrieved below.\n"
+            f"Base your answers STRICTLY on these actual cloud metrics, instance IDs, OpenCost allocations, and exact calculated figures.\n"
+            f"Do not invent fake resources or numbers. When citing recommendations or figures, include explicit citations in brackets "
+            f"such as [Live AWS EC2], [CNCF OpenCost], [FOCUS 1.0 Lakehouse], [Well-Architected Policy: {id}]. "
+            f"Provide dual-currency context ($ and ₹) for all financial savings where appropriate."
         )
 
         user_content = (
@@ -532,7 +680,13 @@ class FinOpsRAGPipeline:
                     "retrieved_domains": retrieved.get("domains", ["all"]),
                     "retrieved_items": retrieved.get("total_retrieved_items", 0),
                     "potential_monthly_savings": augmented["total_monthly_savings"],
+                    "potential_annual_savings": augmented["total_annual_savings"],
+                    "formatted_monthly_savings": augmented["formatted_monthly_savings"],
+                    "formatted_annual_savings": augmented["formatted_annual_savings"],
+                    "citations": retrieved.get("citations", []),
                     "semantic_policies": augmented.get("semantic_policies", []),
+                    "kubernetes_recommendations": augmented.get("kubernetes", []),
+                    "focus_breakdown": augmented.get("focus_breakdown", []),
                     "cached": False
                 }
 
@@ -541,7 +695,8 @@ class FinOpsRAGPipeline:
             fallback_answer = (
                 f"### 🤖 Grounded FinOps Analysis (RAG Heuristic Mode)\n\n"
                 f"Based on real-time retrieval of your cloud environment ({augmented['retrieved_item_count']} items analyzed):\n\n"
-                f"• **Potential Recoverable Spend:** **${augmented['total_monthly_savings']:.2f}/month** (${augmented['total_annual_savings']:.2f}/year)\n"
+                f"• **Potential Recoverable Spend:** **${augmented['total_monthly_savings']:.2f}/month** ({augmented['formatted_monthly_savings']}) "
+                f"[Annual: ${augmented['total_annual_savings']:.2f}/year]\n"
             )
             for c in augmented["compute"]:
                 if c["is_idle"]:
@@ -554,6 +709,12 @@ class FinOpsRAGPipeline:
             for net in augmented["network"]:
                 if net["is_unattached"]:
                     fallback_answer += f"• **Unattached Elastic IP:** `{net['public_ip']}` is incurring AWS idle IPv4 fees ($0.005/hr). Release to save $3.60/mo.\n"
+            if augmented.get("kubernetes"):
+                fallback_answer += "\n• **Kubernetes Container Rightsizing (CNCF OpenCost):**\n"
+                for k in augmented["kubernetes"][:3]:
+                    fallback_answer += f"  - `{k['namespace']}/{k['workload']}`: Target {k['recommended_requests']} (Save ${k['monthly_savings']:.2f}/mo)\n"
+            if augmented.get("citations"):
+                fallback_answer += f"\n*Grounded Sources: {', '.join(augmented['citations'][:5])}*"
 
             result = {
                 "answer": fallback_answer,
@@ -564,7 +725,13 @@ class FinOpsRAGPipeline:
                 "retrieved_domains": retrieved.get("domains", ["all"]),
                 "retrieved_items": retrieved.get("total_retrieved_items", 0),
                 "potential_monthly_savings": augmented["total_monthly_savings"],
+                "potential_annual_savings": augmented["total_annual_savings"],
+                "formatted_monthly_savings": augmented["formatted_monthly_savings"],
+                "formatted_annual_savings": augmented["formatted_annual_savings"],
+                "citations": retrieved.get("citations", []),
                 "semantic_policies": augmented.get("semantic_policies", []),
+                "kubernetes_recommendations": augmented.get("kubernetes", []),
+                "focus_breakdown": augmented.get("focus_breakdown", []),
                 "cached": False
             }
 
@@ -608,6 +775,11 @@ class FinOpsRAGPipeline:
                     "model": self.engine.active_model,
                     "monthly_savings": augmented["total_monthly_savings"],
                     "annual_savings": augmented["total_annual_savings"],
+                    "formatted_monthly_savings": augmented["formatted_monthly_savings"],
+                    "formatted_annual_savings": augmented["formatted_annual_savings"],
+                    "citations": retrieved.get("citations", []),
+                    "kubernetes_recommendations": augmented.get("kubernetes", []),
+                    "focus_breakdown": augmented.get("focus_breakdown", []),
                     "items_audited": augmented["retrieved_item_count"],
                     "compute_recommendations": augmented["compute"],
                     "storage_recommendations": augmented["storage"],
@@ -620,7 +792,7 @@ class FinOpsRAGPipeline:
         report_md = (
             f"# 🚀 CloudPulse FinOps Executive Optimization Report\n\n"
             f"**Total Recoverable Spend:** `${augmented['total_monthly_savings']:.2f}/month` "
-            f"(`${augmented['total_annual_savings']:.2f}/year`)\n\n"
+            f"({augmented['formatted_monthly_savings']}) | Annual: `${augmented['total_annual_savings']:.2f}/year`\n\n"
             f"### ⚡ 1. Quick Wins (Zero Downtime)\n"
         )
         for s in augmented["storage"]:
@@ -646,12 +818,22 @@ class FinOpsRAGPipeline:
             if sec["is_publicly_exposed"]:
                 report_md += f"- **Vulnerable SG `{sec['group_id']}` ({sec['group_name']})**: Open to world on ports {sec['high_risk_ports']}. {sec['recommendation']}.\n"
 
+        if augmented.get("kubernetes"):
+            report_md += "\n### 🚢 4. Kubernetes Container Optimization (CNCF OpenCost)\n"
+            for k in augmented["kubernetes"][:4]:
+                report_md += f"- **Pod `{k['namespace']}/{k['workload']}` ({k['container']})**: Eff {k['efficiency_pct']}%. Downsize requests to `{k['recommended_requests']}` to save **${k['monthly_savings']:.2f}/mo**.\n"
+
         return {
             "report_markdown": report_md,
             "provider": "deterministic_rule_engine",
             "model": "fallback",
             "monthly_savings": augmented["total_monthly_savings"],
             "annual_savings": augmented["total_annual_savings"],
+            "formatted_monthly_savings": augmented["formatted_monthly_savings"],
+            "formatted_annual_savings": augmented["formatted_annual_savings"],
+            "citations": retrieved.get("citations", []),
+            "kubernetes_recommendations": augmented.get("kubernetes", []),
+            "focus_breakdown": augmented.get("focus_breakdown", []),
             "items_audited": augmented["retrieved_item_count"],
             "compute_recommendations": augmented["compute"],
             "storage_recommendations": augmented["storage"],
@@ -663,3 +845,4 @@ class FinOpsRAGPipeline:
 
 # Global Singleton Pipeline
 finops_rag_pipeline = FinOpsRAGPipeline()
+

@@ -81,6 +81,7 @@ try:
     from services.github_app_engine import github_app_engine
     from services.sla_watchdog import sla_watchdog
     from services.scheduler_engine import scheduler_engine
+    from engines.focus_lakehouse import focus_lakehouse
 except ImportError:
     from backend.database.connection import ping_database, SyncSessionLocal
     from backend.database.models import (
@@ -107,6 +108,7 @@ except ImportError:
     from backend.services.github_app_engine import github_app_engine
     from backend.services.sla_watchdog import sla_watchdog
     from backend.services.scheduler_engine import scheduler_engine
+    from backend.engines.focus_lakehouse import focus_lakehouse
 
 copilot_agent = FinOpsAutonomousCopilot()
 
@@ -1631,6 +1633,16 @@ async def get_copilot_rag_status():
     sgs = inv.get("ec2_other_resources", {}).get("security_groups") or inv.get("security_groups", [])
     logs = inv.get("ec2_other_resources", {}).get("cloudwatch_log_groups") or inv.get("cloudwatch_log_groups", [])
 
+    k8s_count = len(getattr(opencost_engine, "workloads", [])) if opencost_engine else 0
+    lake_count = 0
+    if focus_lakehouse:
+        try:
+            c = focus_lakehouse.conn.execute("SELECT COUNT(*) FROM focus_costs").fetchone()
+            lake_count = c[0] if c else 0
+        except Exception:
+            pass
+    policy_count = len(vector_knowledge_store.get_all_documents()) if vector_knowledge_store else 0
+
     return {
         "status": "ready" if engine_ready else "fallback_ready",
         "pipeline": "FinOpsRAGPipeline",
@@ -1643,9 +1655,12 @@ async def get_copilot_rag_status():
             "elastic_ips": len(eips),
             "security_groups": len(sgs),
             "cloudwatch_log_groups": len(logs),
+            "kubernetes_workloads": k8s_count,
+            "focus_lakehouse_records": lake_count,
+            "indexed_finops_policies": policy_count,
             "aws_rate_card": "active (us-east-1)"
         },
-        "supported_domains": ["all", "compute", "storage", "network", "security", "logs"]
+        "supported_domains": ["all", "compute", "storage", "network", "security", "logs", "kubernetes", "lakehouse"]
     }
 
 
