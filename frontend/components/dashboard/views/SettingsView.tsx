@@ -219,7 +219,7 @@ export function SettingsView({
         description="Manage organization access, cloud provider profiles, and Slack & Microsoft Teams alerts."
       />
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-white/8 bg-card/75 backdrop-blur-sm shadow-xl shadow-black/20">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="text-base font-semibold">Organization Profile</CardTitle>
           </CardHeader>
@@ -232,12 +232,12 @@ export function SettingsView({
               <Input
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
-                className="mt-2 border-white/10 bg-white/5 text-sm"
+                className="mt-2 border-border bg-background text-sm"
                 placeholder="Acme Corp"
               />
             </label>
             <Button
-              className="w-fit bg-sky-400 text-slate-950 hover:bg-sky-300 font-semibold text-xs"
+              className="w-fit bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold text-xs"
               onClick={handleSave}
               disabled={saving || !loaded}
             >
@@ -246,11 +246,11 @@ export function SettingsView({
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/75 backdrop-blur-sm shadow-xl shadow-black/20">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                <Bell className="size-4 text-sky-400" />
+                <Bell className="size-4 text-sky-600 dark:text-sky-400" />
                 Slack & Teams Escalations
               </CardTitle>
               <div className="flex items-center gap-1.5">
@@ -258,8 +258,8 @@ export function SettingsView({
                   variant="outline"
                   className={
                     slackWebhookUrl || slackBotToken
-                      ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
-                      : 'border-white/10 text-muted-foreground'
+                      ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10'
+                      : 'border-border text-muted-foreground'
                   }
                 >
                   Slack: {slackWebhookUrl || slackBotToken ? 'Connected' : 'Offline'}
@@ -268,8 +268,8 @@ export function SettingsView({
                   variant="outline"
                   className={
                     teamsWebhookUrl
-                      ? 'border-indigo-400/40 text-indigo-300 bg-indigo-500/10'
-                      : 'border-white/10 text-muted-foreground'
+                      ? 'border-indigo-500/40 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10'
+                      : 'border-border text-muted-foreground'
                   }
                 >
                   Teams: {teamsWebhookUrl ? 'Connected' : 'Offline'}
@@ -284,7 +284,7 @@ export function SettingsView({
                 value={slackWebhookUrl}
                 onChange={(e) => setSlackWebhookUrl(e.target.value)}
                 placeholder="https://hooks.slack.com/services/T.../B.../..."
-                className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                className="mt-1 border-border bg-background text-xs font-mono"
               />
             </label>
 
@@ -295,7 +295,7 @@ export function SettingsView({
                   value={slackBotToken}
                   onChange={(e) => setSlackBotToken(e.target.value)}
                   placeholder="xoxb-..."
-                  className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                  className="mt-1 border-border bg-background text-xs font-mono"
                 />
               </label>
               <label className="text-xs text-muted-foreground">
@@ -304,7 +304,7 @@ export function SettingsView({
                   value={slackChannel}
                   onChange={(e) => setSlackChannel(e.target.value)}
                   placeholder="all-average"
-                  className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                  className="mt-1 border-border bg-background text-xs font-mono"
                 />
               </label>
             </div>
@@ -315,7 +315,7 @@ export function SettingsView({
                 value={teamsWebhookUrl}
                 onChange={(e) => setTeamsWebhookUrl(e.target.value)}
                 placeholder="https://prod-xx.westus.logic.azure.com:443/workflows/.../invoke?..."
-                className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                className="mt-1 border-border bg-background text-xs font-mono"
               />
             </label>
 
@@ -325,56 +325,56 @@ export function SettingsView({
                 value={whatsappTo}
                 onChange={(e) => setWhatsappTo(e.target.value)}
                 placeholder="+91XXXXXXXXXX"
-                className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
+                className="mt-1 border-border bg-background text-xs font-mono"
               />
             </label>
 
             {/* Notification Policy Toggles */}
-            <div className="pt-2 border-t border-white/10">
-              <div className="text-xs font-medium text-slate-200 mb-2">Automated Alert Triggers</div>
+            <div className="pt-2 border-t border-border">
+              <div className="text-xs font-medium text-foreground mb-2">Automated Alert Triggers</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                   <input
                     type="checkbox"
                     checked={alertRules.on_anomaly}
                     onChange={(e) => setAlertRules({ ...alertRules, on_anomaly: e.target.checked })}
-                    className="rounded border-white/20 bg-white/5 accent-sky-400"
+                    className="rounded border-border bg-background accent-sky-600 dark:accent-sky-400"
                   />
                   <span>Spend Anomalies & Runaway Spikes</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                   <input
                     type="checkbox"
                     checked={alertRules.on_grace_period}
                     onChange={(e) => setAlertRules({ ...alertRules, on_grace_period: e.target.checked })}
-                    className="rounded border-white/20 bg-white/5 accent-sky-400"
+                    className="rounded border-border bg-background accent-sky-600 dark:accent-sky-400"
                   />
                   <span>10-Min Pre-Stop Grace Period Warnings</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                   <input
                     type="checkbox"
                     checked={alertRules.on_sla_breach}
                     onChange={(e) => setAlertRules({ ...alertRules, on_sla_breach: e.target.checked })}
-                    className="rounded border-white/20 bg-white/5 accent-sky-400"
+                    className="rounded border-border bg-background accent-sky-600 dark:accent-sky-400"
                   />
                   <span>Post-Remediation SLA Degradation</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                   <input
                     type="checkbox"
                     checked={alertRules.on_gitops_pr}
                     onChange={(e) => setAlertRules({ ...alertRules, on_gitops_pr: e.target.checked })}
-                    className="rounded border-white/20 bg-white/5 accent-sky-400"
+                    className="rounded border-border bg-background accent-sky-600 dark:accent-sky-400"
                   />
                   <span>GitOps Remediation PR Delivery</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                   <input
                     type="checkbox"
                     checked={alertRules.on_batch_digest}
                     onChange={(e) => setAlertRules({ ...alertRules, on_batch_digest: e.target.checked })}
-                    className="rounded border-white/20 bg-white/5 accent-sky-400"
+                    className="rounded border-border bg-background accent-sky-600 dark:accent-sky-400"
                   />
                   <span>Weekly / Scheduled Batch Digests</span>
                 </label>
@@ -396,7 +396,7 @@ export function SettingsView({
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <Button
                 size="sm"
-                className="bg-sky-400 text-slate-950 hover:bg-sky-300 font-semibold text-xs"
+                className="bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold text-xs shadow-xs"
                 onClick={handleSave}
                 disabled={saving || !loaded}
               >
@@ -405,7 +405,7 @@ export function SettingsView({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-white/10 bg-white/5 text-xs hover:bg-sky-400/10 hover:text-sky-300"
+                className="border-border bg-card text-xs hover:bg-muted text-foreground"
                 onClick={() => testNotification('slack')}
                 disabled={testingChannel !== null}
               >
@@ -415,7 +415,7 @@ export function SettingsView({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-white/10 bg-white/5 text-xs hover:bg-indigo-400/10 hover:text-indigo-300"
+                className="border-border bg-card text-xs hover:bg-muted text-foreground"
                 onClick={() => testNotification('teams')}
                 disabled={testingChannel !== null}
               >
@@ -427,16 +427,16 @@ export function SettingsView({
         </Card>
 
         {/* Notification Delivery Audit Log */}
-        <Card className="border-white/8 bg-card/75 backdrop-blur-sm shadow-xl shadow-black/20 lg:col-span-2">
+        <Card className="border-border bg-card shadow-sm lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <History className="size-4 text-sky-400" />
+              <History className="size-4 text-sky-600 dark:text-sky-400" />
               Recent Notification Deliveries & Audit Trail
             </CardTitle>
             <Button
               variant="outline"
               size="sm"
-              className="border-white/10 bg-white/5 text-xs"
+              className="border-border bg-card text-xs hover:bg-muted"
               onClick={fetchHistory}
               disabled={loadingHistory}
             >
@@ -453,7 +453,7 @@ export function SettingsView({
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-white/10 hover:bg-transparent">
+                    <TableRow className="border-b border-border hover:bg-transparent">
                       <TableHead className="text-xs">Time (UTC)</TableHead>
                       <TableHead className="text-xs">Channel</TableHead>
                       <TableHead className="text-xs">Target Destination</TableHead>
@@ -462,12 +462,12 @@ export function SettingsView({
                   </TableHeader>
                   <TableBody>
                     {deliveryHistory.slice(0, 8).map((d: any, idx: number) => (
-                      <TableRow key={d.id || idx} className="border-white/5 text-xs">
+                      <TableRow key={d.id || idx} className="border-b border-border text-xs">
                         <TableCell className="font-mono text-muted-foreground">
                           {d.iso_time || (d.timestamp ? new Date(d.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19) : 'Just now')}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={d.channel?.includes('slack') ? 'border-sky-400/30 text-sky-300' : 'border-indigo-400/30 text-indigo-300'}>
+                          <Badge variant="outline" className={d.channel?.includes('slack') ? 'border-sky-500/30 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10' : 'border-indigo-500/30 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10'}>
                             {d.channel?.toUpperCase() || 'WEBHOOK'}
                           </Badge>
                         </TableCell>
@@ -475,7 +475,7 @@ export function SettingsView({
                           {d.target || 'all-average'}
                         </TableCell>
                         <TableCell>
-                          <Badge className={d.status === 'DELIVERED' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}>
+                          <Badge className={d.status === 'DELIVERED' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'}>
                             {d.status}
                           </Badge>
                         </TableCell>
@@ -488,26 +488,26 @@ export function SettingsView({
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/75 backdrop-blur-sm shadow-xl shadow-black/20 lg:col-span-2">
+        <Card className="border-border bg-card shadow-sm lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base font-semibold">Connected Cloud Profiles</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {connectionState?.connected ? (
-              <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-4">
-                <div className="text-sm font-medium text-emerald-200">{connectionState.account_name || 'Connected account'}</div>
-                <div className="mt-1 text-xs text-emerald-100/80">
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <div className="text-sm font-medium text-emerald-900 dark:text-emerald-200">{connectionState.account_name || 'Connected account'}</div>
+                <div className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-100/80">
                   {connectionState.provider || 'AWS'} · {connectionState.region || 'us-east-1'}
                 </div>
                 {connectionState.role_arn && (
-                  <div className="mt-2 font-mono text-[11px] text-emerald-100/70">{connectionState.role_arn}</div>
+                  <div className="mt-2 font-mono text-[11px] text-emerald-800/70 dark:text-emerald-100/70">{connectionState.role_arn}</div>
                 )}
-                <div className="mt-3 text-xs text-emerald-100/70">
+                <div className="mt-3 text-xs text-emerald-800/70 dark:text-emerald-100/70">
                   Active profile is restored from backend storage after refresh.
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-muted-foreground">
+              <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
                 No AWS account is connected yet.
               </div>
             )}
@@ -520,7 +520,7 @@ export function SettingsView({
                 connectedAccounts.map((account: any, idx: number) => (
                   <div
                     key={`${account.account_name || account.provider || 'account'}-${idx}`}
-                    className={`rounded-lg border p-4 ${account.active ? 'border-sky-400/30 bg-sky-400/10' : 'border-white/10 bg-white/5'}`}
+                    className={`rounded-lg border p-4 ${account.active ? 'border-sky-500/30 bg-sky-50 dark:bg-sky-400/10' : 'border-border bg-card shadow-xs'}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -530,12 +530,12 @@ export function SettingsView({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {account.active && <Badge className="bg-sky-400 text-slate-950 font-semibold">Active</Badge>}
+                        {account.active && <Badge className="bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 font-semibold">Active</Badge>}
                         {!account.active && (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-white/10 bg-white/5 text-xs"
+                            className="border-border bg-card text-xs hover:bg-muted"
                             onClick={() => onSwitchAccount?.(account)}
                             disabled={connectionKey(account) === selectedAccountKey}
                           >
@@ -553,12 +553,12 @@ export function SettingsView({
                   </div>
                 ))
               ) : (
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
                   Saved connections will appear here after you connect an AWS account.
                 </div>
               )}
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="rounded-lg border border-border bg-muted/20 p-4">
               <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Remembered login profile</div>
               {rememberedProfile ? (
                 <div className="mt-3">

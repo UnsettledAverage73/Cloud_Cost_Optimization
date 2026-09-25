@@ -199,8 +199,8 @@ export function SecurityView({
         </TabsList>
 
         <TabsContent value="groups">
-          <Card className="border-white/8 bg-card/75 backdrop-blur-sm overflow-hidden shadow-xl shadow-black/20">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 p-3 bg-white/[0.02]">
+          <Card className="border-border bg-card overflow-hidden shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3 bg-muted/20">
               <div className="flex items-center gap-1.5">
                 <Button
                   variant={sgFilter === 'all' ? 'secondary' : 'ghost'}
@@ -213,7 +213,7 @@ export function SecurityView({
                 <Button
                   variant={sgFilter === 'exposed' ? 'secondary' : 'ghost'}
                   size="sm"
-                  className={`h-7 text-xs px-2.5 ${exposedSecurityGroups.length > 0 ? 'text-amber-400 font-medium' : ''}`}
+                  className={`h-7 text-xs px-2.5 ${exposedSecurityGroups.length > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}
                   onClick={() => setSgFilter('exposed')}
                 >
                   Exposed risks ({exposedSecurityGroups.length})
@@ -221,7 +221,7 @@ export function SecurityView({
                 <Button
                   variant={sgFilter === 'secured' ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="h-7 text-xs px-2.5 text-emerald-400"
+                  className="h-7 text-xs px-2.5 text-emerald-600 dark:text-emerald-400"
                   onClick={() => setSgFilter('secured')}
                 >
                   Secured ({Math.max(0, allSecurityGroups.length - exposedSecurityGroups.length)})
@@ -237,7 +237,7 @@ export function SecurityView({
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-white/8">
+                  <TableRow className="border-b border-border">
                     <TableHead>Group Name & ID</TableHead>
                     <TableHead>VPC</TableHead>
                     <TableHead>Protection Status</TableHead>
@@ -252,9 +252,9 @@ export function SecurityView({
                         group.is_publicly_exposed ?? exposedSecurityGroups.some((e: any) => e.group_id === group.group_id)
                       )
                       return (
-                        <TableRow key={group.group_id} className="border-white/8">
+                        <TableRow key={group.group_id} className="border-b border-border">
                           <TableCell>
-                            <div className="font-medium text-white">{group.group_name || '—'}</div>
+                            <div className="font-medium text-foreground">{group.group_name || '—'}</div>
                             <div className="font-mono text-xs text-muted-foreground">{group.group_id}</div>
                             {group.description && (
                               <div className="text-[11px] text-muted-foreground truncate max-w-xs">
@@ -318,7 +318,7 @@ export function SecurityView({
                       )
                     })
                   ) : (
-                    <TableRow className="border-white/8">
+                    <TableRow className="border-b border-border">
                       <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                         {sgFilter === 'exposed'
                           ? 'No publicly exposed security groups detected. All workloads are protected from direct internet ingress.'
@@ -335,13 +335,13 @@ export function SecurityView({
         </TabsContent>
 
         <TabsContent value="ips">
-          <Card className="border-white/8 bg-card/75 backdrop-blur-sm overflow-hidden shadow-xl shadow-black/20">
+          <Card className="border-border bg-card overflow-hidden shadow-sm">
             {sectionStatus === 'loading' ? (
               <TableSkeleton rows={4} cols={3} />
             ) : unattachedElasticIPs.length > 0 ? (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-white/8">
+                  <TableRow className="border-b border-border">
                     <TableHead>Elastic IP</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Monthly cost</TableHead>
@@ -349,10 +349,10 @@ export function SecurityView({
                 </TableHeader>
                 <TableBody>
                   {unattachedElasticIPs.map((eip: any) => (
-                    <TableRow key={eip.public_ip} className="border-white/8">
+                    <TableRow key={eip.public_ip} className="border-b border-border">
                       <TableCell className="font-mono text-xs">{eip.public_ip}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="border-amber-400/30 text-amber-300">
+                        <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10">
                           Unattached
                         </Badge>
                       </TableCell>
@@ -364,13 +364,13 @@ export function SecurityView({
             ) : (
               <div className="p-6">
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center sm:text-left flex flex-col sm:flex-row items-center gap-4">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                     <CheckCircle2 className="size-6" />
                   </div>
                   <div className="flex-1 space-y-1">
-                    <div className="text-sm font-semibold text-white flex items-center gap-2 justify-center sm:justify-start">
+                    <div className="text-sm font-semibold text-foreground flex items-center gap-2 justify-center sm:justify-start">
                       Optimal FinOps Hygiene: Zero Unattached Elastic IPs
-                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-300 bg-emerald-500/10 text-[10px]">
+                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 text-[10px]">
                         $0.00 / mo Waste
                       </Badge>
                     </div>
@@ -385,38 +385,38 @@ export function SecurityView({
         </TabsContent>
 
         <TabsContent value="logs">
-          <Card className="border-white/8 bg-card/75 backdrop-blur-sm p-6 space-y-4 shadow-xl shadow-black/20">
+          <Card className="border-border bg-card p-6 space-y-4 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-400/10 text-sky-400 border border-sky-400/20">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20">
                   <Activity className="size-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-white">VPC Flow Logs & Security Telemetry</h4>
+                  <h4 className="text-sm font-semibold text-foreground">VPC Flow Logs & Security Telemetry</h4>
                   <p className="text-xs text-muted-foreground">Real-time packet inspection and port brute-force detection</p>
                 </div>
               </div>
-              <Badge variant="outline" className="border-sky-500/30 text-sky-300 bg-sky-500/10 text-xs">
+              <Badge variant="outline" className="border-sky-500/30 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10 text-xs">
                 CloudWatch Insights
               </Badge>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3 pt-2">
-              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
                 <div className="text-[11px] text-muted-foreground">Inbound Scanning Shield</div>
-                <div className="mt-1 text-xs font-semibold text-white">Ports 22, 3389, 5901 Monitored</div>
+                <div className="mt-1 text-xs font-semibold text-foreground">Ports 22, 3389, 5901 Monitored</div>
               </div>
-              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
                 <div className="text-[11px] text-muted-foreground">VPC Packet Rejection</div>
-                <div className="mt-1 text-xs font-semibold text-emerald-400">Flow Logs Active</div>
+                <div className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">Flow Logs Active</div>
               </div>
-              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
                 <div className="text-[11px] text-muted-foreground">Target AWS Region</div>
-                <div className="mt-1 text-xs font-semibold text-white">us-east-1 (N. Virginia)</div>
+                <div className="mt-1 text-xs font-semibold text-foreground">us-east-1 (N. Virginia)</div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-white/5 bg-black/30 p-3.5 text-xs text-muted-foreground leading-relaxed">
+            <div className="rounded-lg border border-border bg-muted/40 p-3.5 text-xs text-muted-foreground leading-relaxed">
               CloudWatch Log Groups capture rejected packets attempting to probe open ports on your public security groups.
               To inspect raw access logs or query suspicious source IPs, use CloudWatch Logs Insights.
             </div>
@@ -424,7 +424,7 @@ export function SecurityView({
             <div className="pt-2 flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                className="border-white/10 bg-white/5 text-xs h-9 hover:bg-white/10"
+                className="border-border bg-card text-xs h-9 hover:bg-muted"
                 onClick={() =>
                   window.open(
                     'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups',
@@ -442,10 +442,10 @@ export function SecurityView({
 
       {/* Revocation Safety Confirmation Dialog */}
       <Dialog open={revokeModalOpen} onOpenChange={setRevokeModalOpen}>
-        <DialogContent className="border-white/10 bg-card sm:max-w-md">
+        <DialogContent className="border-border bg-card sm:max-w-md shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <AlertTriangle className="size-5 text-amber-400 shrink-0" />
+              <AlertTriangle className="size-5 text-amber-500 shrink-0" />
               Confirm Ingress Revocation
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -454,11 +454,11 @@ export function SecurityView({
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-xs">
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 leading-relaxed">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-200 leading-relaxed">
               <span className="font-semibold">Warning:</span> Revoking <code>0.0.0.0/0</code> ingress will close public access on:
               <div className="mt-1.5 flex flex-wrap gap-1 font-mono">
                 {(selectedGroupToRevoke?.exposed_ports || []).map((port: number) => (
-                  <Badge key={port} variant="outline" className="border-amber-400/40 text-amber-300 bg-amber-400/10 text-[10px]">
+                  <Badge key={port} variant="outline" className="border-amber-400/40 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-400/10 text-[10px]">
                     Port {port}
                   </Badge>
                 ))}
@@ -469,7 +469,7 @@ export function SecurityView({
             </p>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="outline" size="sm" onClick={() => setRevokeModalOpen(false)}>
               Cancel
             </Button>

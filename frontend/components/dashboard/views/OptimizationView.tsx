@@ -105,40 +105,34 @@ export function OptimizationView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action: isApplied ? 'revert' : 'apply' }),
       })
-
-      if (res.ok) {
-        const data = await res.json()
-        if (Array.isArray(data?.applied)) {
-          setApplied(data.applied)
-        }
-      } else {
+      if (!res.ok) {
         setApplied(prevApplied)
         toast({
-          title: 'Provider Sync Failed',
-          description: 'Unable to apply change on cloud provider. Restored previous state.',
+          title: 'Optimization Sync Failed',
+          description: `Backend was unable to ${isApplied ? 'revert' : 'apply'} ${id}. Rolled back changes.`,
           type: 'error',
         })
       }
     } catch {
       setApplied(prevApplied)
       toast({
-        title: 'Network Sync Error',
-        description: 'Failed to reach CloudPulse backend. Rolled back change.',
+        title: 'Connection Error',
+        description: 'Failed to communicate with optimization endpoint. Rolled back.',
         type: 'error',
       })
     }
   }
 
   const handleApplyAllRemaining = async () => {
-    const allIds = items.map((i: any) => i.id)
-    const count = pendingItems.length
+    const idsToApply = pendingItems.map((i: any) => i.id)
+    if (idsToApply.length === 0) return
 
-    // Instant optimistic batch update
-    setApplied(allIds)
+    const newApplied = [...applied, ...idsToApply]
+    setApplied(newApplied)
     toast({
-      title: 'Batch Optimization Applied',
-      description: `Optimistically activated ${count} recommendations. Projected monthly savings realized.`,
-      type: 'info',
+      title: `Batch Enacted: ${idsToApply.length} Optimizations`,
+      description: `Optimistically scheduled changes saving ~${formatCurrency(pendingSavings, currency)}/mo.`,
+      type: 'success',
     })
 
     try {
@@ -250,14 +244,14 @@ export function OptimizationView({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              className="border-indigo-400/30 bg-indigo-400/10 text-indigo-300 hover:bg-indigo-400/20 text-xs"
+              className="border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 text-xs font-medium"
               onClick={handleBatchGitopsPr}
             >
               <GitBranch className="mr-1.5 size-3.5" />Batch GitOps PR
             </Button>
             <Button
               variant="outline"
-              className="border-sky-400/30 bg-sky-400/10 text-sky-300 hover:bg-sky-400/20 text-xs"
+              className="border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 text-xs font-medium"
               onClick={() => {
                 setBroadcastOpen(true)
                 setBroadcastResult(null)
@@ -268,7 +262,7 @@ export function OptimizationView({
             {pendingItems.length > 0 ? (
               <Button
                 onClick={handleApplyAllRemaining}
-                className="bg-sky-400 text-slate-950 hover:bg-sky-300 text-xs font-semibold"
+                className="bg-sky-600 text-white hover:bg-sky-500 text-xs font-semibold shadow-xs"
               >
                 <Zap className="mr-1.5 size-3.5" />Apply remaining ({pendingItems.length})
               </Button>
@@ -276,7 +270,7 @@ export function OptimizationView({
               <Button
                 variant="outline"
                 onClick={handleRevertAll}
-                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs"
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium"
               >
                 <RotateCcw className="mr-1.5 size-3.5" />Revert all optimizations
               </Button>
@@ -286,16 +280,16 @@ export function OptimizationView({
       />
 
       {/* FinOps Metrics & Lifecycle Counter Banner */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.02] p-3 backdrop-blur-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 shadow-xs">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-muted-foreground">
-            <strong className="text-white font-mono">{pendingItems.length}</strong> pending recommendations
+          <span className="rounded-full border border-border bg-muted px-3 py-1 text-muted-foreground font-medium">
+            <strong className="text-foreground font-mono">{pendingItems.length}</strong> pending recommendations
           </span>
-          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-medium text-amber-300">
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-semibold text-amber-700 dark:text-amber-300">
             {formatCurrency(pendingSavings, currency)} potential savings remaining
           </span>
           {appliedItems.length > 0 && (
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-medium text-emerald-300 flex items-center gap-1.5">
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
               <CheckCircle2 className="size-3.5" />
               {appliedItems.length} enacted &middot; {formatCurrency(realizedSavings, currency)}/mo realized
             </span>
@@ -307,7 +301,7 @@ export function OptimizationView({
           <Button
             variant={optFilter === 'all' ? 'secondary' : 'ghost'}
             size="sm"
-            className="h-7 text-xs px-2.5"
+            className="h-7 text-xs px-2.5 font-medium"
             onClick={() => setOptFilter('all')}
           >
             All ({items.length})
@@ -315,7 +309,7 @@ export function OptimizationView({
           <Button
             variant={optFilter === 'pending' ? 'secondary' : 'ghost'}
             size="sm"
-            className={`h-7 text-xs px-2.5 ${pendingItems.length > 0 ? 'text-amber-400 font-medium' : ''}`}
+            className={`h-7 text-xs px-2.5 font-medium ${pendingItems.length > 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : ''}`}
             onClick={() => setOptFilter('pending')}
           >
             Pending ({pendingItems.length})
@@ -323,7 +317,7 @@ export function OptimizationView({
           <Button
             variant={optFilter === 'applied' ? 'secondary' : 'ghost'}
             size="sm"
-            className="h-7 text-xs px-2.5 text-emerald-400 font-medium"
+            className="h-7 text-xs px-2.5 text-emerald-700 dark:text-emerald-400 font-semibold"
             onClick={() => setOptFilter('applied')}
           >
             Applied ({appliedItems.length})
@@ -334,7 +328,7 @@ export function OptimizationView({
       {sectionStatus === 'loading' ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="border-white/8 bg-card/75 p-5 space-y-3">
+            <Card key={i} className="border border-border bg-card p-5 space-y-3 shadow-xs">
               <Skeleton className="h-5 w-20" />
               <Skeleton className="h-6 w-3/4" />
               <Skeleton className="h-16 w-full" />
@@ -370,39 +364,39 @@ export function OptimizationView({
             return (
               <Card
                 key={item.id}
-                className={`border-white/8 bg-card/75 backdrop-blur-sm transition-all duration-200 flex flex-col justify-between shadow-lg shadow-black/20 ${
-                  done ? 'border-emerald-500/40 bg-emerald-950/15 shadow-[0_0_20px_-3px_rgba(16,185,129,0.15)]' : 'hover:border-white/20'
+                className={`border border-border bg-card transition-all duration-200 flex flex-col justify-between shadow-xs ${
+                  done ? 'border-emerald-500/40 bg-emerald-500/[0.04]' : 'hover:border-border/90 hover:shadow-sm'
                 }`}
               >
                 <CardHeader>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge variant="outline" className="w-fit border-white/10 text-xs">
+                    <Badge variant="outline" className="w-fit border-border text-xs font-mono font-medium">
                       {item.type}
                     </Badge>
                     {item.is_alternative ? (
-                      <Badge variant="outline" className="border-amber-400/30 text-amber-300 bg-amber-400/10 text-[10px]">
+                      <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-500/10 text-[10px] font-semibold">
                         Alternative Strategy
                       </Badge>
                     ) : done ? (
-                      <Badge variant="outline" className="border-emerald-400/30 text-emerald-300 bg-emerald-400/10 text-[10px] flex items-center gap-1">
+                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 text-[10px] flex items-center gap-1 font-semibold">
                         <Check className="size-3" /> Enacted
                       </Badge>
                     ) : null}
                   </div>
-                  <CardTitle className="pt-2 text-base leading-snug">{item.title}</CardTitle>
+                  <CardTitle className="pt-2 text-base font-bold text-foreground leading-snug">{item.title}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col justify-between flex-1">
                   <div>
                     <p className="min-h-10 text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
                     {item.conflict_note && (
-                      <div className="mt-2.5 flex items-start gap-1.5 rounded border border-amber-500/20 bg-amber-500/5 p-2 text-[11px] text-amber-200/90 leading-tight">
-                        <AlertTriangle className="size-3.5 shrink-0 text-amber-400 mt-0.5" />
+                      <div className="mt-2.5 flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-800 dark:text-amber-200/90 leading-tight">
+                        <AlertTriangle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                         <span>{item.conflict_note}</span>
                       </div>
                     )}
                     {item.ai_rationale && item.ai_rationale !== item.desc && (
-                      <div className="mt-3 rounded-lg border border-sky-400/20 bg-sky-400/5 p-2.5 text-xs text-sky-200">
-                        <div className="mb-1 flex items-center gap-1.5 font-medium text-sky-300">
+                      <div className="mt-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-2.5 text-xs text-sky-900 dark:text-sky-200">
+                        <div className="mb-1 flex items-center gap-1.5 font-bold text-sky-700 dark:text-sky-300">
                           <Sparkles className="size-3.5" /> AI Architecture Rationale
                         </div>
                         {item.ai_rationale}
@@ -410,9 +404,9 @@ export function OptimizationView({
                     )}
                   </div>
 
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-white/5 pt-3">
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                     <div>
-                      <div className="text-lg sm:text-xl font-semibold text-emerald-300 font-mono">
+                      <div className="text-lg sm:text-xl font-bold text-emerald-700 dark:text-emerald-300 font-mono">
                         Saves {formatCurrency(Number(item.savings ?? 0), currency)}/mo
                       </div>
                       {item.is_alternative && (
@@ -423,7 +417,7 @@ export function OptimizationView({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-xs text-sky-300 hover:bg-sky-400/10 px-2"
+                        className="text-xs text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 px-2 font-medium"
                         onClick={() => handleSingleGitopsPr(item)}
                       >
                         <GitPullRequest className="mr-1 size-3" />GitOps PR
@@ -433,14 +427,14 @@ export function OptimizationView({
                         variant={done ? 'secondary' : 'default'}
                         className={
                           done
-                            ? 'border border-emerald-500/30 text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20'
-                            : 'bg-white/10 hover:bg-white/20 text-white'
+                            ? 'border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 font-semibold shadow-xs'
+                            : 'bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-xs'
                         }
                         onClick={() => toggleOptimization(item.id)}
                       >
                         {done ? (
                           <>
-                            <Check className="mr-1 size-3.5 text-emerald-400" />
+                            <Check className="mr-1 size-3.5 text-emerald-600 dark:text-emerald-400" />
                             Applied
                           </>
                         ) : (
@@ -458,10 +452,10 @@ export function OptimizationView({
 
       {/* GitOps PR Synthesis Modal */}
       <Dialog open={gitopsOpen} onOpenChange={setGitopsOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-card text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border border-border bg-card text-foreground shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <GitBranch className="size-4 text-sky-400" />
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <GitBranch className="size-4 text-sky-600 dark:text-sky-400" />
               Autonomous GitOps Pull Request
             </DialogTitle>
             <DialogDescription>
@@ -470,27 +464,27 @@ export function OptimizationView({
           </DialogHeader>
           {gitopsLoading ? (
             <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <Loader2 className="size-8 animate-spin text-sky-400" />
-              <span className="text-xs text-muted-foreground">Synthesizing Terraform HCL diff & creating Git branch...</span>
+              <Loader2 className="size-8 animate-spin text-sky-600 dark:text-sky-400" />
+              <span className="text-xs text-muted-foreground font-medium">Synthesizing Terraform HCL diff & creating Git branch...</span>
             </div>
           ) : gitopsPackage ? (
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
-                  <span className="text-[11px] text-muted-foreground">Branch</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-sky-300 truncate">
+                <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+                  <span className="text-[11px] font-medium text-muted-foreground">Branch</span>
+                  <div className="mt-1 font-mono text-xs font-semibold text-sky-700 dark:text-sky-300 truncate">
                     {gitopsPackage.branch_name}
                   </div>
                 </div>
-                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
-                  <span className="text-[11px] text-muted-foreground">Repository</span>
+                <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+                  <span className="text-[11px] font-medium text-muted-foreground">Repository</span>
                   <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
                     {gitopsPackage.repo_name}
                   </div>
                 </div>
-                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
-                  <span className="text-[11px] text-emerald-300">Net Monthly Savings</span>
-                  <div className="mt-1 text-xs font-bold text-emerald-300 font-mono">
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 shadow-xs">
+                  <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Net Monthly Savings</span>
+                  <div className="mt-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 font-mono">
                     {formatCurrency(gitopsPackage.total_monthly_savings || gitopsPackage.monthly_savings, currency)}/mo
                   </div>
                 </div>
@@ -498,7 +492,7 @@ export function OptimizationView({
 
               <div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                  <span className="flex items-center gap-1"><FileCode className="size-3.5 text-sky-400" /> Terraform HCL Diff</span>
+                  <span className="flex items-center gap-1 font-medium"><FileCode className="size-3.5 text-sky-600 dark:text-sky-400" /> Terraform HCL Diff</span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -509,18 +503,18 @@ export function OptimizationView({
                       setTimeout(() => setGitopsCopied(false), 2000)
                     }}
                   >
-                    {gitopsCopied ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+                    {gitopsCopied ? <Check className="mr-1 size-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="mr-1 size-3" />}
                     {gitopsCopied ? 'Copied' : 'Copy Diff'}
                   </Button>
                 </div>
-                <pre className="max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3.5 font-mono text-xs text-emerald-300">
+                <pre className="max-h-60 overflow-auto rounded-xl border border-border bg-slate-950 p-3.5 font-mono text-xs text-emerald-400 shadow-inner">
                   {gitopsPackage.diff || '# No HCL diff required'}
                 </pre>
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
                 <span className="text-xs text-muted-foreground">
-                  Target: <span className="font-mono text-foreground">{gitopsPackage.target_branch || 'main'}</span>
+                  Target: <span className="font-mono text-foreground font-semibold">{gitopsPackage.target_branch || 'main'}</span>
                 </span>
                 <div className="flex items-center gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setGitopsOpen(false)}>Close</Button>
@@ -529,7 +523,7 @@ export function OptimizationView({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button size="sm" className="w-full sm:w-auto bg-sky-400 text-slate-950 hover:bg-sky-300 font-medium">
+                    <Button size="sm" className="w-full sm:w-auto bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-xs">
                       <ExternalLink className="mr-1.5 size-3.5" />View on GitHub
                     </Button>
                   </a>
@@ -545,10 +539,10 @@ export function OptimizationView({
       </Dialog>
 
       <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
-        <DialogContent className="border-white/10 bg-card text-foreground sm:max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogContent className="border border-border bg-card text-foreground sm:max-w-md max-h-[85vh] overflow-y-auto shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Bell className="size-4 text-sky-400" />
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Bell className="size-4 text-sky-600 dark:text-sky-400" />
               Broadcast FinOps Fleet Digest
             </DialogTitle>
             <DialogDescription>
@@ -556,19 +550,19 @@ export function OptimizationView({
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
-            <div className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs">
-              <div className="font-semibold text-muted-foreground">Digest Payload Preview:</div>
-              <div className="mt-1.5 flex justify-between"><span>Optimizations:</span><b>{items.length} opportunities</b></div>
-              <div className="mt-1 flex justify-between"><span>Recoverable Savings:</span><b className="text-emerald-300 font-mono">{formatCurrency(items.reduce((s: number, i: any) => s + Number(i.savings ?? 0), 0), currency)}/mo</b></div>
-              <div className="mt-1 flex justify-between"><span>Interactive Buttons:</span><span className="text-sky-300">🚀 Batch PR, ⏰ Snooze</span></div>
+            <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs space-y-1.5 shadow-xs">
+              <div className="font-semibold text-foreground">Digest Payload Preview:</div>
+              <div className="flex justify-between text-muted-foreground"><span>Optimizations:</span><b className="text-foreground">{items.length} opportunities</b></div>
+              <div className="flex justify-between text-muted-foreground"><span>Recoverable Savings:</span><b className="text-emerald-700 dark:text-emerald-300 font-mono font-bold">{formatCurrency(items.reduce((s: number, i: any) => s + Number(i.savings ?? 0), 0), currency)}/mo</b></div>
+              <div className="flex justify-between text-muted-foreground"><span>Interactive Buttons:</span><span className="text-sky-700 dark:text-sky-300 font-medium">🚀 Batch PR, ⏰ Snooze</span></div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Select Destination Platform:</label>
+              <label className="text-xs font-medium text-muted-foreground">Select Destination Platform:</label>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant={broadcastTarget === 'slack' ? 'default' : 'outline'}
-                  className={broadcastTarget === 'slack' ? 'bg-sky-500 text-slate-950 hover:bg-sky-400' : 'border-white/10 bg-white/5'}
+                  className={broadcastTarget === 'slack' ? 'bg-sky-600 text-white hover:bg-sky-500 font-medium shadow-xs' : 'border-border bg-card hover:bg-muted'}
                   onClick={() => setBroadcastTarget('slack')}
                 >
                   Slack (Block Kit)
@@ -576,7 +570,7 @@ export function OptimizationView({
                 <Button
                   type="button"
                   variant={broadcastTarget === 'teams' ? 'default' : 'outline'}
-                  className={broadcastTarget === 'teams' ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'border-white/10 bg-white/5'}
+                  className={broadcastTarget === 'teams' ? 'bg-indigo-600 text-white hover:bg-indigo-500 font-medium shadow-xs' : 'border-border bg-card hover:bg-muted'}
                   onClick={() => setBroadcastTarget('teams')}
                 >
                   Microsoft Teams
@@ -584,7 +578,7 @@ export function OptimizationView({
               </div>
             </div>
             {broadcastResult && (
-              <div className={`rounded-lg p-3 text-xs ${broadcastResult.startsWith('✅') ? 'bg-emerald-400/10 text-emerald-300 border border-emerald-400/20' : 'bg-rose-400/10 text-rose-300 border border-rose-400/20'}`}>
+              <div className={`rounded-xl p-3 text-xs ${broadcastResult.startsWith('✅') ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/10 text-rose-800 dark:text-rose-300 border border-rose-500/30'}`}>
                 {broadcastResult}
               </div>
             )}
@@ -592,7 +586,7 @@ export function OptimizationView({
               <Button variant="ghost" size="sm" onClick={() => setBroadcastOpen(false)}>Cancel</Button>
               <Button
                 size="sm"
-                className="bg-sky-400 text-slate-950 hover:bg-sky-300 font-semibold"
+                className="bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-xs"
                 disabled={broadcasting}
                 onClick={async () => {
                   setBroadcasting(true)

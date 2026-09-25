@@ -142,7 +142,7 @@ export function ConnectModal({ open, onOpenChange, onSuccess, initialProfile, ap
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-white/10 bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="border-border bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
         <DialogHeader>
           <DialogTitle>Connect a cloud account</DialogTitle>
           <DialogDescription>Give CloudPulse read-only access to start syncing your infrastructure.</DialogDescription>
@@ -152,7 +152,7 @@ export function ConnectModal({ open, onOpenChange, onSuccess, initialProfile, ap
             <label className="text-sm">
               Cloud provider
               <Select value={cloud} onValueChange={(value) => setCloud(value ?? 'AWS')}>
-                <SelectTrigger className="mt-2 w-full border-white/10 bg-white/5">
+                <SelectTrigger className="mt-2 w-full border-border bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -165,7 +165,7 @@ export function ConnectModal({ open, onOpenChange, onSuccess, initialProfile, ap
             <label className="text-sm">
               Auth method
               <Select value={authMethod} onValueChange={(value) => setAuthMethod(value ?? 'learner_lab')}>
-                <SelectTrigger className="mt-2 w-full border-white/10 bg-white/5">
+                <SelectTrigger className="mt-2 w-full border-border bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -178,43 +178,43 @@ export function ConnectModal({ open, onOpenChange, onSuccess, initialProfile, ap
           </div>
           <label className="text-sm">
             Account name
-            <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Acme production" className="mt-2 border-white/10 bg-white/5" />
+            <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Acme production" className="mt-2 border-border bg-background" />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm">
               Access key
-              <Input value={accessKey} onChange={(e) => setAccessKey(e.target.value)} placeholder="AKIA..." className="mt-2 border-white/10 bg-white/5" />
+              <Input value={accessKey} onChange={(e) => setAccessKey(e.target.value)} placeholder="AKIA..." className="mt-2 border-border bg-background" />
             </label>
             <label className="text-sm">
               Secret key
-              <Input value={secretKey} onChange={(e) => setSecretKey(e.target.value)} placeholder="••••••••••••••••" type="password" className="mt-2 border-white/10 bg-white/5" />
+              <Input value={secretKey} onChange={(e) => setSecretKey(e.target.value)} placeholder="••••••••••••••••" type="password" className="mt-2 border-border bg-background" />
             </label>
           </div>
           <label className="text-sm">
             Session token
-            <Input value={sessionToken} onChange={(e) => setSessionToken(e.target.value)} placeholder="Temporary session token" className="mt-2 border-white/10 bg-white/5" />
+            <Input value={sessionToken} onChange={(e) => setSessionToken(e.target.value)} placeholder="Temporary session token" className="mt-2 border-border bg-background" />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm">
               IAM Role ARN / Identifier
-              <Input value={roleArn} onChange={(e) => setRoleArn(e.target.value)} placeholder="arn:aws:iam::123456789:role/CloudPulseReadOnly" className="mt-2 border-white/10 bg-white/5" />
+              <Input value={roleArn} onChange={(e) => setRoleArn(e.target.value)} placeholder="arn:aws:iam::123456789:role/CloudPulseReadOnly" className="mt-2 border-border bg-background" />
             </label>
             <label className="text-sm">
               Region
-              <Input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="us-east-1" className="mt-2 border-white/10 bg-white/5" />
+              <Input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="us-east-1" className="mt-2 border-border bg-background" />
             </label>
           </div>
           {error && (
-            <div className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
           {success && (
-            <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
               {success}
             </div>
           )}
-          <Button onClick={connect} disabled={loading} className="mt-2 bg-sky-400 text-slate-950 hover:bg-sky-300 font-semibold">
+          <Button onClick={connect} disabled={loading} className="mt-2 bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold shadow-xs">
             {loading ? <><RefreshCw className="animate-spin mr-1.5 size-4" />Testing connection...</> : 'Connect Account'}
           </Button>
         </div>

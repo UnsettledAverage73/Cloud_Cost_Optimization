@@ -274,9 +274,9 @@ export function CommandPaletteModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 border-white/10 bg-popover/95 backdrop-blur-xl sm:max-w-xl overflow-hidden shadow-2xl">
-        <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-          <Search className="size-4 text-sky-400 shrink-0" />
+      <DialogContent className="p-0 border-border bg-card backdrop-blur-xl sm:max-w-xl overflow-hidden shadow-2xl">
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <Search className="size-4 text-sky-600 dark:text-sky-400 shrink-0" />
           <input
             type="text"
             value={query}
@@ -286,7 +286,7 @@ export function CommandPaletteModal({
             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             autoFocus
           />
-          <Badge variant="outline" className="border-white/10 text-[10px] font-mono text-muted-foreground">
+          <Badge variant="outline" className="border-border text-[10px] font-mono text-muted-foreground">
             ESC
           </Badge>
         </div>
@@ -306,13 +306,13 @@ export function CommandPaletteModal({
                   onClick={() => item.action()}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors duration-150 ${
-                    isSelected ? 'bg-sky-500/15 text-sky-200 border border-sky-500/30' : 'text-muted-foreground hover:bg-white/5'
+                    isSelected ? 'bg-sky-50 dark:bg-sky-500/15 text-sky-800 dark:text-sky-200 border border-sky-200 dark:border-sky-500/30' : 'text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
                       className={`flex size-7 items-center justify-center rounded-md shrink-0 ${
-                        isSelected ? 'bg-sky-500/20 text-sky-400' : 'bg-white/5 text-muted-foreground'
+                        isSelected ? 'bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-400' : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       <Icon className="size-3.5" />
@@ -321,7 +321,7 @@ export function CommandPaletteModal({
                       <div className="font-medium text-foreground tracking-tight flex items-center gap-2 truncate">
                         {item.title}
                         {item.category === 'Quick Actions' && (
-                          <span className="text-[10px] rounded px-1.5 py-0.2 bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
+                          <span className="text-[10px] rounded px-1.5 py-0.2 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/20 font-mono">
                             Action
                           </span>
                         )}
@@ -333,7 +333,7 @@ export function CommandPaletteModal({
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0 pl-2">
                     <span className="text-[10px] font-mono text-muted-foreground/60">{item.category}</span>
-                    {isSelected && <ArrowRight className="size-3 text-sky-400" />}
+                    {isSelected && <ArrowRight className="size-3 text-sky-600 dark:text-sky-400" />}
                   </div>
                 </div>
               )
@@ -341,13 +341,13 @@ export function CommandPaletteModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-white/8 px-4 py-2 bg-white/[0.02] text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-border px-4 py-2 bg-muted/30 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-3">
-            <span>Use <kbd className="rounded border border-white/15 bg-white/5 px-1 py-0.5 font-mono text-[10px]">↑</kbd> <kbd className="rounded border border-white/15 bg-white/5 px-1 py-0.5 font-mono text-[10px]">↓</kbd> to navigate</span>
-            <span><kbd className="rounded border border-white/15 bg-white/5 px-1 py-0.5 font-mono text-[10px]">↵</kbd> to select</span>
+            <span>Use <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-foreground">↑</kbd> <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-foreground">↓</kbd> to navigate</span>
+            <span><kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-foreground">↵</kbd> to select</span>
           </div>
           <div className="flex items-center gap-1">
-            <Command className="size-3 text-sky-400" />
+            <Command className="size-3 text-sky-600 dark:text-sky-400" />
             <span>CloudPulse Spotlight</span>
           </div>
         </div>

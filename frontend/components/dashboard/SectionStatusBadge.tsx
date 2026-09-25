@@ -22,22 +22,22 @@ export function getSectionStatusLabel(status: SyncState): string {
 export const SectionStatusBadge = memo(function SectionStatusBadge({ status }: SectionStatusBadgeProps) {
   const classes =
     status === 'ready'
-      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 shadow-[0_0_10px_-2px_rgba(16,185,129,0.25)]'
+      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shadow-xs'
       : status === 'partial'
-        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300 shadow-[0_0_10px_-2px_rgba(245,158,11,0.25)]'
+        ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 shadow-xs'
         : status === 'error'
-          ? 'border-red-500/30 bg-red-500/10 text-red-300 shadow-[0_0_10px_-2px_rgba(239,68,68,0.25)]'
-          : 'border-slate-500/30 bg-slate-500/10 text-slate-300'
+          ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300 shadow-xs'
+          : 'border-border bg-muted text-muted-foreground'
 
   const dot =
     status === 'loading'
-      ? 'bg-amber-400'
+      ? 'bg-amber-500'
       : status === 'ready'
-        ? 'bg-emerald-400'
+        ? 'bg-emerald-500'
         : status === 'partial'
-          ? 'bg-amber-400'
+          ? 'bg-amber-500'
           : status === 'error'
-            ? 'bg-red-400'
+            ? 'bg-red-500'
             : 'bg-slate-400'
 
   return (

@@ -61,10 +61,19 @@ export function Ec2MonitoringGrid({
   const curPktsOut = latestPoint?.packets_out ?? 0;
   const curCredits = latestPoint?.cpu_credits ?? 144.0;
 
+  const tooltipStyle = {
+    backgroundColor: 'var(--card)',
+    borderColor: 'var(--border)',
+    color: 'var(--card-foreground)',
+    fontSize: '11px',
+    borderRadius: '8px',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+  };
+
   return (
     <div className="space-y-4">
       {/* Real-Time Monitoring Header & Controls */}
-      <div className={`flex flex-col gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:flex-row sm:items-center sm:justify-between ${inDrawer ? 'text-xs' : ''}`}>
+      <div className={`flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between shadow-xs ${inDrawer ? 'text-xs' : ''}`}>
         <div className="flex items-center gap-2.5">
           <div className="relative flex size-2.5 shrink-0">
             {isLive ? (
@@ -83,10 +92,10 @@ export function Ec2MonitoringGrid({
               </span>
               <Badge
                 variant="outline"
-                className={`text-[9px] px-1.5 py-0 font-mono ${
+                className={`text-[9px] px-1.5 py-0 font-mono font-medium ${
                   connectionMode === 'websocket'
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
                 }`}
               >
                 {connectionMode === 'websocket' ? 'LIVE STREAM (2s)' : 'FALLBACK POLLING'}
@@ -94,7 +103,7 @@ export function Ec2MonitoringGrid({
             </div>
             {!inDrawer && (
               <p className="text-[11px] text-muted-foreground truncate">
-                Instance: <span className="font-mono text-cyan-300">{instanceId}</span> ({instanceName} • {instanceType})
+                Instance: <span className="font-mono text-sky-700 dark:text-cyan-300 font-semibold">{instanceId}</span> ({instanceName} • {instanceType})
               </p>
             )}
           </div>
@@ -105,9 +114,9 @@ export function Ec2MonitoringGrid({
           {/* Agent Deployment Hub Button */}
           <button
             onClick={() => setAgentModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/15 hover:bg-cyan-500/25 px-2.5 py-1 text-[10px] font-semibold text-cyan-200 transition-all shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+            className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 text-[10px] font-semibold text-sky-700 dark:text-cyan-200 transition-all shadow-xs"
           >
-            <Zap className="size-3 text-cyan-400 animate-pulse" />
+            <Zap className="size-3 text-sky-600 dark:text-cyan-400 animate-pulse" />
             <span>⚡️ Real-Time Agent Hub</span>
           </button>
 
@@ -116,25 +125,25 @@ export function Ec2MonitoringGrid({
             onClick={() => setCwAgentEnabled(!cwAgentEnabled)}
             className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors ${
               cwAgentEnabled
-                ? 'border-purple-500/40 bg-purple-500/15 text-purple-300'
-                : 'border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10'
+                ? 'border-purple-500/40 bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            <Layers className="size-3 text-purple-400" />
+            <Layers className="size-3 text-purple-600 dark:text-purple-400" />
             <span>In-Guest CWAgent</span>
-            <span className={`size-1.5 rounded-full ${cwAgentEnabled ? 'bg-purple-400' : 'bg-white/30'}`} />
+            <span className={`size-1.5 rounded-full ${cwAgentEnabled ? 'bg-purple-500' : 'bg-muted-foreground/40'}`} />
           </button>
 
           {/* Timeframe Presets */}
-          <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
+          <div className="flex items-center rounded-lg border border-border bg-muted/50 p-0.5 shadow-xs">
             {timeframes.map((tf) => (
               <button
                 key={tf}
                 onClick={() => setTimeframe(tf)}
                 className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                   timeframe === tf
-                    ? 'bg-cyan-500 text-slate-950 font-semibold shadow-sm'
-                    : 'text-muted-foreground hover:text-white'
+                    ? 'bg-sky-600 text-white font-semibold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {tf}
@@ -148,28 +157,28 @@ export function Ec2MonitoringGrid({
       <div className={inDrawer ? "grid grid-cols-1 sm:grid-cols-2 gap-2.5" : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"}>
 
         {/* CARD 1: CPU Utilization (%) */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Cpu className="size-3.5 text-cyan-400" />
+              <Cpu className="size-3.5 text-sky-600 dark:text-cyan-400" />
               1. CPU Utilization
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-cyan-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-sky-700 dark:text-cyan-300">
               {curCpu.toFixed(1)}%
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Path A: Hypervisor</span>
             {curCpu < 5.0 ? (
-              <span className="font-semibold text-amber-400 flex items-center gap-1">
+              <span className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                 <AlertTriangle className="size-2.5" /> Idle Waste (&lt;5%)
               </span>
             ) : curCpu > 80.0 ? (
-              <span className="font-semibold text-red-400 flex items-center gap-1">
+              <span className="font-semibold text-red-600 dark:text-red-400 flex items-center gap-1">
                 <AlertTriangle className="size-2.5" /> High Load (&gt;80%)
               </span>
             ) : (
-              <span className="text-emerald-400 font-medium">Optimal</span>
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">Optimal</span>
             )}
           </div>
           <CardContent className="h-28 p-1 pt-0">
@@ -177,37 +186,37 @@ export function Ec2MonitoringGrid({
               <AreaChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                 <defs>
                   <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                    <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#0284c7" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                 <XAxis dataKey="timestamp" hide />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#64748b" />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                  contentStyle={tooltipStyle}
                   formatter={(val: any) => [`${val}%`, 'CPU Utilization']}
                 />
-                <Area type="monotone" dataKey="cpu" stroke="#06b6d4" strokeWidth={2} fill="url(#cpuGrad)" isAnimationActive={false} />
+                <Area type="monotone" dataKey="cpu" stroke="#0284c7" strokeWidth={2} fill="url(#cpuGrad)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         {/* CARD 2: Memory Utilization (%) */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Activity className="size-3.5 text-purple-400" />
+              <Activity className="size-3.5 text-purple-600 dark:text-purple-400" />
               2. Memory Utilization
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-purple-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-purple-700 dark:text-purple-300">
               {cwAgentEnabled ? `${curMem.toFixed(1)}%` : 'N/A'}
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Path B: In-Guest CWAgent</span>
-            <span className={cwAgentEnabled ? 'text-purple-400' : 'text-amber-400'}>
+            <span className={cwAgentEnabled ? 'text-purple-700 dark:text-purple-400 font-medium' : 'text-amber-600 dark:text-amber-400'}>
               {cwAgentEnabled ? 'In-Guest Active' : 'Agent Disabled'}
             </span>
           </div>
@@ -217,23 +226,23 @@ export function Ec2MonitoringGrid({
                 <AreaChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                   <defs>
                     <linearGradient id="memGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#a855f7" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                   <XAxis dataKey="timestamp" hide />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#64748b" />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                    contentStyle={tooltipStyle}
                     formatter={(val: any) => [`${val}%`, 'RAM Used']}
                   />
-                  <Area type="monotone" dataKey="mem" stroke="#a855f7" strokeWidth={2} fill="url(#memGrad)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="mem" stroke="#8b5cf6" strokeWidth={2} fill="url(#memGrad)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-2 text-center text-[11px] text-muted-foreground">
-                <span className="font-semibold text-white/80">Hypervisor Isolation</span>
+                <span className="font-semibold text-foreground">Hypervisor Isolation</span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">Toggle CWAgent above to view RAM</span>
               </div>
             )}
@@ -241,22 +250,22 @@ export function Ec2MonitoringGrid({
         </Card>
 
         {/* CARD 3: Disk Space Used (%) */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <HardDrive className="size-3.5 text-amber-400" />
+              <HardDrive className="size-3.5 text-amber-600 dark:text-amber-400" />
               3. Disk Space Used
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-amber-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-amber-700 dark:text-amber-300">
               {cwAgentEnabled ? `${curDisk.toFixed(1)}%` : 'N/A'}
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Path B: Root Volume /</span>
             {curDisk > 85.0 ? (
-              <span className="font-semibold text-red-400">Expand Warning (&gt;85%)</span>
+              <span className="font-semibold text-red-600 dark:text-red-400">Expand Warning (&gt;85%)</span>
             ) : (
-              <span className="text-emerald-400">Healthy</span>
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">Healthy</span>
             )}
           </div>
           <CardContent className="h-28 p-1 pt-0">
@@ -265,15 +274,15 @@ export function Ec2MonitoringGrid({
                 <AreaChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                   <defs>
                     <linearGradient id="diskGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
                       <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                   <XAxis dataKey="timestamp" hide />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#64748b" />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                    contentStyle={tooltipStyle}
                     formatter={(val: any) => [`${val}%`, 'Disk Space']}
                   />
                   <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={2} fill="url(#diskGrad)" isAnimationActive={false} />
@@ -281,67 +290,67 @@ export function Ec2MonitoringGrid({
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-2 text-center text-[11px] text-muted-foreground">
-                <span className="font-semibold text-white/80">In-Guest FS Metrics</span>
-                <span className="text-[10px] text-muted-foreground mt-0.5">Toggle CWAgent to view mounts</span>
+                <span className="font-semibold text-foreground">Storage Virtualization</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5">Toggle CWAgent above for root mount</span>
               </div>
             )}
           </CardContent>
         </Card>
 
         {/* CARD 4: Network In (Bytes) */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Network className="size-3.5 text-blue-400" />
+              <Network className="size-3.5 text-blue-600 dark:text-blue-400" />
               4. Network In
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-blue-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-blue-700 dark:text-blue-300">
               {formatBytes(curNetIn)}/s
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Path A: EC2 Hypervisor</span>
-            <span className="text-cyan-400">Ingress B/s</span>
+            <span className="text-sky-700 dark:text-cyan-400 font-medium">Ingress B/s</span>
           </div>
           <CardContent className="h-28 p-1 pt-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                 <XAxis dataKey="timestamp" hide />
                 <YAxis tick={{ fontSize: 9 }} stroke="#64748b" tickFormatter={(v) => formatBytes(v)} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                  contentStyle={tooltipStyle}
                   formatter={(val: any) => [`${formatBytes(val)}/s`, 'Network In']}
                 />
-                <Line type="monotone" dataKey="net_in_bytes" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="net_in_bytes" stroke="#0284c7" strokeWidth={2} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         {/* CARD 5: Network Out (Bytes) */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Network className="size-3.5 text-indigo-400" />
+              <Network className="size-3.5 text-indigo-600 dark:text-indigo-400" />
               5. Network Out
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-indigo-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-indigo-700 dark:text-indigo-300">
               {formatBytes(curNetOut)}/s
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Path A: EC2 Hypervisor</span>
-            <span className="text-indigo-400">Egress Egress B/s</span>
+            <span className="text-indigo-700 dark:text-indigo-400 font-medium">Egress B/s</span>
           </div>
           <CardContent className="h-28 p-1 pt-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                 <XAxis dataKey="timestamp" hide />
                 <YAxis tick={{ fontSize: 9 }} stroke="#64748b" tickFormatter={(v) => formatBytes(v)} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                  contentStyle={tooltipStyle}
                   formatter={(val: any) => [`${formatBytes(val)}/s`, 'Network Out']}
                 />
                 <Line type="monotone" dataKey="net_out_bytes" stroke="#6366f1" strokeWidth={2} dot={false} isAnimationActive={false} />
@@ -351,28 +360,28 @@ export function Ec2MonitoringGrid({
         </Card>
 
         {/* CARD 6: Network Packets In */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Radio className="size-3.5 text-emerald-400" />
+              <Radio className="size-3.5 text-emerald-600 dark:text-emerald-400" />
               6. Network Packets In
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-emerald-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300">
               {curPktsIn.toLocaleString()} p/s
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>DDoS / Flood Baseline</span>
-            <span className="text-emerald-400">Normal</span>
+            <span className="text-emerald-700 dark:text-emerald-400 font-medium">Normal</span>
           </div>
           <CardContent className="h-28 p-1 pt-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                 <XAxis dataKey="timestamp" hide />
                 <YAxis tick={{ fontSize: 9 }} stroke="#64748b" />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                  contentStyle={tooltipStyle}
                   formatter={(val: any) => [`${val} p/s`, 'Packets In']}
                 />
                 <Bar dataKey="packets_in" fill="#10b981" radius={[2, 2, 0, 0]} isAnimationActive={false} />
@@ -382,28 +391,28 @@ export function Ec2MonitoringGrid({
         </Card>
 
         {/* CARD 7: Network Packets Out */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Radio className="size-3.5 text-teal-400" />
+              <Radio className="size-3.5 text-teal-600 dark:text-teal-400" />
               7. Network Packets Out
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-teal-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-teal-700 dark:text-teal-300">
               {curPktsOut.toLocaleString()} p/s
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Outbound Packets</span>
-            <span className="text-teal-400">Normal</span>
+            <span className="text-teal-700 dark:text-teal-400 font-medium">Normal</span>
           </div>
           <CardContent className="h-28 p-1 pt-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                 <XAxis dataKey="timestamp" hide />
                 <YAxis tick={{ fontSize: 9 }} stroke="#64748b" />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                  contentStyle={tooltipStyle}
                   formatter={(val: any) => [`${val} p/s`, 'Packets Out']}
                 />
                 <Bar dataKey="packets_out" fill="#14b8a6" radius={[2, 2, 0, 0]} isAnimationActive={false} />
@@ -413,30 +422,30 @@ export function Ec2MonitoringGrid({
         </Card>
 
         {/* CARD 8: CPU Credit Balance */}
-        <Card className="border-white/8 bg-card/60">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-3">
             <CardTitle className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Zap className="size-3.5 text-pink-400" />
+              <Zap className="size-3.5 text-pink-600 dark:text-pink-400" />
               8. CPU Credit Balance
             </CardTitle>
-            <div className="flex items-center gap-1 font-mono text-xs font-bold text-pink-300">
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-pink-700 dark:text-pink-300">
               {curCredits.toFixed(1)}
             </div>
           </CardHeader>
           <div className="px-3 pb-1 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Burstable (t2/t3/t4g)</span>
-            <span className={curCredits < 30 ? 'text-red-400 font-semibold' : 'text-emerald-400'}>
+            <span className={curCredits < 30 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-emerald-700 dark:text-emerald-400 font-medium'}>
               {curCredits < 30 ? 'Low Credits' : 'Healthy Balance'}
             </span>
           </div>
           <CardContent className="h-28 p-1 pt-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
                 <XAxis dataKey="timestamp" hide />
                 <YAxis domain={[0, 150]} tick={{ fontSize: 9 }} stroke="#64748b" />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px', borderRadius: '6px' }}
+                  contentStyle={tooltipStyle}
                   formatter={(val: any) => [`${val} credits`, 'Balance']}
                 />
                 <Line type="monotone" dataKey="cpu_credits" stroke="#ec4899" strokeWidth={2} dot={false} isAnimationActive={false} />

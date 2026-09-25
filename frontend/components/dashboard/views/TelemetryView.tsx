@@ -63,8 +63,8 @@ export function TelemetryView({
                 if (val) setSelectedInstId(val)
               }}
             >
-              <SelectTrigger className="w-56 border-white/10 bg-white/5 text-xs font-mono text-sky-300">
-                <Server className="size-3.5 mr-1 text-sky-400" />
+              <SelectTrigger className="w-56 border-border bg-card text-xs font-mono text-sky-700 dark:text-sky-300">
+                <Server className="size-3.5 mr-1 text-sky-600 dark:text-sky-400" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -88,7 +88,7 @@ export function TelemetryView({
       />
 
       {/* Fleet-Wide Aggregated Signals */}
-      <div className="mt-8 pt-6 border-t border-white/10 space-y-4">
+      <div className="mt-8 pt-6 border-t border-border space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Fleet-Wide Aggregated Telemetry</h3>
@@ -113,7 +113,7 @@ export function TelemetryView({
             ['Network traffic', 'network', 'MB/s', 'network'],
             ['Disk IOPS', 'iops', 'IOPS', 'bar'],
           ].map(([title, key, unit, kind]) => (
-            <Card key={title} className="border-white/8 bg-card/75 backdrop-blur-sm">
+            <Card key={title} className="border-border bg-card shadow-xs">
               <CardHeader className="flex-row items-center justify-between pb-2">
                 <div>
                   <CardTitle className="text-sm font-semibold">{title}</CardTitle>

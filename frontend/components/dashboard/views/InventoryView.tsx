@@ -49,7 +49,7 @@ export function InventoryView({
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
           <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" className="border-sky-500/30 text-sky-300 hover:bg-sky-500/10 text-xs">
+            <Button variant="outline" className="border-sky-500/30 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 text-xs font-medium">
               <Download className="mr-1.5 size-3.5" />Export Complete Cost & Inventory PDF
             </Button>
           </a>
@@ -62,11 +62,11 @@ export function InventoryView({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search instances, IDs, IPs, types..."
-            className="border-white/10 bg-white/5 pl-9 text-sm focus:border-sky-500/50"
+            className="border-border bg-card pl-9 text-sm focus:border-sky-500/50 shadow-xs"
           />
         </div>
         <Select value={status} onValueChange={(val) => setStatus(val ?? 'all')}>
-          <SelectTrigger className="w-full sm:w-40 border-white/10 bg-white/5 text-sm">
+          <SelectTrigger className="w-full sm:w-40 border-border bg-card text-sm shadow-xs">
             <SlidersHorizontal className="mr-2 size-3.5 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>
@@ -78,7 +78,7 @@ export function InventoryView({
           </SelectContent>
         </Select>
       </div>
-      <Card className="overflow-hidden border-white/8 bg-card/75 backdrop-blur-sm shadow-xl shadow-black/20">
+      <Card className="overflow-hidden border border-border bg-card shadow-xs">
         {sectionStatus === 'loading' ? (
           <TableSkeleton rows={6} cols={8} />
         ) : (!Array.isArray(filteredNodes) || filteredNodes.length === 0) ? (
@@ -109,15 +109,15 @@ export function InventoryView({
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="border-white/8 hover:bg-transparent">
+              <TableRow className="border-b border-border bg-muted/30 hover:bg-muted/30">
                 <TableHead className="w-10" />
-                <TableHead>Instance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Region</TableHead>
-                <TableHead>Public IP</TableHead>
-                <TableHead>Volumes</TableHead>
-                <TableHead className="text-right">Monthly cost</TableHead>
+                <TableHead className="font-semibold text-foreground">Instance</TableHead>
+                <TableHead className="font-semibold text-foreground">Status</TableHead>
+                <TableHead className="font-semibold text-foreground">Type</TableHead>
+                <TableHead className="font-semibold text-foreground">Region</TableHead>
+                <TableHead className="font-semibold text-foreground">Public IP</TableHead>
+                <TableHead className="font-semibold text-foreground">Volumes</TableHead>
+                <TableHead className="text-right font-semibold text-foreground">Monthly cost</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -126,18 +126,18 @@ export function InventoryView({
                 <TableRow
                   key={n.instance_id}
                   onClick={() => setSelectedNode(n)}
-                  className="cursor-pointer border-white/8 hover:bg-sky-500/[0.04] transition-colors duration-150"
+                  className="cursor-pointer border-b border-border hover:bg-muted/50 transition-colors duration-150"
                 >
                   <TableCell>
                     <input
                       type="checkbox"
                       aria-label={`Select ${n.name}`}
-                      className="accent-sky-400"
+                      className="accent-sky-600 rounded"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium text-foreground tracking-tight">{n.name}</div>
+                    <div className="font-semibold text-foreground tracking-tight">{n.name}</div>
                     <div className="font-mono text-[11px] text-muted-foreground">{n.instance_id}</div>
                   </TableCell>
                   <TableCell>
@@ -148,29 +148,29 @@ export function InventoryView({
                         )}
                         <span
                           className={`relative inline-flex rounded-full size-2 ${
-                            n.state === 'running' ? 'bg-emerald-400' : n.state === 'stopped' ? 'bg-amber-400' : 'bg-rose-400'
+                            n.state === 'running' ? 'bg-emerald-500' : n.state === 'stopped' ? 'bg-amber-500' : 'bg-rose-500'
                           }`}
                         />
                       </span>
-                      <span className={n.state === 'running' ? 'text-emerald-300 font-medium' : 'text-muted-foreground'}>
+                      <span className={n.state === 'running' ? 'text-emerald-700 dark:text-emerald-300 font-semibold' : 'text-muted-foreground'}>
                         {n.state}
                       </span>
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="border-sky-400/20 bg-sky-400/5 text-sky-300 font-mono text-[11px]">
+                    <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 font-mono text-[11px]">
                       {n.instance_type || n.type || '—'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{n.region}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground/90">{n.public_ip || '—'}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{n.volumes} attached</TableCell>
-                  <TableCell className="text-right font-mono text-xs font-semibold text-foreground">
+                  <TableCell className="text-xs text-muted-foreground font-medium">{n.region}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{n.public_ip || '—'}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-medium">{n.volumes} attached</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-foreground">
                     {formatCurrency(Number(n.cost), currency)}
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="icon" aria-label="More actions" onClick={(e) => e.stopPropagation()}>
-                      <MoreHorizontal className="size-4" />
+                      <MoreHorizontal className="size-4 text-muted-foreground" />
                     </Button>
                   </TableCell>
                 </TableRow>

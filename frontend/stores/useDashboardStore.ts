@@ -22,6 +22,18 @@ import type {
 export const PROFILE_STORAGE_KEY = 'cloudpulse_remembered_profile'
 export const CONNECTION_STORAGE_KEY = 'cloudpulse_connection'
 export const AUTOREFRESH_STORAGE_KEY = 'cloudpulse_auto_refresh'
+export const THEME_STORAGE_KEY = 'cloudpulse_theme'
+
+export function getStoredTheme(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY)
+    if (raw === null) return true // Default to white/light dashboard
+    return raw === 'light' || raw === 'true'
+  } catch {
+    return true
+  }
+}
 
 export function getStoredConnection(): ConnectionState | null {
   if (typeof window === 'undefined') return null
@@ -192,6 +204,7 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => {
   const initialAccounts = getStoredAccounts()
   const initialProfile = getStoredProfile()
   const initialAutoRefresh = getStoredAutoRefresh()
+  const initialTheme = getStoredTheme()
 
   return {
     // Navigation & UI Layout
@@ -201,8 +214,15 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => {
     setCollapsed: (collapsed) => set({ collapsed }),
     mobileNavOpen: false,
     setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
-    light: false,
-    setLight: (light) => set({ light }),
+    light: initialTheme,
+    setLight: (light) => {
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(THEME_STORAGE_KEY, light ? 'light' : 'dark')
+        } catch {}
+      }
+      set({ light })
+    },
     connectOpen: false,
     setConnectOpen: (connectOpen) => set({ connectOpen }),
 

@@ -153,46 +153,46 @@ export function InstanceDetailDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         className={cn(
-          "overflow-y-auto border-l border-white/10 bg-slate-950/95 p-0 backdrop-blur-2xl shadow-2xl transition-all duration-300",
+          "overflow-y-auto border-l border-border bg-card text-card-foreground p-0 shadow-2xl transition-all duration-300",
           isExpanded
             ? "!w-full sm:!max-w-[95vw] lg:!max-w-[90vw] xl:!max-w-7xl"
             : "!w-full sm:!max-w-2xl md:!max-w-3xl lg:!max-w-4xl"
         )}
       >
         {/* State Accent Top Bar */}
-        <div className={`h-1 w-full ${state === 'running' ? 'bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500' : 'bg-gradient-to-r from-amber-500 via-rose-500 to-amber-500'}`} />
+        <div className={`h-1 w-full ${state === 'running' ? 'bg-gradient-to-r from-emerald-500 via-sky-500 to-emerald-500' : 'bg-gradient-to-r from-amber-500 via-rose-500 to-amber-500'}`} />
 
         {/* Expand/Collapse Toggle Button next to sheet close button */}
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="absolute top-2.5 right-11 z-20 flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+          className="absolute top-2.5 right-11 z-20 flex size-7 items-center justify-center rounded-md border border-border bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           title={isExpanded ? "Collapse to Side Panel" : "Expand to Complete Tab"}
         >
-          {isExpanded ? <Minimize2 className="size-3.5 text-cyan-400" /> : <Maximize2 className="size-3.5 text-cyan-400" />}
+          {isExpanded ? <Minimize2 className="size-3.5 text-sky-600 dark:text-sky-400" /> : <Maximize2 className="size-3.5 text-sky-600 dark:text-sky-400" />}
         </button>
 
         <div className="p-5 sm:p-6 space-y-6">
           {/* HEADER SECTION */}
-          <SheetHeader className="pb-4 border-b border-white/10 space-y-3">
+          <SheetHeader className="pb-4 border-b border-border space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 ring-1 ring-cyan-500/30">
+                  <div className="flex size-9 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/30">
                     <Server className="size-5" />
                   </div>
                   <div>
-                    <SheetTitle className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                    <SheetTitle className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
                       {instanceName}
                     </SheetTitle>
                     <SheetDescription className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-                      <span className="font-mono text-cyan-300 font-semibold">{instanceId}</span>
+                      <span className="font-mono text-sky-600 dark:text-sky-400 font-semibold">{instanceId}</span>
                       <button
                         onClick={() => copyToClipboard(instanceId, 'header-id')}
-                        className="text-muted-foreground hover:text-white transition-colors"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
                         title="Copy Instance ID"
                       >
-                        {copiedKey === 'header-id' ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                        {copiedKey === 'header-id' ? <Check className="size-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3" />}
                       </button>
                     </SheetDescription>
                   </div>
@@ -202,28 +202,28 @@ export function InstanceDetailDrawer({
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <Badge variant="outline" className={`text-xs px-2 py-0.5 capitalize flex items-center gap-1.5 ${
                     state === 'running'
-                      ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'
-                      : 'border-amber-500/30 text-amber-400 bg-amber-500/10'
+                      ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
+                      : 'border-amber-500/30 text-amber-700 dark:text-amber-400 bg-amber-500/10'
                   }`}>
-                    <span className={`size-1.5 rounded-full ${state === 'running' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    <span className={`size-1.5 rounded-full ${state === 'running' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                     {state}
                   </Badge>
 
-                  <Badge variant="outline" className="text-xs px-2 py-0.5 text-cyan-300 border-cyan-500/30 bg-cyan-500/10 font-mono">
+                  <Badge variant="outline" className="text-xs px-2 py-0.5 text-sky-700 dark:text-sky-300 border-sky-500/30 bg-sky-500/10 font-mono">
                     {instanceType} ({specs.vcpu} vCPU • {specs.ram})
                   </Badge>
 
-                  <Badge variant="outline" className="text-xs px-2 py-0.5 text-slate-300 border-white/10 bg-white/5 font-sans flex items-center gap-1">
-                    <Globe className="size-3 text-cyan-400" />
+                  <Badge variant="outline" className="text-xs px-2 py-0.5 text-foreground border-border bg-muted/50 font-sans flex items-center gap-1">
+                    <Globe className="size-3 text-sky-600 dark:text-sky-400" />
                     {instance.region || 'us-east-1'} ({instance.availability_zone || 'us-east-1c'})
                   </Badge>
                 </div>
               </div>
 
               {/* Financial Box */}
-              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 text-right shrink-0 sm:min-w-44">
-                <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Estimated Run-Rate</div>
-                <div className="mt-0.5 text-xl font-bold font-mono text-white">
+              <div className="rounded-xl border border-border bg-muted/30 p-3 text-right shrink-0 sm:min-w-44 shadow-xs">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estimated Run-Rate</div>
+                <div className="mt-0.5 text-xl font-bold font-mono text-foreground">
                   {formatCost(cost)}<span className="text-xs font-normal text-muted-foreground">/mo</span>
                 </div>
                 <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
@@ -238,9 +238,9 @@ export function InstanceDetailDrawer({
                 variant="outline"
                 size="sm"
                 onClick={() => copyToClipboard(instanceId, 'bar-id')}
-                className="h-7 text-xs border-white/10 bg-white/5 text-muted-foreground hover:text-white"
+                className="h-7 text-xs border-border bg-muted/40 text-foreground hover:bg-muted"
               >
-                {copiedKey === 'bar-id' ? <Check className="size-3 mr-1.5 text-emerald-400" /> : <Copy className="size-3 mr-1.5" />}
+                {copiedKey === 'bar-id' ? <Check className="size-3 mr-1.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3 mr-1.5" />}
                 Copy ID
               </Button>
 
@@ -249,10 +249,10 @@ export function InstanceDetailDrawer({
                   variant="outline"
                   size="sm"
                   onClick={() => copyToClipboard(`ssh -i ~/.ssh/${instance.key_name || 'key'}.pem ubuntu@${instance.public_ip}`, 'bar-ssh')}
-                  className="h-7 text-xs border-white/10 bg-white/5 text-muted-foreground hover:text-white"
+                  className="h-7 text-xs border-border bg-muted/40 text-foreground hover:bg-muted"
                   title="Copy SSH Command (Remember: chmod 400 yourkey.pem)"
                 >
-                  <Terminal className="size-3 mr-1.5 text-cyan-400" />
+                  <Terminal className="size-3 mr-1.5 text-sky-600 dark:text-sky-400" />
                   {copiedKey === 'bar-ssh' ? 'SSH Copied!' : 'Copy SSH Command'}
                 </Button>
               )}
@@ -262,7 +262,7 @@ export function InstanceDetailDrawer({
                 size="sm"
                 disabled={prTriggering}
                 onClick={handleTriggerPr}
-                className="h-7 text-xs border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20"
+                className="h-7 text-xs border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20"
               >
                 {prTriggering ? <Loader2 className="size-3 mr-1.5 animate-spin" /> : <FileCode2 className="size-3 mr-1.5" />}
                 1-Click GitOps PR
@@ -272,15 +272,15 @@ export function InstanceDetailDrawer({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="h-7 text-xs border-cyan-500/20 bg-cyan-500/5 text-cyan-300 hover:bg-cyan-500/15"
+                className="h-7 text-xs border-border bg-muted/40 text-foreground hover:bg-muted"
                 title={isExpanded ? "Collapse to Side Panel" : "Expand to Complete Full Tab"}
               >
-                {isExpanded ? <Minimize2 className="size-3 mr-1.5" /> : <Maximize2 className="size-3 mr-1.5" />}
+                {isExpanded ? <Minimize2 className="size-3 mr-1.5 text-sky-600 dark:text-sky-400" /> : <Maximize2 className="size-3 mr-1.5 text-sky-600 dark:text-sky-400" />}
                 {isExpanded ? 'Side Panel' : 'Complete View'}
               </Button>
 
               {loading && (
-                <div className="ml-auto flex items-center gap-1.5 text-xs text-cyan-400 animate-pulse">
+                <div className="ml-auto flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 animate-pulse font-medium">
                   <Loader2 className="size-3.5 animate-spin" />
                   <span>Syncing live AWS metrics...</span>
                 </div>
@@ -289,12 +289,12 @@ export function InstanceDetailDrawer({
 
             {/* Inline Feedback Toast */}
             {feedback && (
-              <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-300 animate-in fade-in-50">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+              <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 animate-in fade-in-50">
+                <div className="flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   <span>{feedback}</span>
                 </div>
-                <button onClick={() => setFeedback(null)} className="text-muted-foreground hover:text-white">
+                <button onClick={() => setFeedback(null)} className="text-muted-foreground hover:text-foreground">
                   <X className="size-3.5" />
                 </button>
               </div>
@@ -303,12 +303,12 @@ export function InstanceDetailDrawer({
 
           {/* TABS CONTAINER */}
           <Tabs defaultValue="specs" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-white/5 border border-white/10 p-1 rounded-xl">
-              <TabsTrigger value="specs" className="text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950 font-medium">Overview</TabsTrigger>
-              <TabsTrigger value="network" className="text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950 font-medium">Network</TabsTrigger>
-              <TabsTrigger value="storage" className="text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950 font-medium">Storage</TabsTrigger>
-              <TabsTrigger value="telemetry" className="text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950 font-medium flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <TabsList className="grid w-full grid-cols-4 bg-muted/60 border border-border p-1 rounded-xl">
+              <TabsTrigger value="specs" className="text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm font-semibold">Overview</TabsTrigger>
+              <TabsTrigger value="network" className="text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm font-semibold">Network</TabsTrigger>
+              <TabsTrigger value="storage" className="text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm font-semibold">Storage</TabsTrigger>
+              <TabsTrigger value="telemetry" className="text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm font-semibold flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Telemetry
               </TabsTrigger>
             </TabsList>
@@ -317,39 +317,39 @@ export function InstanceDetailDrawer({
             <TabsContent value="specs" className="space-y-4 mt-4">
               {/* Top 4 KPI Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5 flex flex-col justify-between">
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                    <Cpu className="size-3.5 text-cyan-400 shrink-0" />
+                <div className="rounded-xl border border-border bg-card p-3.5 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
+                    <Cpu className="size-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                     <span className="truncate">vCPU Compute</span>
                   </div>
-                  <div className="mt-2 text-base font-bold font-mono text-white">{specs.vcpu} Cores</div>
+                  <div className="mt-2 text-base font-bold font-mono text-foreground">{specs.vcpu} Cores</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">{specs.baseline} Baseline</div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5 flex flex-col justify-between">
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                    <Layers className="size-3.5 text-purple-400 shrink-0" />
+                <div className="rounded-xl border border-border bg-card p-3.5 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
+                    <Layers className="size-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
                     <span className="truncate">Memory (RAM)</span>
                   </div>
-                  <div className="mt-2 text-base font-bold font-mono text-white">{specs.ram}</div>
+                  <div className="mt-2 text-base font-bold font-mono text-foreground">{specs.ram}</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5 truncate" title={specs.desc}>{specs.desc}</div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5 flex flex-col justify-between">
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                    <HardDrive className="size-3.5 text-amber-400 shrink-0" />
+                <div className="rounded-xl border border-border bg-card p-3.5 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
+                    <HardDrive className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                     <span className="truncate">EBS Storage</span>
                   </div>
-                  <div className="mt-2 text-base font-bold font-mono text-white">{instance.volumes || 1} Volume</div>
+                  <div className="mt-2 text-base font-bold font-mono text-foreground">{instance.volumes || 1} Volume</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">{instance.volumes_detail?.[0]?.volume_type || 'gp3'} Baseline</div>
                 </div>
 
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3.5 flex flex-col justify-between">
-                  <div className="flex items-center gap-1.5 text-emerald-400 text-xs">
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
                     <Sparkles className="size-3.5 shrink-0" />
                     <span className="truncate">FinOps Status</span>
                   </div>
-                  <div className="mt-2 text-base font-bold font-mono text-emerald-300">
+                  <div className="mt-2 text-base font-bold font-mono text-emerald-700 dark:text-emerald-300">
                     {cost > 50 ? 'Rightsize Ready' : 'Healthy'}
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">Save up to 40%</div>
@@ -375,16 +375,16 @@ export function InstanceDetailDrawer({
                   return (
                     <div
                       key={item.label}
-                      className="group flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-3.5 hover:border-white/15 hover:bg-white/[0.05] transition-colors"
+                      className="group flex items-center justify-between rounded-xl border border-border bg-card p-3.5 hover:border-border/90 hover:bg-muted/40 transition-colors shadow-xs"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-muted-foreground group-hover:text-cyan-400 group-hover:bg-cyan-500/10 transition-colors">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400 group-hover:bg-sky-500/10 transition-colors">
                           <Icon className="size-4" />
                         </div>
                         <div className="min-w-0 flex-1 pr-1">
                           <div className="text-[11px] font-medium text-muted-foreground">{item.label}</div>
                           <div
-                            className={`text-xs font-semibold text-white break-words mt-0.5 ${item.mono ? 'font-mono' : ''}`}
+                            className={`text-xs font-semibold text-foreground break-words mt-0.5 ${item.mono ? 'font-mono' : ''}`}
                             title={String(item.rawValue || item.value)}
                           >
                             {item.value}
@@ -394,10 +394,10 @@ export function InstanceDetailDrawer({
                       {item.copyKey && (
                         <button
                           onClick={() => copyToClipboard(String(item.value), item.copyKey!)}
-                          className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-white/10 shrink-0 ml-1 transition-colors"
+                          className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 ml-1 transition-colors"
                           title={`Copy ${item.label}`}
                         >
-                          {copiedKey === item.copyKey ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+                          {copiedKey === item.copyKey ? <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3.5" />}
                         </button>
                       )}
                     </div>
@@ -406,19 +406,19 @@ export function InstanceDetailDrawer({
               </div>
 
               {/* FinOps AI Recommendation Card */}
-              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/[0.06] p-4 space-y-2.5">
+              <div className="rounded-xl border border-sky-500/30 bg-sky-500/[0.08] p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-cyan-300">
-                    <Sparkles className="size-4 text-cyan-400" />
+                  <div className="flex items-center gap-2 text-xs font-bold text-sky-800 dark:text-sky-300">
+                    <Sparkles className="size-4 text-sky-600 dark:text-sky-400" />
                     <span>Autonomous Rightsizing & Graviton Modernization</span>
                   </div>
-                  <Badge variant="outline" className="border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-[10px] font-mono">
+                  <Badge variant="outline" className="border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-300 text-[10px] font-mono font-bold">
                     Save {formatCost(cost * 0.20)}/mo
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Migrating from <code className="font-mono text-cyan-200">{instanceType}</code> to AWS Graviton-powered{' '}
-                  <code className="font-mono text-emerald-300">{instanceType.startsWith('t') ? instanceType.replace('t3', 't4g') : 't4g.large'}</code>{' '}
+                  Migrating from <code className="font-mono text-sky-700 dark:text-cyan-200 font-semibold">{instanceType}</code> to AWS Graviton-powered{' '}
+                  <code className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">{instanceType.startsWith('t') ? instanceType.replace('t3', 't4g') : 't4g.large'}</code>{' '}
                   reduces compute cost by <b>20%</b> while providing higher single-thread IPC performance and 3000 baseline IOPS.
                 </p>
                 <div className="pt-1 flex items-center gap-2">
@@ -426,7 +426,7 @@ export function InstanceDetailDrawer({
                     size="sm"
                     disabled={prTriggering}
                     onClick={handleTriggerPr}
-                    className="bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-semibold text-xs h-7"
+                    className="bg-sky-600 text-white hover:bg-sky-500 font-semibold text-xs h-7 shadow-xs"
                   >
                     {prTriggering ? <Loader2 className="size-3 animate-spin mr-1.5" /> : <FileCode2 className="size-3 mr-1.5" />}
                     Open Remediation PR
@@ -444,20 +444,20 @@ export function InstanceDetailDrawer({
                   { label: 'VPC ID', value: instance.vpc_id || 'vpc-default', copyKey: 'vpc' },
                   { label: 'Subnet ID', value: instance.subnet_id || 'subnet-default', copyKey: 'subnet' },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-3.5 hover:border-white/15 transition-colors">
+                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-border bg-card p-3.5 hover:border-border/90 shadow-xs transition-colors">
                     <div className="min-w-0 flex-1">
                       <div className="text-[11px] font-medium text-muted-foreground">{item.label}</div>
-                      <div className={`mt-1 text-xs font-mono font-semibold break-all ${item.highlight ? 'text-cyan-300 font-bold' : 'text-white'}`}>
+                      <div className={`mt-1 text-xs font-mono font-semibold break-all ${item.highlight ? 'text-sky-600 dark:text-cyan-300 font-bold' : 'text-foreground'}`}>
                         {item.value}
                       </div>
                     </div>
                     {item.value !== 'None (Private Only)' && (
                       <button
                         onClick={() => copyToClipboard(item.value, item.copyKey)}
-                        className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-white/10 shrink-0 ml-2 transition-colors"
+                        className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 ml-2 transition-colors"
                         title={`Copy ${item.label}`}
                       >
-                        {copiedKey === item.copyKey ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+                        {copiedKey === item.copyKey ? <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3.5" />}
                       </button>
                     )}
                   </div>
@@ -465,10 +465,10 @@ export function InstanceDetailDrawer({
               </div>
 
               {/* Security Groups & Firewall Ingress */}
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
+              <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                    <Lock className="size-4 text-amber-400" />
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Lock className="size-4 text-amber-500" />
                     <span>Security Groups & Port Ingress</span>
                   </div>
                   <span className="text-[11px] text-muted-foreground font-mono">
@@ -490,17 +490,17 @@ export function InstanceDetailDrawer({
                       const isRevoking = revokingSg === sg.group_id;
 
                       return (
-                        <div key={sg.group_id || idx} className="rounded-xl border border-white/8 bg-black/30 p-3.5 sm:p-4 space-y-3">
+                        <div key={sg.group_id || idx} className="rounded-xl border border-border bg-muted/30 p-3.5 sm:p-4 space-y-3">
                           {/* Clean Header with Group ID and Group Name separated nicely without collision */}
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4 pb-2.5 border-b border-white/5">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4 pb-2.5 border-b border-border">
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="font-mono text-cyan-300 font-semibold text-xs shrink-0">{sg.group_id || 'sg-default'}</span>
+                              <span className="font-mono text-sky-700 dark:text-cyan-300 font-semibold text-xs shrink-0">{sg.group_id || 'sg-default'}</span>
                               <button
                                 onClick={() => copyToClipboard(sg.group_id, `sg-${idx}`)}
-                                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+                                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                                 title="Copy Security Group ID"
                               >
-                                {copiedKey === `sg-${idx}` ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                                {copiedKey === `sg-${idx}` ? <Check className="size-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3" />}
                               </button>
                             </div>
                             <div className="text-xs text-muted-foreground font-mono truncate max-w-sm" title={sg.group_name}>
@@ -513,17 +513,17 @@ export function InstanceDetailDrawer({
                             <div className="flex flex-wrap items-center gap-1.5">
                               {isExposed ? (
                                 <>
-                                  <span className="text-[11px] text-rose-400 font-medium flex items-center gap-1">
+                                  <span className="text-[11px] text-rose-700 dark:text-rose-400 font-semibold flex items-center gap-1">
                                     <ShieldAlert className="size-3.5" /> Public Ingress:
                                   </span>
                                   {ports.map((p: any) => (
-                                    <Badge key={p} variant="outline" className="text-[10px] px-1.5 py-0 font-mono border-rose-500/40 text-rose-300 bg-rose-500/10">
+                                    <Badge key={p} variant="outline" className="text-[10px] px-1.5 py-0 font-mono border-rose-500/40 text-rose-700 dark:text-rose-300 bg-rose-500/10">
                                       Port {p} ({p === 22 ? 'SSH' : p === 80 ? 'HTTP' : p === 443 ? 'HTTPS' : 'TCP'})
                                     </Badge>
                                   ))}
                                 </>
                               ) : (
-                                <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                                <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
                                   <ShieldCheck className="size-3.5" /> Strict Private Ingress (Protected)
                                 </span>
                               )}
@@ -560,17 +560,17 @@ export function InstanceDetailDrawer({
                 return vols.map((v: any, idx: number) => {
                   const isGp2 = (v.volume_type || '').toLowerCase() === 'gp2';
                   return (
-                    <div key={v.volume_id || idx} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                    <div key={v.volume_id || idx} className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-xs">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
-                          <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
+                          <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/20">
                             <HardDrive className="size-4" />
                           </div>
                           <div>
-                            <div className="text-xs font-bold font-mono text-white flex items-center gap-2">
+                            <div className="text-xs font-bold font-mono text-foreground flex items-center gap-2">
                               {v.volume_id}
-                              <button onClick={() => copyToClipboard(v.volume_id, `vol-${idx}`)} className="text-muted-foreground hover:text-white">
-                                {copiedKey === `vol-${idx}` ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                              <button onClick={() => copyToClipboard(v.volume_id, `vol-${idx}`)} className="text-muted-foreground hover:text-foreground">
+                                {copiedKey === `vol-${idx}` ? <Check className="size-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3" />}
                               </button>
                             </div>
                             <div className="text-[10px] text-muted-foreground">Root Attachment: /dev/sda1 (in-use)</div>
@@ -578,33 +578,33 @@ export function InstanceDetailDrawer({
                         </div>
 
                         <Badge variant="outline" className={`text-xs px-2 py-0.5 uppercase font-mono ${
-                          isGp2 ? 'border-amber-500/40 text-amber-400 bg-amber-500/10' : 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10'
+                          isGp2 ? 'border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10' : 'border-sky-500/40 text-sky-700 dark:text-sky-300 bg-sky-500/10'
                         }`}>
                           {v.volume_type || 'gp3'}
                         </Badge>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-white/5 text-xs">
-                        <div className="rounded-lg bg-black/20 p-2">
-                          <div className="text-[10px] text-muted-foreground">Volume Size</div>
-                          <div className="font-semibold font-mono text-white mt-0.5">{v.size_gb || 30} GiB</div>
+                      <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-border text-xs">
+                        <div className="rounded-lg bg-muted/40 p-2">
+                          <div className="text-[10px] text-muted-foreground font-medium">Volume Size</div>
+                          <div className="font-semibold font-mono text-foreground mt-0.5">{v.size_gb || 30} GiB</div>
                         </div>
-                        <div className="rounded-lg bg-black/20 p-2">
-                          <div className="text-[10px] text-muted-foreground">Baseline IOPS</div>
-                          <div className="font-semibold font-mono text-white mt-0.5">{v.iops || 3000}</div>
+                        <div className="rounded-lg bg-muted/40 p-2">
+                          <div className="text-[10px] text-muted-foreground font-medium">Baseline IOPS</div>
+                          <div className="font-semibold font-mono text-foreground mt-0.5">{v.iops || 3000}</div>
                         </div>
-                        <div className="rounded-lg bg-black/20 p-2">
-                          <div className="text-[10px] text-muted-foreground">Encryption</div>
-                          <div className={`font-semibold font-mono mt-0.5 ${v.encrypted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        <div className="rounded-lg bg-muted/40 p-2">
+                          <div className="text-[10px] text-muted-foreground font-medium">Encryption</div>
+                          <div className={`font-semibold font-mono mt-0.5 ${v.encrypted ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
                             {v.encrypted ? 'AES-256' : 'Disabled'}
                           </div>
                         </div>
                       </div>
 
                       {isGp2 && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.08] p-2.5 text-xs text-amber-300 flex items-center justify-between">
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
                           <span>💡 Upgrade gp2 ➔ gp3 to save 20% on storage and guarantee 3,000 baseline IOPS.</span>
-                          <Button size="sm" variant="outline" className="h-6 text-[10px] border-amber-500/40 text-amber-200">
+                          <Button size="sm" variant="outline" className="h-6 text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-200">
                             Upgrade gp3
                           </Button>
                         </div>
@@ -628,17 +628,17 @@ export function InstanceDetailDrawer({
           </Tabs>
 
           {/* FOOTER ACTIONS */}
-          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-white/10">
+          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-border">
             <Button
               variant="outline"
-              className="border-white/10 text-xs h-9 px-3 text-muted-foreground hover:text-white"
+              className="border-border text-xs h-9 px-3 text-muted-foreground hover:text-foreground"
               onClick={() => setIsExpanded(!isExpanded)}
             >
-              {isExpanded ? <Minimize2 className="size-3.5 mr-1.5 text-cyan-400" /> : <Maximize2 className="size-3.5 mr-1.5 text-cyan-400" />}
+              {isExpanded ? <Minimize2 className="size-3.5 mr-1.5 text-sky-600 dark:text-sky-400" /> : <Maximize2 className="size-3.5 mr-1.5 text-sky-600 dark:text-sky-400" />}
               {isExpanded ? "Side Panel" : "Complete Tab"}
             </Button>
             <Button
-              className="flex-1 bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-semibold h-9 shadow-md"
+              className="flex-1 bg-sky-600 text-white hover:bg-sky-500 text-xs font-semibold h-9 shadow-sm"
               onClick={() => {
                 onOpenChange(false);
                 if (onOpenFullTelemetry) onOpenFullTelemetry(instanceId);
@@ -647,7 +647,7 @@ export function InstanceDetailDrawer({
               <ExternalLink className="size-3.5 mr-1.5" />
               Open Full Fleet Telemetry Console
             </Button>
-            <Button variant="outline" className="border-white/10 text-xs h-9 px-4 text-muted-foreground hover:text-white" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" className="border-border text-xs h-9 px-4 text-muted-foreground hover:text-foreground" onClick={() => onOpenChange(false)}>
               Close
             </Button>
           </div>

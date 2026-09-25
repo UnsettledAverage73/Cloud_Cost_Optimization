@@ -85,13 +85,13 @@ export function OverviewView({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              className="border-sky-400/30 bg-sky-400/10 text-sky-300 hover:bg-sky-400/20"
+              className="border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 font-medium"
               onClick={() => setPovOpen(true)}
             >
               <FileText className="mr-2 size-4" />Executive PoV Audit
             </Button>
-            <Button variant="outline" onClick={() => setView('optimization')}>
-              <Sparkles className="mr-1.5 size-4" />View savings opportunities
+            <Button variant="outline" onClick={() => setView('optimization')} className="border-border">
+              <Sparkles className="mr-1.5 size-4 text-sky-600 dark:text-sky-400" />View savings opportunities
             </Button>
           </div>
         }
@@ -141,7 +141,7 @@ export function OverviewView({
       </div>
 
       <div className="mt-6">
-        <Card className="border-white/8 bg-card/75 backdrop-blur-sm">
+        <Card className="border border-border bg-card shadow-xs">
           <CardHeader>
             <CardTitle className="text-base font-semibold">Quick alerts</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Items needing your attention</p>
@@ -166,23 +166,23 @@ export function OverviewView({
                 const isEmerald = alert.tone === 'emerald'
                 const isCyan = alert.tone === 'cyan' || alert.tone === 'sky'
                 const toneBg = isRed
-                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30'
                   : isEmerald
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
                   : isCyan
-                  ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  ? 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30'
+                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
 
                 return (
                   <div
                     key={alert.id || alert.title || idx}
-                    className="group flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.02] p-3.5 transition-all duration-150 hover:bg-white/[.04] hover:border-white/15 hover:-translate-y-0.5"
+                    className="group flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3.5 transition-all duration-150 hover:bg-muted/60 hover:border-border/90 hover:-translate-y-0.5 shadow-xs"
                   >
                     <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border ${toneBg}`}>
                       <AlertTriangle className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-foreground tracking-tight group-hover:text-sky-300 transition-colors">
+                      <div className="text-sm font-semibold text-foreground tracking-tight group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors">
                         {alert.title || 'Untitled Alert'}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
@@ -190,7 +190,7 @@ export function OverviewView({
                       </div>
                     </div>
                     {alert.tag && (
-                      <Badge variant="outline" className="border-white/10 bg-white/5 text-[10px] shrink-0 font-mono">
+                      <Badge variant="outline" className="border-border bg-card text-[10px] shrink-0 font-mono text-muted-foreground shadow-xs">
                         {alert.tag}
                       </Badge>
                     )}
@@ -203,26 +203,26 @@ export function OverviewView({
       </div>
 
       {/* Proof-of-Value Highlight Dossier Card */}
-      <Card className="mt-6 border-sky-400/20 bg-gradient-to-r from-sky-950/40 via-card/75 to-card/75 backdrop-blur-sm">
+      <Card className="mt-6 border border-sky-500/30 bg-sky-500/[0.04] dark:bg-gradient-to-r dark:from-sky-950/40 dark:via-card/75 dark:to-card/75 shadow-xs">
         <CardContent className="flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="bg-sky-500 text-slate-950 font-semibold text-[11px]">48-Hour PoV Audit</Badge>
-              <span className="text-xs text-sky-300 font-mono">Account {povData?.account_id || '582812122408'}</span>
+              <Badge className="bg-sky-600 text-white dark:bg-sky-500 dark:text-slate-950 font-semibold text-[11px] shadow-xs">48-Hour PoV Audit</Badge>
+              <span className="text-xs text-sky-700 dark:text-sky-300 font-mono font-medium">Account {povData?.account_id || '582812122408'}</span>
             </div>
-            <div className="text-base sm:text-lg font-semibold text-foreground">
+            <div className="text-base sm:text-lg font-bold text-foreground">
               Enterprise FinOps Proof-of-Value Audit Ready
             </div>
-            <p className="max-w-xl text-xs text-muted-foreground">
+            <p className="max-w-xl text-xs text-muted-foreground leading-relaxed">
               Analyzed cloud infrastructure footprint reveals <b>{povData?.waste_percentage ?? 40.0}%</b> actionable waste.
-              Recoverable annual savings: <span className="font-semibold text-emerald-300">{povData?.recoverable_annual_savings_formatted || formatCurrency((totalSpend * 0.40) * 12, currency)}</span>.
+              Recoverable annual savings: <span className="font-bold text-emerald-700 dark:text-emerald-300 font-mono">{povData?.recoverable_annual_savings_formatted || formatCurrency((totalSpend * 0.40) * 12, currency)}</span>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
-              className="border-white/10 bg-white/5 text-xs hover:bg-white/10"
+              className="border-border bg-card text-foreground hover:bg-muted text-xs shadow-xs"
               onClick={() => setPovOpen(true)}
             >
               <Eye className="mr-1.5 size-3.5" />View Dossier
@@ -234,7 +234,7 @@ export function OverviewView({
             >
               <Button
                 size="sm"
-                className="bg-sky-400 text-slate-950 hover:bg-sky-300 text-xs font-semibold"
+                className="bg-sky-600 text-white hover:bg-sky-500 text-xs font-semibold shadow-xs"
               >
                 <Download className="mr-1.5 size-3.5" />Download PDF Audit
               </Button>
@@ -247,7 +247,7 @@ export function OverviewView({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-white/10 bg-white/5 text-xs hover:bg-white/10"
+                className="border-border bg-card text-foreground hover:bg-muted text-xs shadow-xs"
               >
                 <FileText className="mr-1.5 size-3.5" />HTML View
               </Button>
@@ -258,10 +258,10 @@ export function OverviewView({
 
       {/* PoV Executive Modal */}
       <Dialog open={povOpen} onOpenChange={setPovOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-card text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border border-border bg-card text-foreground shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <FileText className="size-4 text-sky-400" />
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <FileText className="size-4 text-sky-600 dark:text-sky-400" />
               Enterprise Proof-of-Value (PoV) Audit Dossier
             </DialogTitle>
             <DialogDescription>
@@ -270,47 +270,47 @@ export function OverviewView({
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
-                <span className="text-[11px] text-muted-foreground">Annual Run Rate</span>
-                <div className="mt-1 text-sm sm:text-base font-bold text-foreground">
+              <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+                <span className="text-[11px] font-medium text-muted-foreground">Annual Run Rate</span>
+                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-foreground">
                   {povData?.gross_annual_spend_formatted || formatCurrency(totalSpend * 12, currency)}
                 </div>
               </div>
-              <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
-                <span className="text-[11px] text-emerald-300">Recoverable / Year</span>
-                <div className="mt-1 text-sm sm:text-base font-bold text-emerald-300">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 shadow-xs">
+                <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Recoverable / Year</span>
+                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-emerald-700 dark:text-emerald-300">
                   {povData?.recoverable_annual_savings_formatted || formatCurrency(wastedSpend * 12, currency)}
                 </div>
               </div>
-              <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3">
-                <span className="text-[11px] text-amber-300">Actionable Waste</span>
-                <div className="mt-1 text-sm sm:text-base font-bold text-amber-300">
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 shadow-xs">
+                <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">Actionable Waste</span>
+                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-amber-700 dark:text-amber-300">
                   {povData?.waste_percentage ?? 40.0}%
                 </div>
               </div>
-              <div className="rounded-lg border border-white/8 bg-white/5 p-3">
-                <span className="text-[11px] text-muted-foreground">Security Posture</span>
-                <div className="mt-1 text-sm sm:text-base font-bold text-sky-300">98.2% CIS</div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+                <span className="text-[11px] font-medium text-muted-foreground">Security Posture</span>
+                <div className="mt-1 text-sm sm:text-base font-bold text-sky-700 dark:text-sky-300">98.2% CIS</div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-white/8 bg-white/5 p-4 text-xs space-y-2">
-              <div className="font-semibold text-foreground">Audit Highlights & Vectors Identified:</div>
+            <div className="rounded-xl border border-border bg-muted/30 p-4 text-xs space-y-2">
+              <div className="font-bold text-foreground">Audit Highlights & Vectors Identified:</div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-muted-foreground">
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>Compute: Graviton ARM64 Rightsizing</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>Storage: gp2 to gp3 Volume Upgrade</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>Network: Unused EIPs & Idle Load Balancers</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>SLA Watchdog: 60-min CloudWatch Rollback</span>
                 </div>
               </div>
@@ -319,12 +319,12 @@ export function OverviewView({
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)}>Close</Button>
               <a href={apiUrl(`/api/v2/analytics/pov/report.pdf?currency=${currency}&inline=true`)} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" className="w-full sm:w-auto bg-sky-400 text-slate-950 hover:bg-sky-300 font-semibold">
+                <Button size="sm" className="w-full sm:w-auto bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-xs">
                   <Download className="mr-1.5 size-3.5" />Download Executive PDF
                 </Button>
               </a>
               <a href={apiUrl('/api/v2/analytics/pov/report.html')} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm" className="w-full sm:w-auto border-white/10 bg-white/5 hover:bg-white/10">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto border-border bg-card hover:bg-muted">
                   <ExternalLink className="mr-1.5 size-3.5" />Interactive HTML
                 </Button>
               </a>

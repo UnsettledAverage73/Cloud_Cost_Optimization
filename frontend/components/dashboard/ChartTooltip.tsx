@@ -3,7 +3,7 @@
 export function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="rounded-xl border border-white/10 bg-popover/95 backdrop-blur-md p-3 text-xs shadow-2xl">
+    <div className="rounded-xl border border-border bg-card/95 backdrop-blur-md p-3 text-xs shadow-xl text-card-foreground">
       <div className="mb-2 font-medium text-muted-foreground">{label}</div>
       <div className="space-y-1">
         {payload.map((p: any) => (

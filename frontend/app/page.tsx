@@ -294,6 +294,18 @@ export default function Page() {
   const connectionWarning = connectionState?.warning || '';
 
   useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (light) {
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      }
+    }
+  }, [light]);
+
+  useEffect(() => {
     const stored = readStoredConnection();
     if (stored) {
       setConnectionState({
@@ -643,16 +655,16 @@ export default function Page() {
   return (
     <div className={light ? 'light' : 'dark'}>
       <main className="min-h-screen bg-background text-foreground">
-        <aside className={`fixed inset-y-0 left-0 z-30 hidden border-r border-white/8 bg-sidebar/90 transition-all lg:flex lg:flex-col ${collapsed ? 'w-20' : 'w-64'}`}>
-          <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
+        <aside className={`fixed inset-y-0 left-0 z-30 hidden border-r border-border bg-sidebar/95 transition-all lg:flex lg:flex-col ${collapsed ? 'w-20' : 'w-64'}`}>
+          <div className="flex h-16 items-center justify-between border-b border-border px-4">
             <a href="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
-                <CloudCog className="size-5" />
+              <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
+                <CloudCog className="size-5 text-white" />
               </div>
-              {!collapsed && <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>}
+              {!collapsed && <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-sky-600 dark:text-cyan-400">Pulse</span></span>}
             </a>
             {!collapsed && (
-              <a href="/" className="rounded-md px-2 py-1 text-xs font-medium text-cyan-400 hover:bg-white/5 hover:text-cyan-300 transition-colors">
+              <a href="/" className="rounded-md px-2 py-1 text-xs font-medium text-sky-600 dark:text-cyan-400 hover:bg-muted hover:text-sky-700 dark:hover:text-cyan-300 transition-colors">
                 ← Home
               </a>
             )}
@@ -667,14 +679,14 @@ export default function Page() {
                   onClick={() => setView(item.id)}
                   className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-150 ${
                     isActive
-                      ? 'bg-gradient-to-r from-cyan-500/15 via-cyan-500/8 to-transparent border border-cyan-500/25 text-cyan-300 font-medium shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]'
-                      : 'text-muted-foreground/90 hover:bg-white/[0.04] hover:text-foreground hover:translate-x-0.5'
+                      ? 'bg-sky-50 dark:bg-sky-500/15 border border-sky-200 dark:border-cyan-500/25 text-sky-800 dark:text-cyan-300 font-medium shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-0.5'
                   }`}
                 >
                   {isActive && (
-                    <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+                    <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-sky-600 dark:bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
                   )}
-                  <Icon className={`size-4 shrink-0 transition-transform duration-150 ${isActive ? 'text-cyan-400 scale-105' : 'group-hover:scale-105'}`} />
+                  <Icon className={`size-4 shrink-0 transition-transform duration-150 ${isActive ? 'text-sky-600 dark:text-cyan-400 scale-105' : 'group-hover:scale-105'}`} />
                   {!collapsed && <span className="truncate">{item.label}</span>}
                   {item.id === 'security' && !collapsed && (
                     <span className="ml-auto flex size-2 relative">
@@ -687,16 +699,16 @@ export default function Page() {
             })}
           </div>
           {!collapsed && (
-            <div className="border-t border-white/8 p-3">
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs">
+            <div className="border-t border-border p-3">
+              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-xs">
                 <div className="flex items-center gap-2">
                   <span className="relative flex size-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full size-2 bg-emerald-400" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full size-2 bg-emerald-500" />
                   </span>
                   <span className="text-[11px] text-muted-foreground font-medium">FinOps Core</span>
                 </div>
-                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">Active</span>
+                <span className="rounded bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Active</span>
               </div>
             </div>
           )}
@@ -704,25 +716,25 @@ export default function Page() {
 
         {/* Mobile Navigation Drawer */}
         <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-          <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col justify-between border-r border-white/8 bg-sidebar p-0">
+          <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col justify-between border-r border-border bg-sidebar p-0">
             <div className="flex flex-1 flex-col overflow-y-auto">
-              <div className="flex h-16 items-center border-b border-white/8 px-4">
+              <div className="flex h-16 items-center border-b border-border px-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
-                    <CloudCog className="size-5" />
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
+                    <CloudCog className="size-5 text-white" />
                   </div>
-                  <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-cyan-400">Pulse</span></span>
+                  <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-sky-600 dark:text-cyan-400">Pulse</span></span>
                 </div>
               </div>
 
               {/* Mobile Quick Context (Currency, Provider, Account) */}
-              <div className="border-b border-white/8 bg-white/[0.02] p-3">
+              <div className="border-b border-border bg-muted/20 p-3">
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quick Filters</div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="mb-1 block text-[10px] text-muted-foreground">Provider</label>
                     <Select value={provider} onValueChange={(value) => setProvider(value ?? 'all')}>
-                      <SelectTrigger className="h-8 w-full border-white/10 bg-white/5 text-xs">
+                      <SelectTrigger className="h-8 w-full border-border bg-background text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -736,7 +748,7 @@ export default function Page() {
                   <div>
                     <label className="mb-1 block text-[10px] text-muted-foreground">Currency</label>
                     <Select value={currency} onValueChange={(value) => setCurrency((value as 'USD' | 'INR') || 'USD')}>
-                      <SelectTrigger className="h-8 w-full border-white/10 bg-white/5 text-xs font-medium">
+                      <SelectTrigger className="h-8 w-full border-border bg-background text-xs font-medium">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -759,7 +771,7 @@ export default function Page() {
                         }
                       }}
                     >
-                      <SelectTrigger className="h-8 w-full border-white/10 bg-white/5 text-xs truncate">
+                      <SelectTrigger className="h-8 w-full border-border bg-background text-xs truncate">
                         <SelectValue placeholder="Switch account" />
                       </SelectTrigger>
                       <SelectContent>
@@ -786,7 +798,7 @@ export default function Page() {
                         setView(item.id);
                         setMobileNavOpen(false);
                       }}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${isActive ? 'bg-cyan-400/10 text-cyan-300 font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${isActive ? 'bg-sky-50 dark:bg-cyan-400/10 text-sky-800 dark:text-cyan-300 font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
                     >
                       <Icon className="size-4 shrink-0" />
                       <span className="truncate flex-1">{item.label}</span>
@@ -797,14 +809,14 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="border-t border-white/8 p-3 flex flex-col gap-2">
+            <div className="border-t border-border p-3 flex flex-col gap-2">
               <Button
                 size="sm"
                 onClick={() => {
                   setConnectOpen(true);
                   setMobileNavOpen(false);
                 }}
-                className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium"
+                className="w-full bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300 font-medium"
               >
                 <Plus className="mr-1.5 size-4" /> Connect Cloud Account
               </Button>
@@ -813,7 +825,7 @@ export default function Page() {
         </Sheet>
 
         <div className={`transition-all ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-white/[0.08] bg-background/80 px-3 sm:px-4 backdrop-blur-xl lg:px-8 shadow-xs">
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-border bg-background/80 px-3 sm:px-4 backdrop-blur-xl lg:px-8 shadow-xs">
             {syncing && (
               <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-400 animate-pulse z-30" />
             )}
@@ -828,10 +840,10 @@ export default function Page() {
                 <Menu className="size-5" />
               </Button>
               <div className="flex items-center gap-2 lg:hidden min-w-0">
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
-                  <CloudCog className="size-4" />
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
+                  <CloudCog className="size-4 text-white" />
                 </div>
-                <span className="text-base font-semibold tracking-tight truncate">Cloud<span className="text-cyan-400">Pulse</span></span>
+                <span className="text-base font-semibold tracking-tight truncate">Cloud<span className="text-sky-600 dark:text-cyan-400">Pulse</span></span>
               </div>
               <Button variant="ghost" size="icon" className="hidden lg:inline-flex" onClick={() => setCollapsed(!collapsed)} aria-label="Collapse sidebar"><PanelLeft /></Button>
               <div className="hidden items-center gap-2 text-sm md:flex min-w-0 max-w-[200px]">
@@ -841,7 +853,7 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300 shadow-[0_0_12px_-2px_rgba(16,185,129,0.3)]') : 'border-white/10 bg-white/5 text-muted-foreground'}`}>
+              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shadow-xs') : 'border-border bg-muted/50 text-muted-foreground'}`}>
                 <span className="relative flex size-2">
                   {connectionState?.connected && (
                     <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
@@ -879,7 +891,7 @@ export default function Page() {
                     }
                   }}
                 >
-                  <SelectTrigger className="hidden h-9 max-w-[200px] border-white/10 bg-white/5 sm:flex">
+                  <SelectTrigger className="hidden h-9 max-w-[200px] border-border bg-card sm:flex">
                     <span className="truncate text-xs font-medium">
                       {(() => {
                         const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
@@ -915,7 +927,7 @@ export default function Page() {
                   type: 'info'
                 });
               }}>
-                <SelectTrigger className="hidden h-9 w-32 border-white/10 bg-white/5 sm:flex">
+                <SelectTrigger className="hidden h-9 w-32 border-border bg-card sm:flex">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -934,7 +946,7 @@ export default function Page() {
                   type: 'info'
                 });
               }}>
-                <SelectTrigger className="hidden h-9 w-28 border-white/10 bg-white/5 text-xs font-medium sm:flex">
+                <SelectTrigger className="hidden h-9 w-28 border-border bg-card text-xs font-medium sm:flex">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -945,7 +957,7 @@ export default function Page() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-2 text-xs font-semibold sm:hidden border-white/10 bg-white/5"
+                className="h-8 px-2 text-xs font-semibold sm:hidden border-border bg-card"
                 onClick={() => {
                   const next = currency === 'USD' ? 'INR' : 'USD';
                   setCurrency(next);
@@ -971,9 +983,9 @@ export default function Page() {
                   });
                 }}
                 title={autoRefresh ? "Auto-refresh is active (every 60s). Click to pause." : "Auto-refresh is paused. Click to enable."}
-                className={`h-8 px-2 text-xs font-medium border border-white/10 transition-all ${autoRefresh ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`h-8 px-2 text-xs font-medium border transition-all ${autoRefresh ? 'bg-sky-50 dark:bg-cyan-500/15 text-sky-800 dark:text-cyan-300 border-sky-300 dark:border-cyan-500/30 shadow-xs' : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
               >
-                <span className={`mr-1.5 size-1.5 rounded-full ${autoRefresh ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
+                <span className={`mr-1.5 size-1.5 rounded-full ${autoRefresh ? 'bg-cyan-500 animate-pulse' : 'bg-slate-400'}`} />
                 <span className="hidden lg:inline">{autoRefresh ? 'Auto-sync ON' : 'Auto-sync OFF'}</span>
                 <span className="lg:hidden">{autoRefresh ? 'Auto' : 'Manual'}</span>
               </Button>
@@ -992,7 +1004,7 @@ export default function Page() {
                 className="size-8 sm:size-9"
                 title="Manual refresh"
               >
-                <RefreshCw className={`size-4 ${syncing ? 'animate-spin text-cyan-400' : ''}`} />
+                <RefreshCw className={`size-4 ${syncing ? 'animate-spin text-sky-600 dark:text-cyan-400' : ''}`} />
               </Button>
               <Button
                 variant="ghost"
@@ -1008,9 +1020,9 @@ export default function Page() {
                 aria-label="Toggle theme"
                 className="size-8 sm:size-9"
               >
-                {light ? <Moon className="size-4" /> : <Sun className="size-4 text-amber-400" />}
+                {light ? <Moon className="size-4" /> : <Sun className="size-4 text-amber-500" />}
               </Button>
-              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-cyan-400 text-slate-950 hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-[0_0_15px_-2px_rgba(6,182,212,0.3)]">
+              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-xs">
                 <Plus className="size-4 shrink-0" />
                 <span className="hidden sm:inline ml-1">Connect Account</span>
                 <span className="sm:hidden ml-1">Connect</span>
@@ -1020,18 +1032,18 @@ export default function Page() {
 
           <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-full">
             {loading ? (
-              <Card className="border-cyan-400/20 bg-cyan-400/5">
+              <Card className="border-border bg-card">
                 <CardContent className="flex min-h-96 flex-col items-center justify-center gap-4 p-8 text-center">
-                  <Loader2 className="size-8 animate-spin text-cyan-400" />
+                  <Loader2 className="size-8 animate-spin text-sky-600 dark:text-cyan-400" />
                   <div>
-                    <h2 className="text-lg font-semibold">Syncing AWS account</h2>
+                    <h2 className="text-lg font-semibold text-foreground">Syncing AWS account</h2>
                     <p className="mt-2 max-w-lg text-sm text-muted-foreground">
                       Loading connected resources and checking which AWS data sources are available.
                     </p>
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">
                     {DATA_SOURCES.map(source => (
-                      <Badge key={source.key} variant="outline" className="border-white/10 text-muted-foreground">
+                      <Badge key={source.key} variant="outline" className="border-border text-muted-foreground">
                         {source.label}
                       </Badge>
                     ))}
@@ -1039,23 +1051,23 @@ export default function Page() {
                 </CardContent>
               </Card>
             ) : !connectionState?.connected ? (
-              <Card className="border-amber-400/20 bg-amber-400/5">
+              <Card className="border-amber-500/20 bg-amber-500/5">
                 <CardContent className="p-8 text-center">
-                  <Cloud className="mx-auto size-8 text-amber-300" />
-                  <h2 className="mt-4 text-lg font-semibold">Live AWS data is not loaded</h2>
+                  <Cloud className="mx-auto size-8 text-amber-600 dark:text-amber-300" />
+                  <h2 className="mt-4 text-lg font-semibold text-foreground">Live AWS data is not loaded</h2>
                   <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">{dataError || 'Connect an AWS account to continue.'}</p>
-                  <Button className="mt-5 bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => setConnectOpen(true)}>Connect AWS account</Button>
+                  <Button className="mt-5 bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300" onClick={() => setConnectOpen(true)}>Connect AWS account</Button>
                 </CardContent>
               </Card>
             ) : (
               <>
                 {connectionAccessMode === 'limited' && (
-                  <Card className="mb-6 border-amber-400/20 bg-amber-400/10">
+                  <Card className="mb-6 border-amber-500/20 bg-amber-500/10">
                     <CardContent className="flex items-start gap-3 p-4">
-                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-300" />
+                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-300" />
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-amber-100">Restricted IAM Permissions</div>
-                        <p className="mt-1 text-sm text-amber-100/80">
+                        <div className="text-sm font-medium text-amber-900 dark:text-amber-100">Restricted IAM Permissions</div>
+                        <p className="mt-1 text-sm text-amber-800/90 dark:text-amber-100/80">
                           {connectionWarning || 'AWS account connected. Additional read-only permissions (ec2:Describe*, cloudwatch:GetMetricData) are recommended to unlock full real-time telemetry.'}
                         </p>
                       </div>

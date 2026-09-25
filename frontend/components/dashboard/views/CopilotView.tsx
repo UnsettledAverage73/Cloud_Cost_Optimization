@@ -248,32 +248,32 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
       />
 
       {/* Real-Time RAG Pipeline Status Bar */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-card/75 px-4 py-2.5 backdrop-blur-sm text-xs shadow-lg shadow-black/20">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-xs shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="flex items-center gap-1.5 font-medium text-emerald-400">
-            <span className="size-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+          <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
             RAG Pipeline Live
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-border">|</span>
           <span className="text-muted-foreground">
             Model: <strong className="text-foreground font-mono">{ragStatus?.active_model || 'groq/compound-mini'}</strong>
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-border">|</span>
           <span className="text-muted-foreground">
-            Policies: <strong className="text-sky-300">{ragStatus?.retrieval_sources?.indexed_finops_policies ?? 11} Indexed</strong>
+            Policies: <strong className="text-sky-700 dark:text-sky-300">{ragStatus?.retrieval_sources?.indexed_finops_policies ?? 11} Indexed</strong>
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="border-sky-400/20 bg-sky-400/5 text-[11px] text-sky-300">
+          <Badge variant="outline" className="border-sky-500/20 bg-sky-50 dark:bg-sky-400/5 text-[11px] text-sky-700 dark:text-sky-300">
             AWS Compute: {ragStatus?.retrieval_sources?.compute_nodes ?? 0}
           </Badge>
-          <Badge variant="outline" className="border-sky-400/20 bg-sky-400/5 text-[11px] text-sky-300">
+          <Badge variant="outline" className="border-sky-500/20 bg-sky-50 dark:bg-sky-400/5 text-[11px] text-sky-700 dark:text-sky-300">
             EBS Volumes: {ragStatus?.retrieval_sources?.ebs_volumes ?? 0}
           </Badge>
-          <Badge variant="outline" className="border-purple-400/20 bg-purple-400/5 text-[11px] text-purple-300">
+          <Badge variant="outline" className="border-purple-500/20 bg-purple-50 dark:bg-purple-400/5 text-[11px] text-purple-700 dark:text-purple-300">
             K8s Pods: {ragStatus?.retrieval_sources?.kubernetes_workloads ?? 0}
           </Badge>
-          <Badge variant="outline" className="border-amber-400/20 bg-amber-400/5 text-[11px] text-amber-300">
+          <Badge variant="outline" className="border-amber-500/20 bg-amber-50 dark:bg-amber-400/5 text-[11px] text-amber-700 dark:text-amber-300">
             FOCUS Lakehouse: Active
           </Badge>
         </div>
@@ -285,14 +285,14 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
             key={i}
             onClick={() => sendMessage(chip)}
             disabled={loading}
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition hover:border-sky-400/40 hover:bg-sky-400/10 hover:text-sky-300 disabled:opacity-50"
+            className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition hover:border-sky-500/40 hover:bg-sky-50 dark:hover:bg-sky-400/10 hover:text-sky-700 dark:hover:text-sky-300 disabled:opacity-50 shadow-xs"
           >
             {chip}
           </button>
         ))}
       </div>
 
-      <Card className="flex flex-col border-white/8 bg-card/75 backdrop-blur-sm shadow-xl shadow-black/20">
+      <Card className="flex flex-col border-border bg-card shadow-sm">
         <CardContent className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
           <div className="flex flex-col gap-4 overflow-y-auto" style={{ minHeight: '380px', maxHeight: '520px' }}>
             {messages.map((m, idx) => (
@@ -301,31 +301,31 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
                 className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {m.role === 'assistant' && (
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300 border border-sky-400/20">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-400/20">
                     <Sparkles className="size-4" />
                   </div>
                 )}
                 <div
                   className={`max-w-[85%] rounded-xl p-4 text-sm leading-relaxed ${
                     m.role === 'user'
-                      ? 'bg-sky-500 text-slate-950 font-medium'
-                      : 'border border-white/8 bg-white/5 text-foreground'
+                      ? 'bg-sky-600 text-white font-medium shadow-xs'
+                      : 'border border-border bg-muted/30 text-foreground'
                   }`}
                 >
                   {m.role === 'assistant' && (
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       {m.model && (
-                        <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono">
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
                           {m.model}
                         </span>
                       )}
                       {m.tool && (
-                        <span className="rounded border border-sky-400/20 bg-sky-400/10 px-1.5 py-0.5 font-mono text-sky-300">
+                        <span className="rounded border border-sky-500/20 bg-sky-50 dark:bg-sky-400/10 px-1.5 py-0.5 font-mono text-sky-700 dark:text-sky-300">
                           tool: {m.tool}
                         </span>
                       )}
                       {m.formattedSavings && (
-                        <span className="rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-emerald-300">
+                        <span className="rounded border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-400/10 px-1.5 py-0.5 font-mono text-emerald-700 dark:text-emerald-300">
                           💰 Recoverable: {m.formattedSavings}
                         </span>
                       )}
@@ -339,12 +339,12 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
                     </div>
                   )}
                   {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
-                    <div className="mt-3 border-t border-white/8 pt-2 flex flex-wrap items-center gap-1.5">
+                    <div className="mt-3 border-t border-border pt-2 flex flex-wrap items-center gap-1.5">
                       <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Grounded Sources:</span>
                       {m.citations.map((c, ci) => (
                         <span
                           key={ci}
-                          className="rounded bg-sky-400/10 border border-sky-400/20 px-2 py-0.5 text-[10px] text-sky-300 font-mono"
+                          className="rounded bg-sky-50 dark:bg-sky-400/10 border border-sky-200 dark:border-sky-400/20 px-2 py-0.5 text-[10px] text-sky-700 dark:text-sky-300 font-mono"
                         >
                           {c}
                         </span>
@@ -355,16 +355,16 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
               </div>
             ))}
             {loading && (
-              <div className="flex items-center gap-3 text-sm text-sky-300/90 animate-pulse">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300 border border-sky-400/30 shadow-[0_0_12px_rgba(56,189,248,0.25)]">
+              <div className="flex items-center gap-3 text-sm text-sky-700 dark:text-sky-300 animate-pulse">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-400/30 shadow-xs">
                   <Sparkles className="size-4 animate-spin" />
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs">Copilot is synthesizing telemetry across AWS, OpenCost, and FOCUS Lakehouse</span>
                   <span className="flex gap-1">
-                    <span className="size-1 rounded-full bg-sky-400 animate-bounce [animation-delay:-0.3s]" />
-                    <span className="size-1 rounded-full bg-sky-400 animate-bounce [animation-delay:-0.15s]" />
-                    <span className="size-1 rounded-full bg-sky-400 animate-bounce" />
+                    <span className="size-1 rounded-full bg-sky-500 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="size-1 rounded-full bg-sky-500 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="size-1 rounded-full bg-sky-500 animate-bounce" />
                   </span>
                 </div>
               </div>
@@ -372,19 +372,19 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="mt-4 flex gap-2 border-t border-white/8 pt-4">
+          <div className="mt-4 flex gap-2 border-t border-border pt-4">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
               placeholder="Ask a question about AWS, Kubernetes containers, FOCUS spend, or type /audit, /optimize..."
               disabled={loading}
-              className="border-white/10 bg-white/5 text-foreground placeholder:text-muted-foreground"
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground"
             />
             <Button
               onClick={() => sendMessage(input)}
               disabled={loading || !input.trim()}
-              className="bg-sky-400 text-slate-950 hover:bg-sky-300 font-semibold"
+              className="bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
