@@ -156,6 +156,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+try:
+    from core.middleware import CorrelationIdMiddleware
+    from core.state import REALTIME_STORE, get_realtime_store, resolve_active_inventory
+    from api.v2 import api_v2_router
+except ImportError:
+    from backend.core.middleware import CorrelationIdMiddleware
+    from backend.core.state import REALTIME_STORE, get_realtime_store, resolve_active_inventory
+    from backend.api.v2 import api_v2_router
+
+# Google SRE Correlation ID and Process Time Middleware
+app.add_middleware(CorrelationIdMiddleware)
+
+# Mount Modular Domain Routers
+app.include_router(api_v2_router)
+
 # In-memory storage for active session credentials (or pass per header/request)
 active_credentials = {}
 connected_accounts = []
@@ -163,44 +178,8 @@ last_live_error = ""
 is_demo_mode = False
 STATE_FILE = Path(__file__).with_name(".cloudpulse_state.json")
 
-REALTIME_STORE: Dict[str, Any] = {
-    "nodes": [],
-    "ebs_volumes": [],
-    "ebs_snapshots": [],
-    "s3_buckets": [],
-    "rds_instances": [],
-    "rds_clusters": [],
-    "rds_manual_snapshots": [],
-    "elastic_ips": [],
-    "nat_gateways": [],
-    "vpc_endpoints": [],
-    "network_interfaces": [],
-    "load_balancers": [],
-    "security_groups": [],
-    "amis": [],
-    "cloudwatch_log_groups": [],
-    "daily_spend": [],
-    "service_breakdown": [],
-    "summary": {
-        "monthly_spend": 0.0,
-        "total_nodes": 0,
-        "running_nodes": 0,
-        "stopped_nodes": 0,
-        "wasted_monthly_spend": 0.0,
-        "critical_security_risks": 0,
-        "last_synced": None,
-    },
-    "applied_optimizations": [],
-    "telemetry": [],
-    "metadata": {
-        "region": "us-east-1",
-        "timestamp": None,
-        "organization": "CloudPulse Realtime",
-    },
-}
-
 def _db() -> Dict[str, Any]:
-    return REALTIME_STORE
+    return get_realtime_store()
 
 finops_agent = FinOpsAgent(data_store=REALTIME_STORE)
 finops_notifier = FinOpsNotifier()

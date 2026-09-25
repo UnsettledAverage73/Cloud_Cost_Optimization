@@ -2377,6 +2377,12 @@ def cmd_notify(args):
                 else:
                     print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook or Token):{RESET}")
                 print(json.dumps(card, indent=2))
+            elif webhook_url:
+                success = notification_engine.dispatch_webhook(webhook_url, card)
+                if success:
+                    print(f"  {GREEN}{BOLD}✅ Slack Block Kit alert dispatched successfully via Webhook.{RESET}")
+                else:
+                    print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check webhook URL.{RESET}")
             elif slack_token:
                 success = notification_engine.dispatch_slack_api(slack_token, slack_channel_id, card)
                 if success:
@@ -2397,6 +2403,13 @@ def cmd_notify(args):
                 else:
                     print(f"  {CYAN}{BOLD}ℹ️  Slack Block Kit Card Preview (Dry-Run / No Webhook or Token):{RESET}")
                 print(json.dumps(card, indent=2))
+            elif webhook_url:
+                finops_notifier.slack_webhook_url = webhook_url
+                success = finops_notifier.send_slack_alert(sample_findings, monthly_cost=gross)
+                if success:
+                    print(f"  {GREEN}{BOLD}✅ Slack webhook alert dispatched successfully.{RESET}")
+                else:
+                    print(f"  {RED}{BOLD}❌ Failed to dispatch Slack alert. Check SLACK_WEBHOOK_URL.{RESET}")
             elif slack_token:
                 success = notification_engine.dispatch_slack_api(slack_token, slack_channel_id, card)
                 if success:
