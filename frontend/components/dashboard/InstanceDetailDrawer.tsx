@@ -5,7 +5,7 @@ import {
   Server, Copy, Check, ExternalLink, Cpu, Layers, HardDrive,
   Network, ShieldAlert, ShieldCheck, Clock, Lock, Sparkles,
   Zap, AlertTriangle, ArrowUpRight, Terminal, RefreshCw, Loader2,
-  CheckCircle2, X, Globe, FileCode2
+  CheckCircle2, X, Globe, FileCode2, Maximize2, Minimize2
 } from 'lucide-react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription
@@ -13,6 +13,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Ec2MonitoringGrid } from './Ec2MonitoringGrid';
 
 interface InstanceDetailDrawerProps {
@@ -67,6 +68,7 @@ export function InstanceDetailDrawer({
   const [revokingSg, setRevokingSg] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [prTriggering, setPrTriggering] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const instance = nodeDetail || node;
   if (!instance) return null;
@@ -90,6 +92,19 @@ export function InstanceDetailDrawer({
     navigator.clipboard.writeText(text);
     setCopiedKey(keyName);
     setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const formatLaunchTime = (launchTime?: string) => {
+    if (!launchTime) return 'Active';
+    try {
+      const d = new Date(launchTime);
+      if (isNaN(d.getTime())) return launchTime;
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+        ' • ' +
+        d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) + ' UTC';
+    } catch {
+      return launchTime;
+    }
   };
 
   // 1-Click Ingress Revoke
@@ -136,9 +151,26 @@ export function InstanceDetailDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl md:max-w-3xl lg:max-w-3xl xl:max-w-4xl overflow-y-auto border-l border-white/10 bg-slate-950/95 p-0 backdrop-blur-2xl shadow-2xl">
+      <SheetContent
+        className={cn(
+          "overflow-y-auto border-l border-white/10 bg-slate-950/95 p-0 backdrop-blur-2xl shadow-2xl transition-all duration-300",
+          isExpanded
+            ? "!w-full sm:!max-w-[95vw] lg:!max-w-[90vw] xl:!max-w-7xl"
+            : "!w-full sm:!max-w-2xl md:!max-w-3xl lg:!max-w-4xl"
+        )}
+      >
         {/* State Accent Top Bar */}
         <div className={`h-1 w-full ${state === 'running' ? 'bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500' : 'bg-gradient-to-r from-amber-500 via-rose-500 to-amber-500'}`} />
+
+        {/* Expand/Collapse Toggle Button next to sheet close button */}
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="absolute top-2.5 right-11 z-20 flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+          title={isExpanded ? "Collapse to Side Panel" : "Expand to Complete Tab"}
+        >
+          {isExpanded ? <Minimize2 className="size-3.5 text-cyan-400" /> : <Maximize2 className="size-3.5 text-cyan-400" />}
+        </button>
 
         <div className="p-5 sm:p-6 space-y-6">
           {/* HEADER SECTION */}
@@ -236,6 +268,17 @@ export function InstanceDetailDrawer({
                 1-Click GitOps PR
               </Button>
 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="h-7 text-xs border-cyan-500/20 bg-cyan-500/5 text-cyan-300 hover:bg-cyan-500/15"
+                title={isExpanded ? "Collapse to Side Panel" : "Expand to Complete Full Tab"}
+              >
+                {isExpanded ? <Minimize2 className="size-3 mr-1.5" /> : <Maximize2 className="size-3 mr-1.5" />}
+                {isExpanded ? 'Side Panel' : 'Complete View'}
+              </Button>
+
               {loading && (
                 <div className="ml-auto flex items-center gap-1.5 text-xs text-cyan-400 animate-pulse">
                   <Loader2 className="size-3.5 animate-spin" />
@@ -273,44 +316,51 @@ export function InstanceDetailDrawer({
             {/* TAB 1: OVERVIEW & SPECS */}
             <TabsContent value="specs" className="space-y-4 mt-4">
               {/* Top 4 KPI Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5 flex flex-col justify-between">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                    <Cpu className="size-3.5 text-cyan-400" /> vCPU Compute
+                    <Cpu className="size-3.5 text-cyan-400 shrink-0" />
+                    <span className="truncate">vCPU Compute</span>
                   </div>
-                  <div className="mt-1 text-sm font-semibold font-mono text-white">{specs.vcpu} Cores</div>
-                  <div className="text-[10px] text-muted-foreground">{specs.baseline} Baseline</div>
+                  <div className="mt-2 text-base font-bold font-mono text-white">{specs.vcpu} Cores</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">{specs.baseline} Baseline</div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5 flex flex-col justify-between">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                    <Layers className="size-3.5 text-purple-400" /> Memory (RAM)
+                    <Layers className="size-3.5 text-purple-400 shrink-0" />
+                    <span className="truncate">Memory (RAM)</span>
                   </div>
-                  <div className="mt-1 text-sm font-semibold font-mono text-white">{specs.ram}</div>
-                  <div className="text-[10px] text-muted-foreground">{specs.desc}</div>
+                  <div className="mt-2 text-base font-bold font-mono text-white">{specs.ram}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 truncate" title={specs.desc}>{specs.desc}</div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5 flex flex-col justify-between">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                    <HardDrive className="size-3.5 text-amber-400" /> EBS Storage
+                    <HardDrive className="size-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate">EBS Storage</span>
                   </div>
-                  <div className="mt-1 text-sm font-semibold font-mono text-white">{instance.volumes || 1} Volume</div>
-                  <div className="text-[10px] text-muted-foreground">{instance.volumes_detail?.[0]?.volume_type || 'gp3'} Baseline</div>
+                  <div className="mt-2 text-base font-bold font-mono text-white">{instance.volumes || 1} Volume</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">{instance.volumes_detail?.[0]?.volume_type || 'gp3'} Baseline</div>
                 </div>
 
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3.5 flex flex-col justify-between">
                   <div className="flex items-center gap-1.5 text-emerald-400 text-xs">
-                    <Sparkles className="size-3.5" /> FinOps Status
+                    <Sparkles className="size-3.5 shrink-0" />
+                    <span className="truncate">FinOps Status</span>
                   </div>
-                  <div className="mt-1 text-sm font-semibold font-mono text-emerald-300">
+                  <div className="mt-2 text-base font-bold font-mono text-emerald-300">
                     {cost > 50 ? 'Rightsize Ready' : 'Healthy'}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">Save up to 40%</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">Save up to 40%</div>
                 </div>
               </div>
 
               {/* Categorized Specifications Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className={cn(
+                "gap-3",
+                isExpanded ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "grid grid-cols-1 sm:grid-cols-2"
+              )}>
                 {[
                   { icon: Cpu, label: 'Instance Type', value: instanceType, mono: true, copyKey: 'inst-type' },
                   { icon: Server, label: 'State & Lifecycle', value: `${state} • ${instance.lifecycle || 'on-demand'}`, mono: false },
@@ -318,19 +368,25 @@ export function InstanceDetailDrawer({
                   { icon: Globe, label: 'Region & AZ', value: `${instance.region || 'us-east-1'} (${instance.availability_zone || 'us-east-1c'})`, mono: false },
                   { icon: Lock, label: 'Key Pair', value: instance.key_name || 'None', mono: true, copyKey: 'key' },
                   { icon: Layers, label: 'AMI / Image ID', value: instance.image_id || 'ami-025d99823a4caad37', mono: true, copyKey: 'ami' },
-                  { icon: Clock, label: 'Launch Time', value: instance.launch_time ? new Date(instance.launch_time).toUTCString().replace(' GMT', ' UTC') : 'Active', mono: false },
+                  { icon: Clock, label: 'Launch Time', value: formatLaunchTime(instance.launch_time), rawValue: instance.launch_time, mono: false },
                   { icon: HardDrive, label: 'Volumes Attached', value: `${instance.volumes || 1} EBS volume(s)`, mono: false },
                 ].map((item) => {
                   const Icon = item.icon;
                   return (
-                    <div key={item.label} className="group flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-3 hover:border-white/15 transition-colors">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-muted-foreground group-hover:text-cyan-400">
-                          <Icon className="size-3.5" />
+                    <div
+                      key={item.label}
+                      className="group flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-3.5 hover:border-white/15 hover:bg-white/[0.05] transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-muted-foreground group-hover:text-cyan-400 group-hover:bg-cyan-500/10 transition-colors">
+                          <Icon className="size-4" />
                         </div>
-                        <div className="min-w-0">
-                          <div className="text-[11px] text-muted-foreground">{item.label}</div>
-                          <div className={`text-xs font-medium text-white truncate ${item.mono ? 'font-mono' : ''}`} title={String(item.value)}>
+                        <div className="min-w-0 flex-1 pr-1">
+                          <div className="text-[11px] font-medium text-muted-foreground">{item.label}</div>
+                          <div
+                            className={`text-xs font-semibold text-white break-words mt-0.5 ${item.mono ? 'font-mono' : ''}`}
+                            title={String(item.rawValue || item.value)}
+                          >
                             {item.value}
                           </div>
                         </div>
@@ -338,9 +394,10 @@ export function InstanceDetailDrawer({
                       {item.copyKey && (
                         <button
                           onClick={() => copyToClipboard(String(item.value), item.copyKey!)}
-                          className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-white/10 shrink-0 ml-2"
+                          className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-white/10 shrink-0 ml-1 transition-colors"
+                          title={`Copy ${item.label}`}
                         >
-                          {copiedKey === item.copyKey ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                          {copiedKey === item.copyKey ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
                         </button>
                       )}
                     </div>
@@ -380,26 +437,27 @@ export function InstanceDetailDrawer({
 
             {/* TAB 2: NETWORK & SECURITY */}
             <TabsContent value="network" className="space-y-4 mt-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   { label: 'Public IPv4', value: instance.public_ip || 'None (Private Only)', copyKey: 'pub-ip', highlight: Boolean(instance.public_ip) },
                   { label: 'Private IPv4', value: instance.private_ip || '172.31.0.0/16', copyKey: 'priv-ip' },
                   { label: 'VPC ID', value: instance.vpc_id || 'vpc-default', copyKey: 'vpc' },
                   { label: 'Subnet ID', value: instance.subnet_id || 'subnet-default', copyKey: 'subnet' },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                    <div className="min-w-0">
-                      <div className="text-[11px] text-muted-foreground">{item.label}</div>
-                      <div className={`mt-0.5 text-xs font-mono font-medium truncate ${item.highlight ? 'text-cyan-300 font-bold' : 'text-white'}`}>
+                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-3.5 hover:border-white/15 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-medium text-muted-foreground">{item.label}</div>
+                      <div className={`mt-1 text-xs font-mono font-semibold break-all ${item.highlight ? 'text-cyan-300 font-bold' : 'text-white'}`}>
                         {item.value}
                       </div>
                     </div>
                     {item.value !== 'None (Private Only)' && (
                       <button
                         onClick={() => copyToClipboard(item.value, item.copyKey)}
-                        className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-white/10 shrink-0 ml-2"
+                        className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-white/10 shrink-0 ml-2 transition-colors"
+                        title={`Copy ${item.label}`}
                       >
-                        {copiedKey === item.copyKey ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                        {copiedKey === item.copyKey ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
                       </button>
                     )}
                   </div>
@@ -407,7 +465,7 @@ export function InstanceDetailDrawer({
               </div>
 
               {/* Security Groups & Firewall Ingress */}
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-semibold text-white">
                     <Lock className="size-4 text-amber-400" />
@@ -418,7 +476,7 @@ export function InstanceDetailDrawer({
                   </span>
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {(() => {
                     const sgs = (instance.security_groups_detail && instance.security_groups_detail.length > 0)
                       ? instance.security_groups_detail
@@ -432,13 +490,26 @@ export function InstanceDetailDrawer({
                       const isRevoking = revokingSg === sg.group_id;
 
                       return (
-                        <div key={sg.group_id || idx} className="rounded-lg border border-white/8 bg-black/25 p-3 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-cyan-300 font-semibold text-xs">{sg.group_id || 'sg-default'}</span>
-                            <span className="text-xs text-muted-foreground">{sg.group_name || 'default'}</span>
+                        <div key={sg.group_id || idx} className="rounded-xl border border-white/8 bg-black/30 p-3.5 sm:p-4 space-y-3">
+                          {/* Clean Header with Group ID and Group Name separated nicely without collision */}
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4 pb-2.5 border-b border-white/5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-mono text-cyan-300 font-semibold text-xs shrink-0">{sg.group_id || 'sg-default'}</span>
+                              <button
+                                onClick={() => copyToClipboard(sg.group_id, `sg-${idx}`)}
+                                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+                                title="Copy Security Group ID"
+                              >
+                                {copiedKey === `sg-${idx}` ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                              </button>
+                            </div>
+                            <div className="text-xs text-muted-foreground font-mono truncate max-w-sm" title={sg.group_name}>
+                              {sg.group_name || 'default'}
+                            </div>
                           </div>
 
-                          <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
+                          {/* Ingress status and action */}
+                          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {isExposed ? (
                                 <>
@@ -464,7 +535,7 @@ export function InstanceDetailDrawer({
                                 variant="destructive"
                                 disabled={isRevoking}
                                 onClick={() => handleRevokeSg(sg)}
-                                className="h-6 text-[10px] px-2"
+                                className="h-6 text-[10px] px-2.5"
                               >
                                 {isRevoking ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
                                 Revoke Public Ingress
@@ -557,7 +628,15 @@ export function InstanceDetailDrawer({
           </Tabs>
 
           {/* FOOTER ACTIONS */}
-          <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-white/10">
+            <Button
+              variant="outline"
+              className="border-white/10 text-xs h-9 px-3 text-muted-foreground hover:text-white"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? <Minimize2 className="size-3.5 mr-1.5 text-cyan-400" /> : <Maximize2 className="size-3.5 mr-1.5 text-cyan-400" />}
+              {isExpanded ? "Side Panel" : "Complete Tab"}
+            </Button>
             <Button
               className="flex-1 bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-semibold h-9 shadow-md"
               onClick={() => {
