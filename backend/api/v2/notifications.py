@@ -43,6 +43,12 @@ async def send_slack_finops_alert(payload: dict):
     dispatched = False
     if webhook_url:
         dispatched = notification_engine.dispatch_webhook(webhook_url, card)
+    if not dispatched:
+        cfg = notification_engine.get_config()
+        token = cfg.get("slack_bot_token")
+        channel = cfg.get("slack_channel") or "all-average"
+        if token:
+            dispatched = notification_engine.dispatch_slack_api(token, channel, card)
 
     return {"status": "success", "dispatched": dispatched, "payload": card}
 
@@ -109,6 +115,12 @@ async def send_slack_batch_finops_digest(payload: Optional[dict] = None):
     dispatched = False
     if webhook_url:
         dispatched = notification_engine.dispatch_webhook(webhook_url, card)
+    if not dispatched:
+        cfg = notification_engine.get_config()
+        token = cfg.get("slack_bot_token")
+        channel = cfg.get("slack_channel") or "all-average"
+        if token:
+            dispatched = notification_engine.dispatch_slack_api(token, channel, card)
 
     return {"status": "success", "dispatched": dispatched, "payload": card}
 

@@ -48,7 +48,7 @@ class FinOpsNotificationEngine:
             "slack_webhook_url": os.getenv("SLACK_WEBHOOK_URL", ""),
             "slack_bot_token": os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN") or os.getenv("SLACK_TOKEN", ""),
             "slack_refresh_token": os.getenv("SLACK_REFRESH_TOKEN", ""),
-            "slack_channel": os.getenv("SLACK_CHANNEL", "#finops-alerts"),
+            "slack_channel": os.getenv("SLACK_CHANNEL", "all-average"),
             "teams_webhook_url": os.getenv("TEAMS_WEBHOOK_URL") or os.getenv("MICROSOFT_TEAMS_WEBHOOK_URL", ""),
             "whatsapp_to": os.getenv("WHATSAPP_ALERT_TO", ""),
             "enabled_channels": {
@@ -1149,7 +1149,7 @@ class FinOpsNotificationEngine:
             return False
         try:
             req_data = {
-                "channel": channel or "#general",
+                "channel": channel or "all-average",
                 "text": payload.get("text", "CloudPulse FinOps Alert"),
                 "blocks": payload.get("blocks", [])
             }
@@ -1320,7 +1320,7 @@ class FinOpsNotificationEngine:
         if "slack" in target_channels:
             slack_sent = False
             token = cfg.get("slack_bot_token")
-            channel = cfg.get("slack_channel", "#general")
+            channel = cfg.get("slack_channel", "all-average")
             webhook = cfg.get("slack_webhook_url")
             if token and channel and slack_card:
                 slack_sent = self.dispatch_slack_api(token, channel, slack_card)

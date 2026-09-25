@@ -1151,7 +1151,7 @@ async def update_settings(payload: dict):
         "organization": meta.get("organization", ""),
         "slack_webhook_url": meta.get("slack_webhook_url", os.getenv("SLACK_WEBHOOK_URL", "")),
         "teams_webhook_url": meta.get("teams_webhook_url", os.getenv("TEAMS_WEBHOOK_URL", "")),
-        "slack_channel": meta.get("slack_channel", os.getenv("SLACK_CHANNEL", "#general")),
+        "slack_channel": meta.get("slack_channel", os.getenv("SLACK_CHANNEL", "all-average")),
         "whatsapp_to": meta.get("whatsapp_to", os.getenv("WHATSAPP_ALERT_TO", ""))
     }
 
@@ -1169,7 +1169,7 @@ async def get_settings():
         "slack_webhook_url": metadata.get("slack_webhook_url") or os.getenv("SLACK_WEBHOOK_URL", ""),
         "teams_webhook_url": metadata.get("teams_webhook_url") or os.getenv("TEAMS_WEBHOOK_URL", ""),
         "slack_bot_token": masked_token,
-        "slack_channel": metadata.get("slack_channel") or os.getenv("SLACK_CHANNEL", "#general"),
+        "slack_channel": metadata.get("slack_channel") or os.getenv("SLACK_CHANNEL", "all-average"),
         "whatsapp_to": metadata.get("whatsapp_to") or os.getenv("WHATSAPP_ALERT_TO", ""),
     }
 
@@ -1904,6 +1904,12 @@ async def send_slack_finops_alert(payload: dict):
     dispatched = False
     if webhook_url:
         dispatched = notification_engine.dispatch_webhook(webhook_url, card)
+    if not dispatched:
+        cfg = notification_engine.get_config()
+        token = cfg.get("slack_bot_token")
+        channel = cfg.get("slack_channel") or "all-average"
+        if token:
+            dispatched = notification_engine.dispatch_slack_api(token, channel, card)
 
     return {"status": "success", "dispatched": dispatched, "payload": card}
 
@@ -1971,6 +1977,12 @@ async def send_slack_batch_finops_digest(payload: dict = None):
     dispatched = False
     if webhook_url:
         dispatched = notification_engine.dispatch_webhook(webhook_url, card)
+    if not dispatched:
+        cfg = notification_engine.get_config()
+        token = cfg.get("slack_bot_token")
+        channel = cfg.get("slack_channel") or "all-average"
+        if token:
+            dispatched = notification_engine.dispatch_slack_api(token, channel, card)
 
     return {"status": "success", "dispatched": dispatched, "payload": card}
 

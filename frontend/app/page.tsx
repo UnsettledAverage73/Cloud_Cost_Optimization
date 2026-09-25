@@ -1473,59 +1473,15 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
         )}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <Card className="border-white/8 bg-card/70">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-base">30-day spend by provider</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">Daily run-rate · USD thousands</p>
-            </div>
-            <Badge variant="outline" className="border-white/10 text-muted-foreground">{summaryMode}</Badge>
-          </CardHeader>
-          <CardContent className="h-60 sm:h-72">
-            {sectionStatus === 'loading' ? (
-              <ChartSkeleton height="h-full" />
-            ) : (!Array.isArray(spend) || spend.length === 0) ? (
-              <EmptyState
-                icon={BarChart3}
-                title="No spend telemetry recorded"
-                description="Daily cloud cost data will populate as billing metrics are ingested."
-                className="h-full border-0 py-6"
-              />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={spend}>
-                  <defs>
-                    <linearGradient id="aws" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--chart-1)" stopOpacity=".35" />
-                      <stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" />
-                    </linearGradient>
-                    <linearGradient id="gcp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--chart-2)" stopOpacity=".3" />
-                      <stop offset="100%" stopColor="var(--chart-2)" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" vertical={false} />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} minTickGap={16} interval="preserveStartEnd" />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={36} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="aws" name="AWS" stackId="1" stroke="var(--chart-1)" fill="url(#aws)" />
-                  <Area type="monotone" dataKey="gcp" name="GCP" stackId="1" stroke="var(--chart-2)" fill="url(#gcp)" />
-                  <Area type="monotone" dataKey="azure" name="Azure" stackId="1" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={.16} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
+      <div className="mt-6">
         <Card className="border-white/8 bg-card/70">
           <CardHeader>
             <CardTitle className="text-base">Quick alerts</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Items needing your attention</p>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {sectionStatus === 'loading' ? (
-              <div className="space-y-3">
+              <div className="space-y-3 col-span-full">
                 <Skeleton className="h-14 w-full" />
                 <Skeleton className="h-14 w-full" />
                 <Skeleton className="h-14 w-full" />
@@ -1535,7 +1491,7 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
                 icon={CheckCircle2}
                 title="All systems optimal"
                 description="Zero infrastructure or billing alerts requiring action."
-                className="py-8 border-0"
+                className="py-8 border-0 col-span-full"
               />
             ) : (
               (Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => (
@@ -3813,7 +3769,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
   const [slackWebhookUrl, setSlackWebhookUrl] = useState('');
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
   const [slackBotToken, setSlackBotToken] = useState('');
-  const [slackChannel, setSlackChannel] = useState('#general');
+  const [slackChannel, setSlackChannel] = useState('all-average');
   const [whatsappTo, setWhatsappTo] = useState('');
   const [alertRules, setAlertRules] = useState({
     on_waste_found: true,
@@ -3862,7 +3818,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
           setSlackWebhookUrl(data?.slack_webhook_url || '');
           setTeamsWebhookUrl(data?.teams_webhook_url || '');
           setSlackBotToken(data?.slack_bot_token || '');
-          setSlackChannel(data?.slack_channel || '#general');
+          setSlackChannel(data?.slack_channel || 'all-average');
           setWhatsappTo(data?.whatsapp_to || '');
         }
 
@@ -3964,12 +3920,12 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
       if (data.dispatched) {
         setTestFeedback({
           type: 'success',
-          message: `✅ Test card dispatched and accepted by ${channel === 'slack' ? 'Slack' : 'Microsoft Teams'}!`,
+          message: `✅ Test card dispatched and posted to ${channel === 'slack' ? 'Slack #' + (slackChannel || 'all-average') : 'Microsoft Teams'}!`,
         });
       } else {
         setTestFeedback({
           type: 'error',
-          message: `⚠️ Card generated, but target webhook URL was not reachable. Please verify your ${channel.toUpperCase()} webhook URL.`,
+          message: `⚠️ Card generated, but target ${channel === 'slack' ? 'Slack channel/token' : 'Teams webhook'} was not reachable.`,
         });
       }
       fetchHistory();
@@ -4061,7 +4017,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
                 <Input
                   value={slackChannel}
                   onChange={e => setSlackChannel(e.target.value)}
-                  placeholder="#finops-alerts"
+                  placeholder="all-average"
                   className="mt-1 border-white/10 bg-white/5 text-xs font-mono"
                 />
               </label>
@@ -4230,7 +4186,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
                           </Badge>
                         </TableCell>
                         <TableCell className="font-mono text-[11px] text-muted-foreground">
-                          {d.target || '#finops-alerts'}
+                          {d.target || 'all-average'}
                         </TableCell>
                         <TableCell>
                           <Badge className={d.status === 'DELIVERED' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}>

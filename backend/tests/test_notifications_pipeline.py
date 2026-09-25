@@ -22,6 +22,23 @@ from main import app
 from services.notification_engine import notification_engine, FinOpsNotificationEngine
 
 
+@pytest.fixture(autouse=True)
+def isolate_notification_settings():
+    from services.notification_engine import CONFIG_FILE, HISTORY_FILE
+    saved_cfg = dict(notification_engine._config)
+    saved_hist = list(notification_engine._history)
+    saved_cfg_file = CONFIG_FILE.read_text() if CONFIG_FILE.exists() else None
+    saved_hist_file = HISTORY_FILE.read_text() if HISTORY_FILE.exists() else None
+    yield
+    notification_engine._config = saved_cfg
+    notification_engine._history = saved_hist
+    if saved_cfg_file is not None:
+        CONFIG_FILE.write_text(saved_cfg_file)
+    if saved_hist_file is not None:
+        HISTORY_FILE.write_text(saved_hist_file)
+
+
+
 def test_slack_waste_alert_block_kit():
     """Validates Slack Block Kit structure for single resource waste alerts."""
     card = notification_engine.format_slack_alert(
