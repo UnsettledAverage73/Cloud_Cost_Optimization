@@ -3,7 +3,7 @@ Google SRE Standard Health & Readiness Probes
 Provides /healthz (liveness) and /readyz (readiness) endpoints for Kubernetes orchestrators.
 """
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 
@@ -87,3 +87,23 @@ async def readiness_probe():
             "checks": checks
         }
     )
+
+
+try:
+    from core.metrics import get_prometheus_metrics, sync_domain_gauges, CONTENT_TYPE_LATEST
+except ImportError:
+    try:
+        from backend.core.metrics import get_prometheus_metrics, sync_domain_gauges, CONTENT_TYPE_LATEST
+    except ImportError:
+        get_prometheus_metrics = lambda: b""
+        sync_domain_gauges = lambda: None
+        CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
+
+
+@router.get("/metrics")
+async def prometheus_metrics():
+    """
+    Standard Prometheus metrics exposition endpoint for Kubernetes scraper.
+    """
+    sync_domain_gauges()
+    return Response(content=get_prometheus_metrics(), media_type=CONTENT_TYPE_LATEST)

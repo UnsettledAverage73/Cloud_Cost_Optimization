@@ -28,6 +28,10 @@ spec:
       app: cloudpulse-backend
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
       labels:
         app: cloudpulse-backend
     spec:
@@ -36,7 +40,9 @@ spec:
         image: cloudpulse/backend:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8000
+        - name: http
+          containerPort: 8000
+          protocol: TCP
         envFrom:
         - configMapRef:
             name: cloudpulse-config
@@ -49,16 +55,20 @@ spec:
             memory: "2Gi"
         livenessProbe:
           httpGet:
-            path: /api/v2/copilot/capabilities
+            path: /healthz
             port: 8000
           initialDelaySeconds: 15
           periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /api/v2/copilot/capabilities
+            path: /readyz
             port: 8000
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
 ---
 apiVersion: v1
 kind: Service

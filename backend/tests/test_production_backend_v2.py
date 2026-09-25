@@ -128,3 +128,28 @@ def test_analytics_router_endpoints():
     fc_res = client.get("/api/v2/analytics/forecast")
     assert fc_res.status_code == 200
     assert "projected_monthly_spend" in fc_res.json()
+
+
+def test_prometheus_metrics_endpoint():
+    """Validates that /metrics exports standard Prometheus format metrics."""
+    res = client.get("/metrics")
+    assert res.status_code == 200
+    content = res.text
+    assert "cloudpulse_http_requests_total" in content
+    assert "cloudpulse_http_request_duration_seconds" in content
+    assert "cloudpulse_active_requests" in content
+    assert "cloudpulse_monthly_spend_analyzed_usd" in content
+    assert "cloudpulse_vector_policies_indexed" in content
+
+
+def test_metrics_increment_on_traffic():
+    """Validates that traffic increments Prometheus HTTP counters and records duration histograms."""
+    # Generate some HTTP traffic
+    client.get("/api/v2/copilot/status")
+    client.get("/api/v2/fleet/summary")
+
+    metrics_res = client.get("/metrics")
+    assert metrics_res.status_code == 200
+    metrics_text = metrics_res.text
+    assert 'endpoint="/api/v2/copilot/status"' in metrics_text
+    assert 'endpoint="/api/v2/fleet/summary"' in metrics_text
