@@ -210,8 +210,8 @@ def create_timeseries_guide_pdf(output_path: str):
         body_style
     ))
     cmd_cli = (
-        'DATABASE_URL="postgresql://cloudpulse_db_i402_user:LkQtWiawBtDkRyCNlaQO6C1agZi6XZ1d@'
-        'dpg-daml14e1egvs73cllhpg-a.oregon-postgres.render.com/cloudpulse_db_i402" \\\n'
+        'export DATABASE_URL="postgresql://cloudpulse_db_i402_user:LkQtWiawBtDkRyCNlaQO6C1agZi6XZ1d@\\\n'
+        'dpg-daml14e1egvs73cllhpg-a.oregon-postgres.render.com/cloudpulse_db_i402"\n\n'
         './venv/bin/python scripts/show_timeseries_db.py'
     )
     story.append(make_code_box(cmd_cli))
@@ -231,7 +231,7 @@ def create_timeseries_guide_pdf(output_path: str):
         body_style
     ))
     cmd_psql = (
-        'psql "postgresql://cloudpulse_db_i402_user:LkQtWiawBtDkRyCNlaQO6C1agZi6XZ1d@'
+        'psql "postgresql://cloudpulse_db_i402_user:LkQtWiawBtDkRyCNlaQO6C1agZi6XZ1d@\\\n'
         'dpg-daml14e1egvs73cllhpg-a.oregon-postgres.render.com/cloudpulse_db_i402"'
     )
     story.append(make_code_box(cmd_psql))
