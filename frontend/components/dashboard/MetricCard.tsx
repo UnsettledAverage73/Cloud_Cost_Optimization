@@ -36,6 +36,12 @@ const toneStyles: Record<string, { bg: string; text: string; glow: string; borde
     glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(244,63,94,0.25)]',
     border: 'group-hover:border-rose-500/40',
   },
+  red: {
+    bg: 'bg-rose-500/10',
+    text: 'text-rose-400',
+    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(244,63,94,0.25)]',
+    border: 'group-hover:border-rose-500/40',
+  },
   blue: {
     bg: 'bg-blue-500/10',
     text: 'text-blue-400',

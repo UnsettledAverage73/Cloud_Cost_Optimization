@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect, useCallback, useDeferredValue, memo } from 'react'
+import { useMemo, useState, useEffect, useCallback, useDeferredValue, memo, useRef } from 'react'
 import {
   Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Calendar, Check,
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Copy, Cpu, Database,
@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { SectionErrorBoundary } from '@/components/error-boundary'
 import { EmptyState, MetricCardSkeleton, TableSkeleton, ChartSkeleton } from '@/components/empty-state'
 import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel, Ec2MonitoringGrid } from '@/components/dashboard'
+import { useOptimisticToast } from '@/components/ui/optimistic-toast'
 import { validateForm, enrollAccountSchema, connectCloudSchema } from '@/lib/validations/forms'
 import { addBreadcrumb, captureException } from '@/lib/monitoring/logger'
 import type {
@@ -236,6 +237,8 @@ export default function Page() {
     disconnectAccount,
   } = useDashboardStore();
 
+  const { toast } = useOptimisticToast();
+
   const connectionAccessMode = connectionState?.access_mode || 'live';
   const connectionWarning = connectionState?.warning || '';
 
@@ -288,29 +291,49 @@ export default function Page() {
 
   const handleDrawerRevoke = useCallback(async (sg: any) => {
     if (!sg?.group_id) return;
-    setRevokingDrawerSg(sg.group_id);
+    const targetId = sg.group_id;
+    const targetName = sg.group_name || targetId;
+    setRevokingDrawerSg(targetId);
     setDrawerFeedback(null);
+
+    // Instant optimistic update
+    revokeSecurityGroupLocally?.(targetId);
+    setDrawerFeedback(`Optimistically revoked public ingress for ${targetName}.`);
+    toast({
+      title: 'Security Ingress Revoked',
+      description: `Closed public 0.0.0.0/0 exposure on ${targetName}. Dispatched rule deletion to AWS.`,
+      type: 'security'
+    });
+
     try {
       const endpoint = apiUrl ? apiUrl('/api/security/revoke') : '/api/security/revoke';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId: sg.group_id, groupName: sg.group_name })
+        body: JSON.stringify({ groupId: targetId, groupName: targetName })
       });
       if (res.ok) {
-        revokeSecurityGroupLocally?.(sg.group_id);
-        setDrawerFeedback(`Successfully revoked public ingress for ${sg.group_name || sg.group_id}.`);
         await storeFetchData(apiUrl, true);
       } else {
         const err = await res.json().catch(() => ({}));
         setDrawerFeedback(`Revocation error: ${err.detail || 'Failed to revoke'}`);
+        toast({
+          title: 'Revocation Failed',
+          description: err.detail || 'Failed to revoke security group on provider.',
+          type: 'error'
+        });
       }
     } catch (e: any) {
       setDrawerFeedback(`Error: ${e?.message || 'Network error'}`);
+      toast({
+        title: 'Network Sync Error',
+        description: e?.message || 'Network error while contacting CloudPulse backend.',
+        type: 'error'
+      });
     } finally {
       setRevokingDrawerSg(null);
     }
-  }, [apiUrl, revokeSecurityGroupLocally, storeFetchData]);
+  }, [apiUrl, revokeSecurityGroupLocally, storeFetchData, toast]);
 
   useEffect(() => {
     fetchData();
@@ -583,22 +606,49 @@ export default function Page() {
               </a>
             )}
           </div>
-          <div className="flex flex-1 flex-col gap-1 p-3">
+          <div className="flex flex-1 flex-col gap-1 p-3 overflow-y-auto">
             {nav.map(item => {
               const Icon = item.icon;
+              const isActive = view === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => setView(item.id)}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${view === item.id ? 'bg-cyan-400/10 text-cyan-300' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-150 ${
+                    isActive
+                      ? 'bg-gradient-to-r from-cyan-500/15 via-cyan-500/8 to-transparent border border-cyan-500/25 text-cyan-300 font-medium shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]'
+                      : 'text-muted-foreground/90 hover:bg-white/[0.04] hover:text-foreground hover:translate-x-0.5'
+                  }`}
                 >
-                  <Icon className="size-4 shrink-0" />
+                  {isActive && (
+                    <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+                  )}
+                  <Icon className={`size-4 shrink-0 transition-transform duration-150 ${isActive ? 'text-cyan-400 scale-105' : 'group-hover:scale-105'}`} />
                   {!collapsed && <span className="truncate">{item.label}</span>}
-                  {item.id === 'security' && !collapsed && <span className="ml-auto size-1.5 rounded-full bg-red-400" />}
+                  {item.id === 'security' && !collapsed && (
+                    <span className="ml-auto flex size-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full size-2 bg-red-500" />
+                    </span>
+                  )}
                 </button>
               )
             })}
           </div>
+          {!collapsed && (
+            <div className="border-t border-white/8 p-3">
+              <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex size-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full size-2 bg-emerald-400" />
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-medium">FinOps Core</span>
+                </div>
+                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">Active</span>
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Mobile Navigation Drawer */}
@@ -712,7 +762,10 @@ export default function Page() {
         </Sheet>
 
         <div className={`transition-all ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-white/8 bg-background/80 px-3 sm:px-4 backdrop-blur-xl lg:px-8">
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-white/[0.08] bg-background/80 px-3 sm:px-4 backdrop-blur-xl lg:px-8 shadow-xs">
+            {syncing && (
+              <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-400 animate-pulse z-30" />
+            )}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Button
                 variant="ghost"
@@ -737,12 +790,17 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300') : 'border-white/10 bg-white/5 text-muted-foreground'}`}>
-                <span className={`size-2 rounded-full ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-slate-500'}`} />
+              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300 shadow-[0_0_12px_-2px_rgba(16,185,129,0.3)]') : 'border-white/10 bg-white/5 text-muted-foreground'}`}>
+                <span className="relative flex size-2">
+                  {connectionState?.connected && (
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                  )}
+                  <span className={`relative inline-flex rounded-full size-2 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-slate-500'}`} />
+                </span>
                 {connectionState?.connected
                   ? (connectionAccessMode === 'limited'
                     ? `Limited access · ${connectionState?.provider || 'AWS'}`
-                    : `Success · ${connectionState?.provider || 'AWS'}`)
+                    : `Live Telemetry · ${connectionState?.provider || 'AWS'}`)
                   : 'Not connected'}
               </div>
               {connectionState?.connected && (
@@ -751,12 +809,22 @@ export default function Page() {
                   onValueChange={(value) => {
                     if (value === '__disconnect__') {
                       disconnectAccount();
+                      toast({
+                        title: 'Account Disconnected',
+                        description: 'Removed cloud credentials from active session.',
+                        type: 'warning'
+                      });
                       return;
                     }
                     const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
                     const next = accounts.find((account: any) => connectionKey(account) === value);
                     if (next) {
                       switchAccount(next);
+                      toast({
+                        title: 'Switched Account',
+                        description: `Now monitoring ${next.account_name || 'account'} (${next.region || 'us-east-1'}).`,
+                        type: 'info'
+                      });
                     }
                   }}
                 >
@@ -787,7 +855,15 @@ export default function Page() {
                   </SelectContent>
                 </Select>
               )}
-              <Select value={provider} onValueChange={(value) => setProvider(value ?? 'all')}>
+              <Select value={provider} onValueChange={(value) => {
+                const next = value ?? 'all';
+                setProvider(next);
+                toast({
+                  title: `Provider Filter: ${next.toUpperCase()}`,
+                  description: next === 'all' ? 'Displaying resources across all active cloud accounts.' : `Filtered views to ${next.toUpperCase()} infrastructure.`,
+                  type: 'info'
+                });
+              }}>
                 <SelectTrigger className="hidden h-9 w-32 border-white/10 bg-white/5 sm:flex">
                   <SelectValue />
                 </SelectTrigger>
@@ -798,7 +874,15 @@ export default function Page() {
                   <SelectItem value="azure">Azure</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={currency} onValueChange={(value) => setCurrency((value as 'USD' | 'INR') || 'USD')}>
+              <Select value={currency} onValueChange={(value) => {
+                const next = (value as 'USD' | 'INR') || 'USD';
+                setCurrency(next);
+                toast({
+                  title: `Currency: ${next}`,
+                  description: next === 'INR' ? 'Recalculated all fleet costs and savings to INR (₹ Lakhs / Crores).' : 'Recalculated all fleet costs and savings to USD ($).',
+                  type: 'info'
+                });
+              }}>
                 <SelectTrigger className="hidden h-9 w-28 border-white/10 bg-white/5 text-xs font-medium sm:flex">
                   <SelectValue />
                 </SelectTrigger>
@@ -811,33 +895,71 @@ export default function Page() {
                 variant="outline"
                 size="sm"
                 className="h-8 px-2 text-xs font-semibold sm:hidden border-white/10 bg-white/5"
-                onClick={() => setCurrency(currency === 'USD' ? 'INR' : 'USD')}
+                onClick={() => {
+                  const next = currency === 'USD' ? 'INR' : 'USD';
+                  setCurrency(next);
+                  toast({
+                    title: `Currency: ${next}`,
+                    description: `Active display currency changed to ${next}.`,
+                    type: 'info'
+                  });
+                }}
                 title="Toggle Currency"
               >
                 {currency === 'USD' ? '$' : '₹'}
               </Button>
-              <div className="hidden items-center gap-2 border-l border-white/10 pl-3 text-xs text-muted-foreground md:flex">
-                <span className={`size-1.5 rounded-full ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                {connectionAccessMode === 'limited' ? 'Limited access' : 'Live Data'}
-              </div>
               <Button
                 variant={autoRefresh ? "secondary" : "ghost"}
                 size="sm"
-                onClick={toggleAutoRefresh}
+                onClick={() => {
+                  toggleAutoRefresh();
+                  toast({
+                    title: !autoRefresh ? 'Autonomous Live Sync Active' : 'Auto-Sync Paused',
+                    description: !autoRefresh ? 'Sub-minute autonomous telemetry streaming engaged.' : 'Switched to manual sync mode.',
+                    type: !autoRefresh ? 'success' : 'info'
+                  });
+                }}
                 title={autoRefresh ? "Auto-refresh is active (every 60s). Click to pause." : "Auto-refresh is paused. Click to enable."}
-                className={`h-8 px-2 text-xs font-medium border border-white/10 ${autoRefresh ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'text-muted-foreground'}`}
+                className={`h-8 px-2 text-xs font-medium border border-white/10 transition-all ${autoRefresh ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 <span className={`mr-1.5 size-1.5 rounded-full ${autoRefresh ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
                 <span className="hidden lg:inline">{autoRefresh ? 'Auto-sync ON' : 'Auto-sync OFF'}</span>
                 <span className="lg:hidden">{autoRefresh ? 'Auto' : 'Manual'}</span>
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => { fetchData(true); }} aria-label="Refresh data" className="size-8 sm:size-9" title="Manual refresh">
-                <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  fetchData(true);
+                  toast({
+                    title: 'Syncing Multi-Cloud Telemetry',
+                    description: 'Querying AWS CloudWatch, hypervisors, and telemetry ring buffers...',
+                    type: 'info'
+                  });
+                }}
+                aria-label="Refresh data"
+                className="size-8 sm:size-9"
+                title="Manual refresh"
+              >
+                <RefreshCw className={`size-4 ${syncing ? 'animate-spin text-cyan-400' : ''}`} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setLight(!light)} aria-label="Toggle theme" className="size-8 sm:size-9">
-                {light ? <Moon className="size-4" /> : <Sun className="size-4" />}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setLight(!light);
+                  toast({
+                    title: light ? 'Dark Theme Active' : 'Light Theme Active',
+                    description: 'Workspace palette updated.',
+                    type: 'info'
+                  });
+                }}
+                aria-label="Toggle theme"
+                className="size-8 sm:size-9"
+              >
+                {light ? <Moon className="size-4" /> : <Sun className="size-4 text-amber-400" />}
               </Button>
-              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-cyan-400 text-slate-950 hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm">
+              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-cyan-400 text-slate-950 hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-[0_0_15px_-2px_rgba(6,182,212,0.3)]">
                 <Plus className="size-4 shrink-0" />
                 <span className="hidden sm:inline ml-1">Connect Account</span>
                 <span className="sm:hidden ml-1">Connect</span>
@@ -1438,20 +1560,33 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
                 className="py-8 border-0 col-span-full"
               />
             ) : (
-              (Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => (
-                <div key={alert.id || alert.title || idx} className="flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.03] p-3">
-                  <div className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-${alert.tone || 'amber'}-400/10 text-${alert.tone || 'amber'}-400`}>
-                    <AlertTriangle className="size-3.5" />
+              (Array.isArray(alerts) ? alerts : []).map((alert: any, idx: number) => {
+                const isRed = alert.tone === 'red' || alert.tone === 'rose';
+                const isEmerald = alert.tone === 'emerald';
+                const isCyan = alert.tone === 'cyan';
+                const toneBg = isRed
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  : isEmerald
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : isCyan
+                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+
+                return (
+                  <div key={alert.id || alert.title || idx} className="group flex items-start gap-3 rounded-lg border border-white/8 bg-white/[.02] p-3.5 transition-all duration-150 hover:bg-white/[.04] hover:border-white/15 hover:-translate-y-0.5">
+                    <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border ${toneBg}`}>
+                      <AlertTriangle className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-foreground tracking-tight group-hover:text-cyan-300 transition-colors">{alert.title || 'Untitled Alert'}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{alert.desc || alert.description || ''}</div>
+                    </div>
+                    {alert.tag && (
+                      <Badge variant="outline" className="border-white/10 bg-white/5 text-[10px] shrink-0 font-mono">{alert.tag}</Badge>
+                    )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{alert.title || 'Untitled Alert'}</div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">{alert.desc || alert.description || ''}</div>
-                  </div>
-                  {alert.tag && (
-                    <Badge variant="outline" className="border-white/10 text-[10px] shrink-0">{alert.tag}</Badge>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
@@ -1663,28 +1798,39 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
             </TableHeader>
             <TableBody>
               {filteredNodes.map((n: any) => (
-                <TableRow key={n.instance_id} onClick={() => setSelectedNode(n)} className="cursor-pointer border-white/8 hover:bg-white/[.04]">
+                <TableRow key={n.instance_id} onClick={() => setSelectedNode(n)} className="cursor-pointer border-white/8 hover:bg-cyan-500/[0.04] transition-colors duration-150">
                   <TableCell>
                     <input type="checkbox" aria-label={`Select ${n.name}`} className="accent-cyan-400" onClick={e => e.stopPropagation()} />
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium">{n.name}</div>
+                    <div className="font-medium text-foreground tracking-tight">{n.name}</div>
                     <div className="font-mono text-[11px] text-muted-foreground">{n.instance_id}</div>
                   </TableCell>
                   <TableCell>
                     <span className="flex items-center gap-2 text-xs capitalize">
-                      <span className={`size-2 rounded-full ${n.state === 'running' ? 'bg-emerald-400' : n.state === 'stopped' ? 'bg-amber-400' : 'bg-red-400'}`} />
-                      {n.state}
+                      <span className="relative flex size-2">
+                        {n.state === 'running' && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        )}
+                        <span className={`relative inline-flex rounded-full size-2 ${n.state === 'running' ? 'bg-emerald-400' : n.state === 'stopped' ? 'bg-amber-400' : 'bg-rose-400'}`} />
+                      </span>
+                      <span className={n.state === 'running' ? 'text-emerald-300 font-medium' : 'text-muted-foreground'}>{n.state}</span>
                     </span>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{n.instance_type || n.type || '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="border-cyan-400/20 bg-cyan-400/5 text-cyan-300 font-mono text-[11px]">
+                      {n.instance_type || n.type || '—'}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{n.region}</TableCell>
-                  <TableCell className="font-mono text-xs">{n.public_ip}</TableCell>
-                  <TableCell className="text-xs">{n.volumes} attached</TableCell>
-                  <TableCell className="text-right font-mono text-xs">${Number(n.cost).toFixed(2)}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground/90">{n.public_ip || '—'}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{n.volumes} attached</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-semibold text-foreground">
+                    {formatCurrency(Number(n.cost), currency)}
+                  </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="icon" aria-label="More actions" onClick={e => e.stopPropagation()}>
-                      <MoreHorizontal />
+                      <MoreHorizontal className="size-4" />
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -1811,6 +1957,7 @@ function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStat
 }
 
 function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiUrl, onRefresh, revokeSecurityGroupLocally }: any) {
+  const { toast } = useOptimisticToast();
   const exposedSecurityGroups = audit?.exposed_security_groups || [];
   const allSecurityGroups = (audit?.all_security_groups && audit.all_security_groups.length > 0)
     ? audit.all_security_groups
@@ -1838,22 +1985,32 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
 
   const confirmRevoke = async () => {
     if (!selectedGroupToRevoke) return;
+    const targetId = selectedGroupToRevoke.group_id;
+    const targetName = selectedGroupToRevoke.group_name || targetId;
     setRevoking(true);
     setFeedback(null);
+
+    // Instant optimistic update
+    revokeSecurityGroupLocally?.(targetId);
+    setRevokeModalOpen(false);
+    toast({
+      title: 'Security Ingress Revoked',
+      description: `Revoked 0.0.0.0/0 exposure for ${targetName}. Dispatched rule deletion to provider...`,
+      type: 'security'
+    });
+
     try {
       const endpoint = apiUrl ? apiUrl('/api/security/revoke') : '/api/security/revoke';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId: selectedGroupToRevoke.group_id, groupName: selectedGroupToRevoke.group_name })
+        body: JSON.stringify({ groupId: targetId, groupName: targetName })
       });
       if (res.ok) {
-        revokeSecurityGroupLocally?.(selectedGroupToRevoke.group_id);
         setFeedback({
           type: 'success',
-          message: `Public ingress (0.0.0.0/0) successfully revoked for ${selectedGroupToRevoke.group_name || selectedGroupToRevoke.group_id}.`
+          message: `Public ingress (0.0.0.0/0) successfully revoked for ${targetName}.`
         });
-        setRevokeModalOpen(false);
         onRefresh?.(true);
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1861,11 +2018,21 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
           type: 'error',
           message: err.detail || 'Failed to revoke security group ingress.'
         });
+        toast({
+          title: 'Revocation Sync Failed',
+          description: err.detail || 'Failed to revoke security group on provider.',
+          type: 'error'
+        });
       }
     } catch (e: any) {
       setFeedback({
         type: 'error',
         message: e?.message || 'Network error while attempting revocation.'
+      });
+      toast({
+        title: 'Network Sync Error',
+        description: e?.message || 'Network error while contacting CloudPulse backend.',
+        type: 'error'
       });
     } finally {
       setRevoking(false);
@@ -2178,6 +2345,7 @@ function Security({ accessMode, tab, setTab, summary, audit, sectionStatus, apiU
 }
 
 function Optimization({ accessMode, items = [], applied = [], setApplied, sectionStatus, currency = 'USD', apiUrl }: any) {
+  const { toast } = useOptimisticToast();
   const [optFilter, setOptFilter] = useState<'all' | 'pending' | 'applied'>('all');
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
@@ -2216,37 +2384,96 @@ function Optimization({ accessMode, items = [], applied = [], setApplied, sectio
 
   const toggleOptimization = async (id: string) => {
     const isApplied = appliedSet.has(id);
+    const item = items.find((x: any) => x.id === id);
+    const prevApplied = [...applied];
     const newApplied = isApplied ? applied.filter((x: string) => x !== id) : [...applied, id];
-    const res = await fetch(apiUrl('/api/optimizations/apply'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, action: isApplied ? 'revert' : 'apply' })
+
+    // Instant optimistic local update
+    setApplied(newApplied);
+    toast({
+      title: isApplied ? 'Optimization Reverted' : 'Recommendation Applied',
+      description: isApplied
+        ? `Reverted configuration change for ${item?.resource_id || id}.`
+        : `Optimistically activated ${item?.type || 'rightsizing'} on ${item?.resource_id || id} (${formatCurrency(item?.savings, currency)}/mo savings).`,
+      type: isApplied ? 'warning' : 'success'
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      setApplied(Array.isArray(data?.applied) ? data.applied : newApplied);
-    } else {
-      setApplied(newApplied);
+    try {
+      const res = await fetch(apiUrl('/api/optimizations/apply'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: isApplied ? 'revert' : 'apply' })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.applied)) {
+          setApplied(data.applied);
+        }
+      } else {
+        setApplied(prevApplied);
+        toast({
+          title: 'Provider Sync Failed',
+          description: 'Unable to apply change on cloud provider. Restored previous state.',
+          type: 'error'
+        });
+      }
+    } catch {
+      setApplied(prevApplied);
+      toast({
+        title: 'Network Sync Error',
+        description: 'Failed to reach CloudPulse backend. Rolled back change.',
+        type: 'error'
+      });
     }
   };
 
   const handleApplyAllRemaining = async () => {
-    await Promise.all(pendingItems.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: i.id, action: 'apply' })
-    })));
-    setApplied(items.map((i: any) => i.id));
+    const prevApplied = [...applied];
+    const allIds = items.map((i: any) => i.id);
+    const count = pendingItems.length;
+
+    // Instant optimistic batch update
+    setApplied(allIds);
+    toast({
+      title: 'Batch Optimization Applied',
+      description: `Optimistically activated ${count} recommendations. Projected monthly savings realized.`,
+      type: 'info'
+    });
+
+    try {
+      await Promise.all(pendingItems.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: i.id, action: 'apply' })
+      })));
+    } catch {
+      toast({
+        title: 'Batch Sync Notice',
+        description: 'Some items may need manual sync verification.',
+        type: 'warning'
+      });
+    }
   };
 
   const handleRevertAll = async () => {
-    await Promise.all(appliedItems.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: i.id, action: 'revert' })
-    })));
+    const prevApplied = [...applied];
     setApplied([]);
+    toast({
+      title: 'All Optimizations Reverted',
+      description: `Restored baseline configurations for ${appliedItems.length} resources.`,
+      type: 'warning'
+    });
+
+    try {
+      await Promise.all(appliedItems.map((i: any) => fetch(apiUrl('/api/optimizations/apply'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: i.id, action: 'revert' })
+      })));
+    } catch {
+      setApplied(prevApplied);
+    }
   };
 
   const handleBatchGitopsPr = async () => {
@@ -3466,6 +3693,67 @@ function LakehouseView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; 
   );
 }
 
+function formatInlineMarkdown(text: string): React.ReactNode {
+  if (!text) return null;
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
+      return (
+        <code key={index} className="rounded border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-xs text-cyan-300">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 3) {
+      return (
+        <strong key={index} className="font-semibold text-foreground">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
+function MarkdownText({ content }: { content: string }) {
+  if (!content) return null;
+  const lines = content.split('\n');
+
+  return (
+    <div className="space-y-1.5 text-sm leading-relaxed">
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={i} className="h-1" />;
+
+        // Header ###
+        if (trimmed.startsWith('### ')) {
+          return <h4 key={i} className="text-sm font-semibold text-cyan-300 mt-2">{trimmed.slice(4)}</h4>;
+        }
+        if (trimmed.startsWith('## ')) {
+          return <h3 key={i} className="text-base font-bold text-foreground mt-3">{trimmed.slice(3)}</h3>;
+        }
+        if (trimmed.startsWith('# ')) {
+          return <h2 key={i} className="text-lg font-bold text-foreground mt-3">{trimmed.slice(2)}</h2>;
+        }
+
+        // Bullet point
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const bulletText = trimmed.slice(2);
+          return (
+            <div key={i} className="flex items-start gap-2 pl-2">
+              <span className="mt-1.5 size-1.5 rounded-full bg-cyan-400 shrink-0 shadow-[0_0_6px_rgba(6,182,212,0.8)]" />
+              <span>{formatInlineMarkdown(bulletText)}</span>
+            </div>
+          );
+        }
+
+        // Standard line
+        return <p key={i}>{formatInlineMarkdown(line)}</p>;
+      })}
+    </div>
+  );
+}
+
 function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
   const [messages, setMessages] = useState<Array<{
     role: 'user' | 'assistant';
@@ -3486,6 +3774,11 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
   const [loading, setLoading] = useState(false);
   const [ragStatus, setRagStatus] = useState<any>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
   // Fetch live RAG pipeline telemetry status
   useEffect(() => {
@@ -3719,9 +4012,13 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
                       )}
                     </div>
                   )}
-                  <div className="whitespace-pre-wrap font-sans space-y-2">
-                    {m.text}
-                  </div>
+                  {m.role === 'assistant' ? (
+                    <MarkdownText content={m.text} />
+                  ) : (
+                    <div className="whitespace-pre-wrap font-sans leading-relaxed">
+                      {m.text}
+                    </div>
+                  )}
                   {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
                     <div className="mt-3 border-t border-white/8 pt-2 flex flex-wrap items-center gap-1.5">
                       <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Grounded Sources:</span>
@@ -3739,13 +4036,21 @@ function CopilotView({ apiUrl }: { apiUrl: (path: string) => string }) {
               </div>
             ))}
             {loading && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
-                  <Loader2 className="size-4 animate-spin" />
+              <div className="flex items-center gap-3 text-sm text-cyan-300/90 animate-pulse">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_12px_rgba(6,182,212,0.25)]">
+                  <Sparkles className="size-4 animate-spin" />
                 </div>
-                <span>Copilot is reasoning with Groq LLM & synthesizing RAG telemetry across AWS, OpenCost, and FOCUS Lakehouse...</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs">Copilot is synthesizing telemetry across AWS, OpenCost, and FOCUS Lakehouse</span>
+                  <span className="flex gap-1">
+                    <span className="size-1 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="size-1 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="size-1 rounded-full bg-cyan-400 animate-bounce" />
+                  </span>
+                </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
 
           <div className="mt-4 flex gap-2 border-t border-white/8 pt-4">
@@ -4301,6 +4606,7 @@ function SettingsView({ connectionState, connectedAccounts, rememberedProfile, o
 }
 
 function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
+  const { toast } = useOptimisticToast();
   const runningNode = useMemo(() => {
     if (!Array.isArray(nodes) || nodes.length === 0) return null;
     return nodes.find((n: any) => n.state === 'running' || n.instance_state === 'running') || nodes[0];
@@ -4420,6 +4726,18 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
   };
 
   const handleOverride = async (jobId: string, action: 'KEEP_RUNNING' | 'STOP_NOW', hours = 2) => {
+    // Instant optimistic update
+    setJobs((prev: any[]) =>
+      prev.map((j: any) =>
+        j.id === jobId ? { ...j, status: action === 'KEEP_RUNNING' ? 'OVERRIDDEN' : 'EXECUTING' } : j
+      )
+    );
+    toast({
+      title: action === 'KEEP_RUNNING' ? 'Instance Keep-Running Engaged' : 'Immediate Stop Dispatched',
+      description: action === 'KEEP_RUNNING' ? `Extended schedule runtime by ${hours} hours. Auto-shutdown delayed.` : 'Immediate shutdown command issued.',
+      type: 'info'
+    });
+
     try {
       const res = await fetch(apiUrl(`/api/v2/schedules/jobs/${jobId}/override`), {
         method: 'POST',
@@ -4429,19 +4747,23 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
       if (res.ok) {
         const data = await res.json();
         setFeedback({ type: 'success', message: data.message || 'Override registered successfully!' });
-        // Optimistically dismiss the grace period alert for this instance
-        setJobs((prev: any[]) =>
-          prev.map((j: any) =>
-            j.id === jobId ? { ...j, status: action === 'KEEP_RUNNING' ? 'OVERRIDDEN' : 'EXECUTING' } : j
-          )
-        );
-        fetchSchedulerData();
+        fetchSchedulerData(false);
       } else {
         const err = await res.json().catch(() => ({}));
         setFeedback({ type: 'error', message: err.detail || 'Override failed' });
+        toast({
+          title: 'Override Sync Failed',
+          description: err.detail || 'Could not communicate override to scheduler.',
+          type: 'error'
+        });
       }
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message });
+      toast({
+        title: 'Network Sync Error',
+        description: err.message,
+        type: 'error'
+      });
     }
   };
 
