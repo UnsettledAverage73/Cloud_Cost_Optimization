@@ -914,6 +914,8 @@ export default function Page() {
                       filteredNodes={filteredNodes}
                       setSelectedNode={setSelectedNode}
                       sectionStatus={dataSources.nodes?.status || (syncing ? 'loading' : 'idle')}
+                      apiUrl={apiUrl}
+                      currency={currency}
                     />
                   </SectionErrorBoundary>
                 )}
@@ -1533,15 +1535,28 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
               <Eye className="mr-1.5 size-3.5" />View Dossier
             </Button>
             <a
-              href={apiUrl('/api/v2/analytics/pov/report.html')}
+              href={apiUrl(`/api/v2/analytics/pov/report.pdf?currency=${currency}&inline=true`)}
               target="_blank"
               rel="noopener noreferrer"
             >
               <Button
                 size="sm"
-                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-medium"
+                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-semibold"
               >
-                <Download className="mr-1.5 size-3.5" />Open HTML Report
+                <Download className="mr-1.5 size-3.5" />Download PDF Audit
+              </Button>
+            </a>
+            <a
+              href={apiUrl('/api/v2/analytics/pov/report.html')}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/10 bg-white/5 text-xs hover:bg-white/10"
+              >
+                <FileText className="mr-1.5 size-3.5" />HTML View
               </Button>
             </a>
           </div>
@@ -1610,9 +1625,14 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)}>Close</Button>
+              <a href={apiUrl(`/api/v2/analytics/pov/report.pdf?currency=${currency}&inline=true`)} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" className="w-full sm:w-auto bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold">
+                  <Download className="mr-1.5 size-3.5" />Download Executive PDF
+                </Button>
+              </a>
               <a href={apiUrl('/api/v2/analytics/pov/report.html')} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" className="w-full sm:w-auto bg-cyan-400 text-slate-950 hover:bg-cyan-300">
-                  <ExternalLink className="mr-1.5 size-3.5" />Open Interactive HTML Audit
+                <Button variant="outline" size="sm" className="w-full sm:w-auto border-white/10 bg-white/5 hover:bg-white/10">
+                  <ExternalLink className="mr-1.5 size-3.5" />Interactive HTML
                 </Button>
               </a>
             </div>
@@ -1623,7 +1643,11 @@ function Overview({ accessMode, setView, spend, alerts, summary, sectionStatus, 
   )
 }
 
-function Inventory({ accessMode, search, setSearch, status, setStatus, filteredNodes, setSelectedNode, sectionStatus }: any) {
+function Inventory({ accessMode, search, setSearch, status, setStatus, filteredNodes, setSelectedNode, sectionStatus, apiUrl, currency }: any) {
+  const pdfUrl = typeof apiUrl === 'function'
+    ? apiUrl(`/api/v2/analytics/pov/report.pdf?currency=${currency || 'USD'}&inline=true`)
+    : `/api/v2/analytics/pov/report.pdf?currency=${currency || 'USD'}&inline=true`;
+
   return (
     <>
       <SectionTitle
@@ -1631,7 +1655,13 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
         title="Compute & storage"
         description="Track every node, volume, and exposure across your estate."
         status={<SectionStatusBadge status={sectionStatus} />}
-        action={<Button variant="outline"><Archive data-icon="inline-start" />Export inventory</Button>}
+        action={
+          <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 text-xs">
+              <Download className="mr-1.5 size-3.5" />Export Complete Cost & Inventory PDF
+            </Button>
+          </a>
+        }
       />
       <div className="mb-4 flex flex-col sm:flex-row gap-3">
         <div className="relative w-full sm:flex-1">

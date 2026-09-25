@@ -233,3 +233,28 @@ def test_fastapi_pov_endpoints():
     assert res_html.status_code == 200
     assert "text/html" in res_html.headers["content-type"]
     assert "CloudPulse Autopilot" in res_html.text
+
+    # 3. GET /api/v2/analytics/pov/report.pdf
+    res_pdf = client.get("/api/v2/analytics/pov/report.pdf?currency=INR")
+    assert res_pdf.status_code == 200
+    assert res_pdf.headers["content-type"] == "application/pdf"
+    assert res_pdf.content.startswith(b"%PDF-")
+
+
+def test_cli_cmd_pov_pdf(tmp_path):
+    report_file = tmp_path / "Executive_Audit.pdf"
+    args = argparse.Namespace(
+        format="pdf",
+        currency="INR",
+        rate=84.0,
+        output=str(report_file),
+        offline_dir=None,
+        offline_file=None,
+        account_name="Acme Corp",
+        open_browser=False
+    )
+    cmd_pov(args)
+    assert report_file.exists()
+    content = report_file.read_bytes()
+    assert content.startswith(b"%PDF-")
+    assert len(content) > 1000

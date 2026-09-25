@@ -1769,6 +1769,12 @@ def cmd_pov(args):
             output_dest = "Enterprise_PoV_Audit.md"
         with open(output_dest, "w", encoding="utf-8") as f:
             f.write(content)
+    elif fmt == "pdf":
+        pdf_bytes = reporter.generate_pdf_report(inventory, anomalies=anomalies, account_name=account_name)
+        if not output_dest:
+            output_dest = "Enterprise_FinOps_PoV_Audit.pdf"
+        with open(output_dest, "wb") as f:
+            f.write(pdf_bytes)
     else:
         content = reporter.generate_html_report(inventory, anomalies=anomalies, account_name=account_name)
         if not output_dest:
@@ -3913,7 +3919,7 @@ def main():
     p_pov.add_argument("--rate", type=float, default=84.0, help="USD to INR exchange rate (default: 84.0)")
     p_pov.add_argument("--account-name", default="Enterprise Cloud Fleet", help="Enterprise customer / workload account name")
     p_pov.add_argument("--output", "-o", default=None, help="File path to save the HTML/Markdown audit dossier")
-    p_pov.add_argument("--format", "-m", choices=["html", "markdown", "md", "json"], default="html", help="Report format (default: html)")
+    p_pov.add_argument("--format", "-m", choices=["html", "pdf", "markdown", "md", "json"], default="html", help="Report format (default: html, choices: html, pdf, markdown, json)")
     p_pov.add_argument("--open", dest="open_browser", action="store_true", help="Automatically open generated HTML report in default browser")
 
     # query (FOCUS 1.0 SQL Lakehouse Engine)

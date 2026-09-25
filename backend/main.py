@@ -2821,6 +2821,43 @@ async def get_pov_html_report(currency: str = "INR", rate: float = 84.0, account
     return HTMLResponse(content=html_content, status_code=200)
 
 
+@app.get("/api/v2/analytics/pov/report.pdf")
+@app.get("/api/v1/reports/inventory-cost.pdf")
+async def get_pov_pdf_report(
+    currency: str = "INR",
+    rate: float = 84.0,
+    account_name: str = "Enterprise Cloud Fleet",
+    inline: bool = True
+):
+    """Generates and serves the publication-grade PDF report of complete services, instances, and cost impact."""
+    from fastapi.responses import Response
+    from services.currency_converter import currency_converter
+    from services.pov_reporter import PoVReporter
+
+    currency_converter.usd_to_inr_rate = rate
+    reporter = PoVReporter(currency=currency, usd_to_inr_rate=rate)
+
+    inventory = resolve_active_inventory()
+    focus_records = FOCUSNormalizer.convert_inventory_to_focus(inventory)
+    anomalies = anomaly_detector.scan_inventory_and_focus(inventory, focus_records)
+
+    pdf_bytes = reporter.generate_pdf_report(
+        inventory=inventory,
+        anomalies=anomalies,
+        account_name=account_name
+    )
+
+    disposition = "inline" if inline else "attachment"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="CloudPulse_Cost_Optimization_Report.pdf"',
+            "Content-Length": str(len(pdf_bytes)),
+        }
+    )
+
+
 # ==============================================================================
 # OPTISCALE OPERATIONAL SCHEDULER & PRE-WARMING PIPELINE APIS
 # ==============================================================================
