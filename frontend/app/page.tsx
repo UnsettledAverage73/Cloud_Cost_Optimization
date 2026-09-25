@@ -232,6 +232,10 @@ export default function Page() {
     loading, setLoading,
     dataError, setDataError,
     fetchData: storeFetchData,
+    autoRefresh,
+    toggleAutoRefresh,
+    autoRefreshIntervalSec,
+    disconnectAccount,
   } = useDashboardStore();
 
   const connectionAccessMode = connectionState?.access_mode || 'live';
@@ -439,11 +443,11 @@ export default function Page() {
           writeStoredProfile(profile);
         } else if (!cancelled) {
           const fallback = readStoredConnection();
-          if (fallback?.connected && !connectionReady) {
+          if (fallback?.connected) {
             setConnectionState({
               connected: true,
               status: fallback.status || 'success',
-              message: fallback.message || 'Success',
+              message: fallback.message || 'Saved Account Restored',
               provider: fallback.provider,
               account_name: fallback.account_name,
               region: fallback.region,
@@ -452,10 +456,6 @@ export default function Page() {
               warning: fallback.warning || '',
             });
             setConnectedAccounts(Array.isArray(fallback.connected_accounts) ? fallback.connected_accounts : []);
-          } else {
-            setConnectionState({ connected: false, status: 'disconnected', message: '', access_mode: null, warning: null });
-            setConnectedAccounts([]);
-            window.localStorage.removeItem(CONNECTION_STORAGE_KEY);
           }
         }
       } catch (err) {
@@ -474,7 +474,7 @@ export default function Page() {
             setConnectionState({
               connected: true,
               status: fallback.status || 'success',
-              message: fallback.message || 'Success',
+              message: fallback.message || 'Saved Account Restored',
               provider: fallback.provider,
               account_name: fallback.account_name,
               region: fallback.region,
@@ -484,14 +484,16 @@ export default function Page() {
             });
             setConnectedAccounts(Array.isArray(fallback.connected_accounts) ? fallback.connected_accounts : []);
             setRememberedProfile(profile);
-          } else {
-            setConnectionState({ connected: false, status: 'disconnected', message: '', access_mode: null, warning: null });
-            setConnectedAccounts([]);
-            window.localStorage.removeItem(CONNECTION_STORAGE_KEY);
           }
         }
       } finally {
-        if (!cancelled) setConnectionReady(true);
+        if (!cancelled) {
+          setConnectionReady(true);
+          const activeConn = readStoredConnection();
+          if (activeConn?.connected) {
+            storeFetchData(apiUrl);
+          }
+        }
       }
     };
 
@@ -500,17 +502,18 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiUrl, storeFetchData, setConnectionReady, setConnectionState, setConnectedAccounts, setRememberedProfile]);
 
   useEffect(() => {
-    if (!connectionState?.connected) return;
+    if (!connectionState?.connected || !autoRefresh) return;
 
+    const intervalMs = (autoRefreshIntervalSec || 60) * 1000;
     const interval = window.setInterval(() => {
       fetchData();
-    }, 30000);
+    }, intervalMs);
 
     return () => window.clearInterval(interval);
-  }, [connectionState?.connected, fetchData]);
+  }, [connectionState?.connected, autoRefresh, autoRefreshIntervalSec, fetchData]);
 
   useEffect(() => {
     if (!selectedNode?.instance_id) {
@@ -754,6 +757,10 @@ export default function Page() {
                 <Select
                   value={selectedAccountKey || connectionKey(connectionState)}
                   onValueChange={(value) => {
+                    if (value === '__disconnect__') {
+                      disconnectAccount();
+                      return;
+                    }
                     const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
                     const next = accounts.find((account: any) => connectionKey(account) === value);
                     if (next) {
@@ -782,6 +789,9 @@ export default function Page() {
                         {account?.account_name || 'Connected account'} · {account?.region || 'us-east-1'}{account?.active ? ' · Active' : ''}
                       </SelectItem>
                     ))}
+                    <SelectItem value="__disconnect__" className="text-red-400 focus:text-red-300">
+                      Disconnect Account
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -818,7 +828,18 @@ export default function Page() {
                 <span className={`size-1.5 rounded-full ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                 {connectionAccessMode === 'limited' ? 'Limited access' : 'Live Data'}
               </div>
-              <Button variant="ghost" size="icon" onClick={() => { fetchData(true); }} aria-label="Refresh data" className="size-8 sm:size-9">
+              <Button
+                variant={autoRefresh ? "secondary" : "ghost"}
+                size="sm"
+                onClick={toggleAutoRefresh}
+                title={autoRefresh ? "Auto-refresh is active (every 60s). Click to pause." : "Auto-refresh is paused. Click to enable."}
+                className={`h-8 px-2 text-xs font-medium border border-white/10 ${autoRefresh ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'text-muted-foreground'}`}
+              >
+                <span className={`mr-1.5 size-1.5 rounded-full ${autoRefresh ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
+                <span className="hidden lg:inline">{autoRefresh ? 'Auto-sync ON' : 'Auto-sync OFF'}</span>
+                <span className="lg:hidden">{autoRefresh ? 'Auto' : 'Manual'}</span>
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => { fetchData(true); }} aria-label="Refresh data" className="size-8 sm:size-9" title="Manual refresh">
                 <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
               </Button>
               <Button variant="ghost" size="icon" onClick={() => setLight(!light)} aria-label="Toggle theme" className="size-8 sm:size-9">
@@ -4375,8 +4396,8 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
     }
   }, [defaultInstanceId]);
 
-  const fetchSchedulerData = useCallback(async () => {
-    setLoading(true);
+  const fetchSchedulerData = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true);
     try {
       const [sRes, jRes] = await Promise.all([
         fetch(apiUrl('/api/v2/schedules')),
@@ -4393,13 +4414,13 @@ function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: any) {
     } catch (err) {
       console.error('Failed to load scheduler data:', err);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, [apiUrl]);
 
   useEffect(() => {
-    fetchSchedulerData();
-    const interval = setInterval(fetchSchedulerData, 30000); // 30s auto-refresh
+    fetchSchedulerData(true);
+    const interval = setInterval(() => fetchSchedulerData(false), 30000); // 30s background auto-refresh
     return () => clearInterval(interval);
   }, [fetchSchedulerData]);
 

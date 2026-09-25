@@ -106,4 +106,56 @@ describe('Zustand Dashboard Store & Caching Orchestrator', () => {
     expect(dataSources['summary']?.status).toBe('partial')
     expect(dataSources['nodes']?.status).toBe('ready')
   })
+
+  it('toggles autoRefresh and updates state properly', () => {
+    useDashboardStore.setState({ autoRefresh: false })
+    const { toggleAutoRefresh, setAutoRefresh } = useDashboardStore.getState()
+
+    toggleAutoRefresh()
+    expect(useDashboardStore.getState().autoRefresh).toBe(true)
+
+    toggleAutoRefresh()
+    expect(useDashboardStore.getState().autoRefresh).toBe(false)
+
+    setAutoRefresh(true)
+    expect(useDashboardStore.getState().autoRefresh).toBe(true)
+  })
+
+  it('clears connection state and data when disconnectAccount is called', () => {
+    useDashboardStore.setState({
+      connectionReady: true,
+      connectionState: { connected: true, status: 'success', message: 'Connected' },
+      nodes: [{ instance_id: 'i-123', state: 'running' } as any],
+    })
+
+    const { disconnectAccount } = useDashboardStore.getState()
+    disconnectAccount()
+
+    expect(useDashboardStore.getState().connectionState.connected).toBe(false)
+    expect(useDashboardStore.getState().connectionReady).toBe(false)
+    expect(useDashboardStore.getState().nodes).toEqual([])
+  })
+
+  it('preserves existing nodes (stale-while-revalidate) if background refresh errors', async () => {
+    const existingNodes = [{ instance_id: 'i-preserved-1', state: 'running' } as any]
+    useDashboardStore.setState({
+      connectionReady: true,
+      connectionState: { connected: true, status: 'success', message: 'Connected' },
+      nodes: existingNodes,
+    })
+
+    // Simulate backend throwing 500 on all endpoints
+    global.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: false,
+        json: () => Promise.resolve({ detail: 'Temporary network breakdown' }),
+      })
+    ) as any
+
+    const apiUrl = (path: string) => `http://localhost:8000${path}`
+    await useDashboardStore.getState().fetchData(apiUrl, true)
+
+    // Verify existing nodes were NOT wiped
+    expect(useDashboardStore.getState().nodes).toEqual(existingNodes)
+  })
 })

@@ -487,6 +487,12 @@ def _is_permission_denied(error_message: str) -> bool:
         or "accessdenied" in lowered
         or "explicit deny" in lowered
         or "not authorized to perform" in lowered
+        or "expiredtoken" in lowered
+        or "token has expired" in lowered
+        or "authfailure" in lowered
+        or "invalidclienttokenid" in lowered
+        or "signaturedoesnotmatch" in lowered
+        or "credentials not found" in lowered
     )
 
 
