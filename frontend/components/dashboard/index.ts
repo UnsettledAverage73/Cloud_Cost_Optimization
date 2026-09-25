@@ -1,3 +1,4 @@
 export * from './MetricCard'
 export * from './SectionTitle'
 export * from './SectionStatusBadge'
+export * from './Ec2MonitoringGrid'

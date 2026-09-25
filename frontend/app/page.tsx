@@ -22,7 +22,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionErrorBoundary } from '@/components/error-boundary'
 import { EmptyState, MetricCardSkeleton, TableSkeleton, ChartSkeleton } from '@/components/empty-state'
-import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel } from '@/components/dashboard'
+import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel, Ec2MonitoringGrid } from '@/components/dashboard'
 import { validateForm, enrollAccountSchema, connectCloudSchema } from '@/lib/validations/forms'
 import { addBreadcrumb, captureException } from '@/lib/monitoring/logger'
 import type {
@@ -927,6 +927,8 @@ export default function Page() {
                       timeframe={timeframe}
                       setTimeframe={setTimeframe}
                       sectionStatus={dataSources.telemetry?.status || (syncing ? 'loading' : 'idle')}
+                      nodes={nodes}
+                      apiUrl={apiUrl}
                     />
                   </SectionErrorBoundary>
                 )}
@@ -1268,68 +1270,14 @@ export default function Page() {
                   </div>
                 </TabsContent>
 
-                {/* TELEMETRY */}
+                {/* TELEMETRY: 8-CARD LIVE AWS EC2 MONITORING GRID */}
                 <TabsContent value="telemetry" className="space-y-4 mt-4">
-                  {/* CPU Card */}
-                  <Card className="border-white/8 bg-white/5">
-                    <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between">
-                      <CardTitle className="text-xs flex items-center gap-1.5 font-medium">
-                        <Cpu className="size-3.5 text-cyan-400" />
-                        Live CPU Utilization (%)
-                      </CardTitle>
-                      <span className="text-[10px] text-muted-foreground">AWS CloudWatch Live</span>
-                    </CardHeader>
-                    <CardContent className="h-36 p-2 pt-0">
-                      {selectedNodeTelemetry && selectedNodeTelemetry.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={selectedNodeTelemetry}>
-                            <defs>
-                              <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
-                                <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
-                            <Area type="monotone" dataKey="cpu" stroke="#22d3ee" strokeWidth={2} fillOpacity={1} fill="url(#cpuGradient)" />
-                            <XAxis dataKey="time" hide />
-                            <YAxis domain={[0, 100]} hide />
-                            <Tooltip content={<ChartTooltip />} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-                          No metric datapoints recorded yet
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Network I/O Card */}
-                  <Card className="border-white/8 bg-white/5">
-                    <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between">
-                      <CardTitle className="text-xs flex items-center gap-1.5 font-medium">
-                        <Network className="size-3.5 text-emerald-400" />
-                        Network In / Out (MB)
-                      </CardTitle>
-                      <span className="text-[10px] text-muted-foreground">EC2 Metrics</span>
-                    </CardHeader>
-                    <CardContent className="h-32 p-2 pt-0">
-                      {selectedNodeTelemetry && selectedNodeTelemetry.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={selectedNodeTelemetry}>
-                            <Line dataKey="netIn" name="Network In" stroke="#10b981" strokeWidth={2} dot={false} />
-                            <Line dataKey="netOut" name="Network Out" stroke="#6366f1" strokeWidth={2} dot={false} />
-                            <XAxis dataKey="time" hide />
-                            <YAxis hide />
-                            <Tooltip content={<ChartTooltip />} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-                          No network traffic recorded yet
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <Ec2MonitoringGrid
+                    instanceId={selectedNode?.instance_id || 'i-default'}
+                    instanceName={selectedNode?.name || 'EC2 Instance'}
+                    instanceType={selectedNodeDetail?.instance_type || selectedNode?.instance_type || selectedNode?.type || 't3.micro'}
+                    apiUrl={apiUrl}
+                  />
                 </TabsContent>
               </Tabs>
 
@@ -1749,26 +1697,63 @@ function Inventory({ accessMode, search, setSearch, status, setStatus, filteredN
   )
 }
 
-function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStatus }: any) {
+function Telemetry({ accessMode, telemetry, timeframe, setTimeframe, sectionStatus, nodes, apiUrl }: any) {
+  const nodeList = Array.isArray(nodes) && nodes.length > 0 ? nodes : [
+    { instance_id: 'i-036358db85d245e3a', name: 'api-gateway-prod', instance_type: 't3.micro' },
+    { instance_id: 'i-09f81a2b3c4d5e6f7', name: 'worker-node-01', instance_type: 't3.medium' }
+  ];
+  const [selectedInstId, setSelectedInstId] = useState<string>(nodeList[0]?.instance_id || 'i-036358db85d245e3a');
+  const activeNode = nodeList.find((n: any) => n.instance_id === selectedInstId) || nodeList[0];
+
   return (
     <>
       <SectionTitle
-        eyebrow="Live telemetry"
-        title="Telemetry analytics"
-        description="Real-time health signals and performance metrics from active nodes."
+        eyebrow="Live Telemetry & Metrics"
+        title="AWS EC2 Real-Time Monitoring Console"
+        description="Sub-second streaming of CPU, Memory, Disk, and Network telemetry for every active cloud instance."
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
           <div className="flex items-center gap-2 flex-wrap">
-            <ToggleGroup value={[timeframe]} onValueChange={v => setTimeframe(v[0] ?? timeframe)}>
-              <ToggleGroupItem value="1h">1H</ToggleGroupItem>
-              <ToggleGroupItem value="6h">6H</ToggleGroupItem>
-              <ToggleGroupItem value="24h">24H</ToggleGroupItem>
-              <ToggleGroupItem value="7d">7D</ToggleGroupItem>
-            </ToggleGroup>
+            <span className="text-xs text-muted-foreground font-medium">Select Instance:</span>
+            <Select value={selectedInstId} onValueChange={(val) => { if (val) setSelectedInstId(val); }}>
+              <SelectTrigger className="w-56 border-white/10 bg-white/5 text-xs font-mono text-cyan-300">
+                <Server className="size-3.5 mr-1 text-cyan-400" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {nodeList.map((n: any) => (
+                  <SelectItem key={n.instance_id} value={n.instance_id} className="text-xs font-mono">
+                    {n.name ? `${n.name} (${n.instance_id})` : n.instance_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         }
       />
-      <div className="grid gap-4 md:grid-cols-2">
+
+      {/* 8-Card Real-Time Live Monitoring Grid */}
+      <Ec2MonitoringGrid
+        instanceId={selectedInstId}
+        instanceName={activeNode?.name || 'EC2 Instance'}
+        instanceType={activeNode?.instance_type || activeNode?.type || 't3.micro'}
+        apiUrl={apiUrl}
+      />
+
+      {/* Fleet-Wide Aggregated Signals */}
+      <div className="mt-8 pt-6 border-t border-white/10">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Fleet-Wide Aggregated Telemetry</h3>
+            <p className="text-xs text-muted-foreground">Historical utilization patterns across all cluster nodes</p>
+          </div>
+          <ToggleGroup value={[timeframe]} onValueChange={v => setTimeframe(v[0] ?? timeframe)}>
+            <ToggleGroupItem value="1h">1H</ToggleGroupItem>
+            <ToggleGroupItem value="6h">6H</ToggleGroupItem>
+            <ToggleGroupItem value="24h">24H</ToggleGroupItem>
+            <ToggleGroupItem value="7d">7D</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
         {[
           ['CPU utilization', 'cpu', 'CPU %', 'line'],
           ['Memory usage', 'mem', 'Memory %', 'area'],

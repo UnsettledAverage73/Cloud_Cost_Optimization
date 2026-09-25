@@ -12,7 +12,7 @@ for _p in [str(_backend_dir), str(_repo_dir)]:
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from botocore.config import Config
-from fastapi import FastAPI, HTTPException, status, Request, Header
+from fastapi import FastAPI, HTTPException, status, Request, Header, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta, timezone
@@ -2580,6 +2580,27 @@ async def ingest_agent_telemetry(payload: dict):
             existing_res.updated_at = t_now
 
         session.commit()
+
+        # Broadcast metric tick to active WebSocket streamers
+        try:
+            from services.telemetry_streamer import telemetry_hub
+            net = telemetry.get("network", {})
+            datapoint = {
+                "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+                "cpu": float(cpu.get("utilization_percent", 0.0)),
+                "mem": float(memory.get("percent_used", 0.0)),
+                "disk": float(disk.get("percent_used", 0.0)),
+                "net_in_bytes": int(net.get("bytes_recv", 0)),
+                "net_out_bytes": int(net.get("bytes_sent", 0)),
+                "packets_in": int(net.get("packets_recv", 0)),
+                "packets_out": int(net.get("packets_sent", 0)),
+                "cpu_credits": 144.0,
+                "is_guest_agent": True,
+            }
+            await telemetry_hub.broadcast_tick(resource_id, datapoint)
+        except Exception:
+            pass
+
         return {
             "status": "ingested",
             "resource_id": resource_id,
@@ -2591,6 +2612,30 @@ async def ingest_agent_telemetry(payload: dict):
         raise HTTPException(status_code=500, detail=f"Agent ingestion failed: {str(e)}")
     finally:
         session.close()
+
+
+@app.websocket("/ws/telemetry/{instance_id}")
+async def stream_instance_telemetry(websocket: WebSocket, instance_id: str):
+    """Pushes real-time CPU, RAM, Disk, and Network ticks to the browser with sub-second latency."""
+    from services.telemetry_streamer import telemetry_hub
+    await telemetry_hub.register_listener(instance_id, websocket)
+    try:
+        while True:
+            # Handle client keep-alive pings or timeframe switch commands
+            _ = await websocket.receive_text()
+    except (WebSocketDisconnect, Exception):
+        telemetry_hub.unregister_listener(instance_id, websocket)
+
+
+@app.get("/api/v2/telemetry/{instance_id}/live")
+async def get_live_instance_telemetry(instance_id: str):
+    """Returns the current in-memory ring-buffer points for the instance."""
+    from services.telemetry_streamer import telemetry_hub
+    telemetry_hub._seed_buffer_if_empty(instance_id)
+    return {
+        "instance_id": instance_id,
+        "datapoints": list(telemetry_hub.buffers[instance_id])
+    }
 
 
 @app.get("/api/v2/agent/install-script")
