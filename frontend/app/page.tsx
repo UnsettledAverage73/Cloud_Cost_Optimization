@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useCallback, useDeferredValue, memo } fro
 import {
   Activity, AlertTriangle, Archive, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Bot, Calendar, Check,
   CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Cloud, CloudCog, Copy, Cpu, Database,
-  Download, ExternalLink, Eye, FileCode, FileText, GitBranch, GitPullRequest, HardDrive, History, Inbox, KeyRound, LayoutDashboard,
+  Download, ExternalLink, Eye, FileCode, FileText, GitBranch, GitPullRequest, HardDrive, History, Inbox, LayoutDashboard,
   Layers, Lock, Menu, MessageSquare, Moon, MoreHorizontal, Network, PanelLeft, Play, Plus, RefreshCw, RotateCcw, Search, Send,
   Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Sun, Terminal, X, Zap, Loader2
 } from 'lucide-react'
@@ -598,12 +598,6 @@ export default function Page() {
                 </button>
               )
             })}
-          </div>
-          <div className="border-t border-white/8 p-3">
-            <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-white/5">
-              <KeyRound className="size-4" />
-              {!collapsed && 'API access'}
-            </button>
           </div>
         </aside>
 
