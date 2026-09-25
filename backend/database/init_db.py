@@ -1,3 +1,13 @@
+import sys
+from pathlib import Path
+
+# Ensure both backend directory and repo root directory are in sys.path
+_current_dir = Path(__file__).resolve().parent.parent
+_repo_dir = _current_dir.parent
+for _p in [str(_current_dir), str(_repo_dir)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta

@@ -7,7 +7,7 @@ pip install --upgrade pip
 pip install -r backend/requirements.txt
 
 echo "💾 Checking database connectivity & initializing schema..."
-PYTHONPATH=backend python -c "
+PYTHONPATH=.:backend python -c "
 import os
 from database.init_db import initialize_database
 try:

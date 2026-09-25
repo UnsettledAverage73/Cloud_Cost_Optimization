@@ -1,11 +1,19 @@
 import os
 import logging
 from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 
 logger = logging.getLogger("cloudpulse.database")
+
+try:
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+except Exception as e:
+    logger.warning(f"Async SQLAlchemy initialization warning (greenlet): {e}")
+    create_async_engine = None
+    async_sessionmaker = None
+    AsyncSession = None
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 
 # Environment-configurable connection URIs
 # Default connects to the local TimescaleDB container
@@ -15,7 +23,7 @@ POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "cloudpulse_db")
 
-DEFAULT_SYNC_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DEFAULT_SYNC_URL = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 DEFAULT_ASYNC_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 raw_db_url = os.getenv("DATABASE_URL", DEFAULT_SYNC_URL)
@@ -23,14 +31,16 @@ if "dpg-" in raw_db_url and not os.getenv("RENDER"):
     # If Render private internal DB hostname is passed on local machine, fall back to local PostgreSQL container
     raw_db_url = DEFAULT_SYNC_URL
 if raw_db_url.startswith("postgres://"):
-    raw_db_url = raw_db_url.replace("postgres://", "postgresql://", 1)
+    raw_db_url = raw_db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+elif raw_db_url.startswith("postgresql://"):
+    raw_db_url = raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 DATABASE_URL = raw_db_url
 
 if os.getenv("ASYNC_DATABASE_URL"):
     ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL")
 else:
-    ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Base class for declarative SQLAlchemy models
 class Base(DeclarativeBase):
@@ -46,21 +56,25 @@ sync_engine = create_engine(
 )
 SyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
 
-# Asynchronous Engine & Session
-async_engine = create_async_engine(
-    ASYNC_DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=300,
-    pool_pre_ping=True
-)
-AsyncSessionLocal = async_sessionmaker(
-    bind=async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False
-)
+# Asynchronous Engine & Session (if greenlet available)
+if create_async_engine is not None and async_sessionmaker is not None:
+    async_engine = create_async_engine(
+        ASYNC_DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=300,
+        pool_pre_ping=True
+    )
+    AsyncSessionLocal = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False
+    )
+else:
+    async_engine = None
+    AsyncSessionLocal = None
 
 def get_sync_db() -> Session:
     """Yield a synchronous database session."""

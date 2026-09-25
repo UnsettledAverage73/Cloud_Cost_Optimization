@@ -1,4 +1,14 @@
 import os
+import sys
+from pathlib import Path
+
+# Ensure both backend directory and repository root directory are in sys.path
+_backend_dir = Path(__file__).resolve().parent
+_repo_dir = _backend_dir.parent
+for _p in [str(_backend_dir), str(_repo_dir)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from botocore.config import Config
@@ -6,14 +16,13 @@ from fastapi import FastAPI, HTTPException, status, Request, Header
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import List, Optional, Dict, Any, Union, Set
 import json
 import time
 import uuid
 
 # Auto-load local .env if present
-for cand in [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().parent.parent / ".env"]:
+for cand in [_backend_dir / ".env", _repo_dir / ".env"]:
     if cand.exists():
         try:
             with open(cand, "r") as f:
