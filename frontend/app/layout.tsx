@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { MonitoringProvider } from '@/components/monitoring-provider'
+import { OptimisticToastProvider } from '@/components/ui/optimistic-toast'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="antialiased">
         <MonitoringProvider>
-          {children}
+          <OptimisticToastProvider>
+            {children}
+          </OptimisticToastProvider>
         </MonitoringProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

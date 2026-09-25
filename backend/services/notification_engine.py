@@ -192,6 +192,21 @@ class FinOpsNotificationEngine:
 
         return self.get_config()
 
+    @classmethod
+    def get_api_base_url(cls) -> str:
+        return (
+            os.getenv("CLOUDPULSE_API_URL")
+            or os.getenv("RENDER_EXTERNAL_URL")
+            or "https://cloud-cost-optimization.onrender.com"
+        ).rstrip("/")
+
+    @classmethod
+    def get_dashboard_base_url(cls) -> str:
+        return (
+            os.getenv("CLOUDPULSE_DASHBOARD_URL")
+            or "https://cloud-cost-optimization-frontend.onrender.com"
+        ).rstrip("/")
+
     def _load_history(self):
         try:
             if HISTORY_FILE.exists():
@@ -226,19 +241,21 @@ class FinOpsNotificationEngine:
     # ------------------------------------------------------------------
     # 1. FinOps Single Waste Alerts (Slack & Teams)
     # ------------------------------------------------------------------
-    @staticmethod
+    @classmethod
     def format_slack_alert(
+        cls,
         resource_id: str,
         finding_title: str,
         severity: str = "HIGH",
         current_monthly_spend: float = 0.0,
         potential_monthly_savings: float = 0.0,
         recommended_action: str = "Downsize idle instance to Graviton t4g",
-        repo_name: str = "infrastructure/aws-workloads"
+        repo_name: str = "UnsettledAverage73/Cloud_Cost_Optimization"
     ) -> Dict[str, Any]:
         """Creates an interactive Slack Block Kit alert for a single resource waste finding."""
         severity_emoji = "🚨" if severity.upper() == "CRITICAL" else "⚠️" if severity.upper() == "HIGH" else "💡"
         annual_savings = round(potential_monthly_savings * 12.0, 2)
+        api_url = cls.get_api_base_url()
 
         blocks = [
             {
@@ -273,19 +290,22 @@ class FinOpsNotificationEngine:
                         "type": "button",
                         "text": {"type": "plain_text", "text": "🚀 Open Terraform PR", "emoji": True},
                         "style": "primary",
+                        "url": f"{api_url}/api/v2/gitops/trigger-single-pr?resource_id={resource_id}&action=downsize&redirect=true",
                         "value": json.dumps({"action": "pr", "resource_id": resource_id, "repo": repo_name}),
                         "action_id": "cloudpulse_open_pr"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "⚡ 1-Click Remediate", "emoji": True},
+                        "url": f"{api_url}/api/v2/remediation/trigger-apply?resource_id={resource_id}&action=stop&redirect=true",
                         "value": json.dumps({"action": "apply", "resource_id": resource_id}),
                         "action_id": "cloudpulse_apply_now"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "⏰ Snooze 30 Days", "emoji": True},
-                        "value": json.dumps({"action": "snooze", "resource_id": resource_id}),
+                        "url": f"{api_url}/api/v2/notifications/snooze?days=30&resource_id={resource_id}&redirect=true",
+                        "value": json.dumps({"action": "snooze", "resource_id": resource_id, "days": 30}),
                         "action_id": "cloudpulse_snooze"
                     }
                 ]
@@ -363,8 +383,9 @@ class FinOpsNotificationEngine:
     # ------------------------------------------------------------------
     # 2. Consolidated Fleet Optimization Digest (Slack & Teams)
     # ------------------------------------------------------------------
-    @staticmethod
+    @classmethod
     def format_slack_batch_summary(
+        cls,
         findings: List[Dict[str, Any]],
         total_monthly_spend: float = 0.0,
         total_monthly_savings: float = 0.0,
@@ -372,9 +393,9 @@ class FinOpsNotificationEngine:
         account_id: str = "Enterprise Fleet",
         currency: str = "USD",
         rate: float = 84.0,
-        repo_name: str = "infrastructure/aws-workloads"
+        repo_name: str = "UnsettledAverage73/Cloud_Cost_Optimization"
     ) -> Dict[str, Any]:
-        """Creates a consolidated fleet-wide Slack Block Kit digest with dual-currency financials."""
+        """Creates a consolidated fleet-wide Slack Block Kit digest with dual-currency financials and workable actions."""
         try:
             from services.currency_converter import currency_converter
         except ImportError:
@@ -386,6 +407,7 @@ class FinOpsNotificationEngine:
         savings_annual = round(total_monthly_savings * 12.0, 2)
         savings_annual_dual = converter.format_dual(savings_annual, primary_currency=currency)
         waste_pct = round((total_monthly_savings / total_monthly_spend * 100), 1) if total_monthly_spend > 0 else 0.0
+        api_url = cls.get_api_base_url()
 
         finding_lines = []
         for f in findings[:6]:
@@ -432,19 +454,21 @@ class FinOpsNotificationEngine:
                         "type": "button",
                         "text": {"type": "plain_text", "text": "🚀 Open Batch GitOps PR", "emoji": True},
                         "style": "primary",
+                        "url": f"{api_url}/api/v2/gitops/trigger-batch-pr?redirect=true",
                         "value": json.dumps({"action": "batch_pr", "findings_count": len(findings), "repo": repo_name}),
                         "action_id": "cloudpulse_batch_pr"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "📊 View PoV Dossier", "emoji": True},
-                        "url": "https://github.com/cloudpulse/dossier",
+                        "url": f"{api_url}/api/v2/analytics/pov/report.html",
                         "action_id": "cloudpulse_view_pov"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "⏰ Snooze 14 Days", "emoji": True},
-                        "value": json.dumps({"action": "snooze_fleet"}),
+                        "url": f"{api_url}/api/v2/notifications/snooze?days=14&redirect=true",
+                        "value": json.dumps({"action": "snooze_fleet", "days": 14}),
                         "action_id": "cloudpulse_snooze"
                     }
                 ]
@@ -547,14 +571,15 @@ class FinOpsNotificationEngine:
     # ------------------------------------------------------------------
     # 3. Real-Time Cost Anomaly Spikes (Slack & Teams)
     # ------------------------------------------------------------------
-    @staticmethod
+    @classmethod
     def format_slack_anomaly_alert(
+        cls,
         anomaly: Dict[str, Any],
         currency: str = "USD",
         rate: float = 84.0,
-        repo_name: str = "infrastructure/aws-workloads"
+        repo_name: str = "UnsettledAverage73/Cloud_Cost_Optimization"
     ) -> Dict[str, Any]:
-        """Creates an urgent Slack Block Kit card when an unexpected cost spike is detected."""
+        """Creates an urgent Slack Block Kit card when an unexpected cost spike is detected with live actions."""
         sev = anomaly.get("severity", "HIGH").upper()
         sev_emoji = "🚨" if sev == "CRITICAL" else "⚠️"
         title = anomaly.get("title") or anomaly.get("message") or f"Cost Anomaly in {anomaly.get('service', 'Cloud Infrastructure')}"
@@ -563,6 +588,8 @@ class FinOpsNotificationEngine:
         baseline = float(anomaly.get("expected_baseline", anomaly.get("expected_mean", 0.0)))
         pct_surge = float(anomaly.get("percentage_increase", anomaly.get("spike_percentage", 0.0)))
         rca = anomaly.get("root_cause_analysis", "Sudden unmonitored compute scale or high network transfer.")
+        api_url = cls.get_api_base_url()
+        dashboard_url = cls.get_dashboard_base_url()
 
         blocks = [
             {
@@ -597,19 +624,21 @@ class FinOpsNotificationEngine:
                         "type": "button",
                         "text": {"type": "plain_text", "text": "🚀 Open Remediate PR", "emoji": True},
                         "style": "danger" if sev == "CRITICAL" else "primary",
+                        "url": f"{api_url}/api/v2/gitops/trigger-single-pr?resource_id={res_id}&action=remediate&redirect=true",
                         "value": json.dumps({"action": "pr", "resource_id": res_id, "repo": repo_name}),
                         "action_id": "cloudpulse_anomaly_pr"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "🔕 Acknowledge Alert", "emoji": True},
+                        "url": f"{api_url}/api/v2/notifications/acknowledge?resource_id={res_id}&redirect=true",
                         "value": json.dumps({"action": "anomaly_acknowledge", "resource_id": res_id}),
                         "action_id": "cloudpulse_anomaly_ack"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "📊 Live Forensics", "emoji": True},
-                        "url": "http://localhost:3000?tab=anomalies",
+                        "url": f"{dashboard_url}/?tab=anomalies",
                         "action_id": "cloudpulse_anomaly_view"
                     }
                 ]
@@ -690,16 +719,18 @@ class FinOpsNotificationEngine:
     # ------------------------------------------------------------------
     # 4. Operational Scheduler 10-Minute Pre-Stop Grace Period Alerts
     # ------------------------------------------------------------------
-    @staticmethod
+    @classmethod
     def format_slack_grace_period_alert(
+        cls,
         job: Dict[str, Any],
         instance_details: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Creates an interactive Slack Block Kit alert for scheduled power stop grace periods."""
+        """Creates an interactive Slack Block Kit alert for scheduled power stop grace periods with live actions."""
         job_id = job.get("id", "job-unknown")
         inst_id = job.get("instance_id", "i-unknown")
         reason = job.get("reason", "Scheduled non-production evening shutdown")
         inst_name = (instance_details or {}).get("name", inst_id)
+        api_url = cls.get_api_base_url()
 
         blocks = [
             {
@@ -734,6 +765,7 @@ class FinOpsNotificationEngine:
                         "type": "button",
                         "text": {"type": "plain_text", "text": "⏳ Keep Running (+2h)", "emoji": True},
                         "style": "primary",
+                        "url": f"{api_url}/api/v2/schedules/override?job_id={job_id}&type=KEEP_RUNNING&hours=2&redirect=true",
                         "value": json.dumps({"action": "keep_running", "job_id": job_id, "instance_id": inst_id, "hours": 2}),
                         "action_id": "cloudpulse_scheduler_keep_running"
                     },
@@ -741,12 +773,14 @@ class FinOpsNotificationEngine:
                         "type": "button",
                         "text": {"type": "plain_text", "text": "⚡ Stop Now", "emoji": True},
                         "style": "danger",
+                        "url": f"{api_url}/api/v2/schedules/override?job_id={job_id}&type=STOP_NOW&redirect=true",
                         "value": json.dumps({"action": "stop_now", "job_id": job_id, "instance_id": inst_id}),
                         "action_id": "cloudpulse_scheduler_stop_now"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "⏰ Snooze 1h", "emoji": True},
+                        "url": f"{api_url}/api/v2/schedules/override?job_id={job_id}&type=KEEP_RUNNING&hours=1&redirect=true",
                         "value": json.dumps({"action": "keep_running", "job_id": job_id, "instance_id": inst_id, "hours": 1}),
                         "action_id": "cloudpulse_scheduler_snooze"
                     }
