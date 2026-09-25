@@ -50,6 +50,7 @@ import { useDashboardStore } from '@/stores/useDashboardStore'
 import dynamic from 'next/dynamic'
 import { ConnectModal } from '@/components/dashboard/modals/ConnectModal'
 import { CommandPaletteModal } from '@/components/dashboard/modals/CommandPaletteModal'
+import { CliInstallModal } from '@/components/dashboard/modals/CliInstallModal'
 
 const OverviewView = dynamic(() => import('@/components/dashboard/views/OverviewView'), {
   loading: () => <MetricCardSkeleton />,
@@ -246,6 +247,7 @@ function connectionKey(account: any) {
 
 export default function Page() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [cliModalOpen, setCliModalOpen] = useState(false);
 
   const {
     view, setView,
@@ -1022,6 +1024,16 @@ export default function Page() {
               >
                 {light ? <Moon className="size-4" /> : <Sun className="size-4 text-amber-500" />}
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCliModalOpen(true)}
+                className="h-8 sm:h-9 border-border bg-card hover:bg-muted text-foreground px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-xs"
+                title="Install CloudPulse CLI on your system"
+              >
+                <Terminal className="size-4 shrink-0 text-sky-600 dark:text-cyan-400" />
+                <span className="hidden sm:inline ml-1.5">CLI Tool</span>
+              </Button>
               <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-xs">
                 <Plus className="size-4 shrink-0" />
                 <span className="hidden sm:inline ml-1">Connect Account</span>
@@ -1295,6 +1307,12 @@ export default function Page() {
           });
         }}
         currency={currency}
+        onOpenCliInstall={() => setCliModalOpen(true)}
+      />
+      <CliInstallModal
+        open={cliModalOpen}
+        onOpenChange={setCliModalOpen}
+        backendUrl={apiUrl('') || 'https://cloud-cost-optimization.onrender.com'}
       />
     </div>
   )

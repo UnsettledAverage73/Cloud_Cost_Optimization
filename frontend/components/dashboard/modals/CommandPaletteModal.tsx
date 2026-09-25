@@ -15,6 +15,7 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  Terminal,
   Zap,
 } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -30,6 +31,7 @@ interface CommandPaletteModalProps {
   onSelectNode?: (node: ComputeNode) => void
   onToggleCurrency?: () => void
   currency?: string
+  onOpenCliInstall?: () => void
 }
 
 interface CommandItem {
@@ -51,6 +53,7 @@ export function CommandPaletteModal({
   onSelectNode,
   onToggleCurrency,
   currency = 'USD',
+  onOpenCliInstall,
 }: CommandPaletteModalProps) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -220,6 +223,22 @@ export function CommandPaletteModal({
       })
     }
 
+    // Quick Action: Install CloudPulse CLI
+    if (onOpenCliInstall) {
+      list.push({
+        id: 'act-install-cli',
+        title: 'Install CloudPulse CLI (1-Liner Auto-Detect)',
+        subtitle: 'Run 1 command on macOS, Linux, or Windows without cloning repository',
+        category: 'Quick Actions',
+        icon: Terminal,
+        action: () => {
+          onOpenCliInstall()
+          onOpenChange(false)
+        },
+        keywords: ['cli', 'terminal', 'install', 'bash', 'curl', 'powershell', 'cloudpulse'],
+      })
+    }
+
     // Top Compute Instances for fast jump
     if (nodes && nodes.length > 0 && onSelectNode) {
       nodes.slice(0, 10).forEach((node) => {
@@ -239,7 +258,7 @@ export function CommandPaletteModal({
     }
 
     return list
-  }, [onSelectView, onOpenChange, onToggleCurrency, currency, nodes, onSelectNode])
+  }, [onSelectView, onOpenChange, onToggleCurrency, currency, nodes, onSelectNode, onOpenCliInstall])
 
   // Filter commands by search query
   const filtered = useMemo(() => {

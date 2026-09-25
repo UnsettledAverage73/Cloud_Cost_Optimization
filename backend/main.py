@@ -13,7 +13,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from botocore.config import Config
 from fastapi import FastAPI, HTTPException, status, Request, Header, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Union, Set
@@ -1463,6 +1463,90 @@ async def send_notification_alert(payload: dict):
         spend = sum(row.get("aws", 0) for row in _frontend_spend())
         success = finops_notifier.send_slack_alert(opts, monthly_cost=spend, health_score=health["overall_health_score"])
         return {"status": "sent" if success else "failed", "channel": "slack"}
+
+
+# =====================================================================
+# 📦 CLI 1-CLICK UNIVERSAL INSTALLER ENDPOINTS
+# =====================================================================
+
+@app.get("/install.sh")
+async def get_install_sh(request: Request):
+    """Serves the universal Linux & macOS CLI installation script."""
+    install_script = _repo_dir / "install.sh"
+    if install_script.exists():
+        content = install_script.read_text(encoding="utf-8")
+    else:
+        content = "#!/usr/bin/env bash\necho 'CloudPulse install script'\n"
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content, media_type="text/x-shellscript")
+
+
+@app.get("/install.ps1")
+async def get_install_ps1(request: Request):
+    """Serves the Windows PowerShell CLI installation script."""
+    install_script = _repo_dir / "install.ps1"
+    if install_script.exists():
+        content = install_script.read_text(encoding="utf-8")
+    else:
+        content = "Write-Host 'CloudPulse install script'\n"
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content, media_type="text/plain")
+
+
+@app.get("/api/v2/cli/install-command")
+async def get_cli_install_command(request: Request):
+    """
+    Detects the client's Operating System via User-Agent and returns
+    the recommended copy-paste 1-liner install command.
+    """
+    ua = (request.headers.get("user-agent") or "").lower()
+    base_url = str(request.base_url).rstrip("/")
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        prod_url = "https://cloud-cost-optimization.onrender.com"
+    else:
+        prod_url = base_url
+
+    if "windows" in ua or "win32" in ua:
+        detected_os = "windows"
+        os_label = "Windows (PowerShell)"
+        command = f"irm {prod_url}/install.ps1 | iex"
+        alt_command = "pip install git+https://github.com/UnsettledAverage73/Cloud_Cost_Optimization.git"
+    elif "macintosh" in ua or "mac os" in ua or "darwin" in ua:
+        detected_os = "macos"
+        os_label = "macOS (Apple Silicon & Intel)"
+        command = f"curl -fsSL {prod_url}/install.sh | bash"
+        alt_command = "brew install python3 && pipx install git+https://github.com/UnsettledAverage73/Cloud_Cost_Optimization.git"
+    else:
+        detected_os = "linux"
+        os_label = "Linux (Ubuntu / Debian / RHEL / Arch)"
+        command = f"curl -fsSL {prod_url}/install.sh | bash"
+        alt_command = "pipx install git+https://github.com/UnsettledAverage73/Cloud_Cost_Optimization.git"
+
+    return {
+        "detected_os": detected_os,
+        "os_label": os_label,
+        "command": command,
+        "alt_command": alt_command,
+        "raw_script_url": f"{prod_url}/install.sh" if detected_os != "windows" else f"{prod_url}/install.ps1",
+        "verify_command": "cloudpulse status",
+        "platforms": {
+            "linux": {
+                "label": "Linux (Ubuntu/Debian/RHEL/Arch)",
+                "command": f"curl -fsSL {prod_url}/install.sh | bash",
+                "alt_command": "pipx install git+https://github.com/UnsettledAverage73/Cloud_Cost_Optimization.git"
+            },
+            "macos": {
+                "label": "macOS (Terminal)",
+                "command": f"curl -fsSL {prod_url}/install.sh | bash",
+                "alt_command": "brew install python3 && pipx install git+https://github.com/UnsettledAverage73/Cloud_Cost_Optimization.git"
+            },
+            "windows": {
+                "label": "Windows (PowerShell)",
+                "command": f"irm {prod_url}/install.ps1 | iex",
+                "alt_command": "pip install git+https://github.com/UnsettledAverage73/Cloud_Cost_Optimization.git"
+            }
+        }
+    }
 
 
 # =====================================================================
@@ -3535,6 +3619,8 @@ async def apply_predictive_recommendation(payload: Request):
         "message": f"Predictive Pre-Warming schedule active for {instance_id} (pre-warms at {start_time}).",
         "schedule": applied
     }
+
+
 
 
 
