@@ -29,7 +29,9 @@ import {
   Trash2,
   Cpu,
   Layers,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle,
+  Wrench,
 } from 'lucide-react';
 
 interface AgentDeploymentModalProps {
@@ -48,7 +50,9 @@ export function AgentDeploymentModal({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [userConsent, setUserConsent] = useState(true);
   const [ssmDeploying, setSsmDeploying] = useState(false);
-  const [ssmResult, setSsmResult] = useState<{ status: string; message: string } | null>(null);
+  const [ssmResult, setSsmResult] = useState<any>(null);
+  const [attachingRole, setAttachingRole] = useState(false);
+  const [attachResult, setAttachResult] = useState<{ success: boolean; message: string } | null>(null);
   const [fleetStatus, setFleetStatus] = useState<any>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [testSpikeRunning, setTestSpikeRunning] = useState(false);
@@ -91,6 +95,31 @@ export function AgentDeploymentModal({
     setTimeout(() => setCopiedKey(null), 2500);
   };
 
+  const handleAttachSsmRole = async () => {
+    setAttachingRole(true);
+    setAttachResult(null);
+    try {
+      const url = apiUrl ? apiUrl('/api/v2/agent/attach-ssm-role') : `${backendBase}/api/v2/agent/attach-ssm-role`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance_id: activeInstanceId }),
+      });
+      const data = await res.json();
+      setAttachResult({
+        success: data.success ?? (data.status !== 'error'),
+        message: data.message || 'IAM role operation completed.',
+      });
+    } catch (e: any) {
+      setAttachResult({
+        success: false,
+        message: 'Could not connect to backend to attach IAM role.',
+      });
+    } finally {
+      setAttachingRole(false);
+    }
+  };
+
   const handleSsmDeploy = async () => {
     setSsmDeploying(true);
     setSsmResult(null);
@@ -106,10 +135,7 @@ export function AgentDeploymentModal({
         }),
       });
       const data = await res.json();
-      setSsmResult({
-        status: data.status,
-        message: data.message || 'SSM installation dispatched successfully!',
-      });
+      setSsmResult(data);
       fetchStatus();
     } catch (e: any) {
       setSsmResult({
@@ -297,13 +323,122 @@ export function AgentDeploymentModal({
                     )}
                   </Button>
 
-                  {ssmResult && (
-                    <div className={`p-2.5 rounded-lg border text-[11px] ${
-                      ssmResult.status === 'dispatched' || ssmResult.status === 'simulation'
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                        : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                    }`}>
-                      {ssmResult.message}
+                  {ssmResult && (ssmResult.status === 'dispatched' || ssmResult.status === 'simulation') && (
+                    <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2">
+                      <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+                      <span>{ssmResult.message}</span>
+                    </div>
+                  )}
+
+                  {ssmResult && (ssmResult.status === 'ssm_fallback' || ssmResult.status === 'error' || ssmResult.message?.includes('InvalidInstanceId')) && (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-3.5">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="size-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs font-semibold text-amber-200 flex items-center gap-2">
+                            SSM Prerequisite Missing: AmazonSSMManagedInstanceCore
+                            <Badge variant="outline" className="border-amber-500/40 text-amber-300 bg-amber-500/10 text-[10px]">
+                              InvalidInstanceId
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-amber-300/80 mt-1 leading-relaxed">
+                            AWS Systems Manager requires the <code className="px-1 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[10px]">AmazonSSMManagedInstanceCore</code> IAM policy attached to your EC2 instance before SSM can execute remote commands. Choose one of the resolutions below:
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* ACTION 1: 1-CLICK ATTACH IAM ROLE */}
+                      <div className="rounded-lg border border-white/10 bg-black/40 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-white flex items-center gap-1.5">
+                            <Wrench className="size-3.5 text-cyan-400" />
+                            Option 1: 1-Click Auto-Attach IAM Role
+                          </span>
+                          <span className="text-[10px] text-cyan-400 font-mono">Recommended</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Automatically creates and attaches an EC2 instance profile with <code className="text-cyan-300">AmazonSSMManagedInstanceCore</code> via AWS IAM.
+                        </p>
+                        <Button
+                          size="sm"
+                          disabled={attachingRole}
+                          onClick={handleAttachSsmRole}
+                          className="w-full h-8 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold"
+                        >
+                          {attachingRole ? (
+                            <>
+                              <Loader2 className="size-3.5 mr-2 animate-spin" />
+                              Attaching AmazonSSMManagedInstanceCore IAM Role...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="size-3.5 mr-2" />
+                              Auto-Attach IAM Role to {activeInstanceId}
+                            </>
+                          )}
+                        </Button>
+                        {attachResult && (
+                          <div className={`p-2 rounded text-[11px] border ${
+                            attachResult.success
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                              : 'border-red-500/30 bg-red-500/10 text-red-300'
+                          }`}>
+                            {attachResult.message}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ACTION 2: DIRECT SSH ONE-LINER */}
+                      <div className="rounded-lg border border-white/10 bg-black/40 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-white flex items-center gap-1.5">
+                            <Terminal className="size-3.5 text-emerald-400" />
+                            Option 2: Direct SSH 1-Line Command
+                          </span>
+                          <span className="text-[10px] text-emerald-400 font-mono">Immediate 10s Telemetry</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Connect directly and start streaming without waiting for SSM agent registration:
+                        </p>
+                        <div className="relative rounded bg-slate-950 p-2 font-mono text-[10px] text-cyan-200 border border-white/10 break-all select-all">
+                          {ssmResult.ssh_fallback || `ssh -i <your-key>.pem ubuntu@<instance-ip> "${linuxInstallCmd}"`}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-muted-foreground">
+                            Remember: <code className="text-amber-300">chmod 400 key.pem</code> before connecting
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs border-white/10 bg-white/5"
+                            onClick={() => copyToClipboard(ssmResult.ssh_fallback || `ssh -i <your-key>.pem ubuntu@<instance-ip> "${linuxInstallCmd}"`, 'ssh_fallback')}
+                          >
+                            {copiedKey === 'ssh_fallback' ? (
+                              <>
+                                <Check className="size-3 mr-1 text-emerald-400" />
+                                Copied SSH!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="size-3 mr-1" />
+                                Copy SSH Command
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* ACTION 3: AWS CONSOLE MANUAL 3-STEP */}
+                      <div className="rounded-lg border border-white/10 bg-black/30 p-2.5 space-y-1.5">
+                        <div className="text-[11px] font-medium text-slate-300">
+                          Option 3: AWS Console Steps (30 Seconds)
+                        </div>
+                        <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+                          <li>Open AWS EC2 Console &gt; Instances &gt; Select <code className="text-white">{activeInstanceId}</code></li>
+                          <li>Click <strong>Actions</strong> &gt; <strong>Security</strong> &gt; <strong>Modify IAM role</strong></li>
+                          <li>Select an IAM role with <code className="text-cyan-300">AmazonSSMManagedInstanceCore</code> and click <strong>Update IAM role</strong></li>
+                        </ol>
+                      </div>
                     </div>
                   )}
                 </div>
