@@ -22,7 +22,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionErrorBoundary } from '@/components/error-boundary'
 import { EmptyState, MetricCardSkeleton, TableSkeleton, ChartSkeleton } from '@/components/empty-state'
-import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel, Ec2MonitoringGrid } from '@/components/dashboard'
+import { MetricCard, SectionTitle, SectionStatusBadge, getSectionStatusLabel, Ec2MonitoringGrid, InstanceDetailDrawer } from '@/components/dashboard'
 import { useOptimisticToast } from '@/components/ui/optimistic-toast'
 import { validateForm, enrollAccountSchema, connectCloudSchema } from '@/lib/validations/forms'
 import { addBreadcrumb, captureException } from '@/lib/monitoring/logger'
@@ -1143,278 +1143,30 @@ export default function Page() {
           </div>
         </div>
       </main>
-
-      <Sheet open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>
-        <SheetContent className="w-full border-white/10 bg-card sm:max-w-xl md:max-w-2xl overflow-y-auto">
-          <SheetHeader className="pb-4 border-b border-white/10">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <SheetTitle className="text-xl font-bold flex items-center gap-2">
-                  <Server className="size-5 text-cyan-400" />
-                  {selectedNodeDetail?.name || selectedNode?.name || 'EC2 Instance'}
-                </SheetTitle>
-                <SheetDescription className="font-mono text-xs mt-1 text-muted-foreground flex items-center gap-2">
-                  <span>{selectedNodeDetail?.instance_id || selectedNode?.instance_id}</span>
-                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 capitalize ${
-                    (selectedNodeDetail?.state || selectedNode?.state) === 'running'
-                      ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'
-                      : 'border-amber-500/30 text-amber-400 bg-amber-500/10'
-                  }`}>
-                    {selectedNodeDetail?.state || selectedNode?.state || 'unknown'}
-                  </Badge>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-cyan-300 border-cyan-500/30 bg-cyan-500/10">
-                    {selectedNodeDetail?.instance_type || selectedNodeDetail?.type || selectedNode?.instance_type || selectedNode?.type || 't3.micro'}
-                  </Badge>
-                </SheetDescription>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Estimated Cost</div>
-                <div className="text-base font-bold font-mono text-white">
-                  ${Number(selectedNodeDetail?.cost || selectedNode?.cost || 0).toFixed(2)}<span className="text-xs text-muted-foreground">/mo</span>
-                </div>
-              </div>
-            </div>
-          </SheetHeader>
-
-          {selectedNode && (
-            <div className="flex flex-col gap-5 pt-4">
-              {selectedNodeLoading && (
-                <div className="flex items-center gap-2 text-xs text-cyan-400 animate-pulse">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Refreshing live AWS instance details...
-                </div>
-              )}
-
-              <Tabs defaultValue="specs" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 bg-white/5 border border-white/10 p-1">
-                  <TabsTrigger value="specs" className="text-xs">Overview</TabsTrigger>
-                  <TabsTrigger value="network" className="text-xs">Network</TabsTrigger>
-                  <TabsTrigger value="storage" className="text-xs">Storage</TabsTrigger>
-                  <TabsTrigger value="telemetry" className="text-xs">Telemetry</TabsTrigger>
-                </TabsList>
-
-                {/* OVERVIEW & SPECS */}
-                <TabsContent value="specs" className="space-y-3 mt-4">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {[
-                      { label: 'Instance Type', value: selectedNodeDetail?.instance_type || selectedNodeDetail?.type || selectedNode?.instance_type || selectedNode?.type || '—', mono: true },
-                      { label: 'State', value: selectedNodeDetail?.state || selectedNode?.state || '—', mono: false },
-                      { label: 'Platform / OS', value: selectedNodeDetail?.platform || selectedNode?.platform || 'linux', mono: false },
-                      { label: 'Architecture', value: selectedNodeDetail?.architecture || selectedNode?.architecture || 'x86_64', mono: true },
-                      { label: 'Region & AZ', value: `${selectedNodeDetail?.region || selectedNode?.region || 'us-east-1'} (${selectedNodeDetail?.availability_zone || selectedNode?.availability_zone || 'us-east-1'})`, mono: false },
-                      { label: 'Lifecycle', value: selectedNodeDetail?.lifecycle || selectedNode?.lifecycle || 'on-demand', mono: false },
-                      { label: 'Key Pair', value: selectedNodeDetail?.key_name || selectedNode?.key_name || 'None', mono: true },
-                      { label: 'AMI / Image ID', value: selectedNodeDetail?.image_id || selectedNode?.image_id || 'ami-default', mono: true },
-                      { label: 'Launch Time', value: selectedNodeDetail?.launch_time ? new Date(selectedNodeDetail.launch_time).toUTCString().replace(' GMT', ' UTC') : 'Available', mono: false },
-                      { label: 'Volumes Attached', value: `${selectedNodeDetail?.volumes || selectedNode?.volumes || 1} EBS volume(s)`, mono: false },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-lg border border-white/8 bg-white/5 p-2.5">
-                        <div className="text-[11px] text-muted-foreground">{item.label}</div>
-                        <div className={`mt-0.5 text-xs font-medium truncate ${item.mono ? 'font-mono' : ''}`}>{item.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                {/* NETWORK & TOPOLOGY */}
-                <TabsContent value="network" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
-                      <div className="text-[11px] text-muted-foreground">Public IPv4</div>
-                      <div className="mt-0.5 text-xs font-mono font-medium text-cyan-300">
-                        {selectedNodeDetail?.public_ip || selectedNode?.public_ip || 'None (Private)'}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
-                      <div className="text-[11px] text-muted-foreground">Private IPv4</div>
-                      <div className="mt-0.5 text-xs font-mono font-medium">
-                        {selectedNodeDetail?.private_ip || selectedNode?.private_ip || '172.31.0.0/16'}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
-                      <div className="text-[11px] text-muted-foreground">VPC ID</div>
-                      <div className="mt-0.5 text-xs font-mono font-medium truncate">
-                        {selectedNodeDetail?.vpc_id || selectedNode?.vpc_id || 'vpc-default'}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-white/8 bg-white/5 p-2.5">
-                      <div className="text-[11px] text-muted-foreground">Subnet ID</div>
-                      <div className="mt-0.5 text-xs font-mono font-medium truncate">
-                        {selectedNodeDetail?.subnet_id || selectedNode?.subnet_id || 'subnet-default'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Security Groups attached */}
-                  <div className="rounded-lg border border-white/8 bg-white/5 p-3">
-                    <div className="text-xs font-medium mb-2 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Lock className="size-3.5 text-amber-400" />
-                        Firewall & Security Groups
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {Array.isArray(selectedNodeDetail?.security_groups_detail) && selectedNodeDetail.security_groups_detail.length > 0
-                          ? `${selectedNodeDetail.security_groups_detail.length} attached`
-                          : Array.isArray(selectedNodeDetail?.security_groups) && selectedNodeDetail.security_groups.length > 0
-                            ? `${selectedNodeDetail.security_groups.length} attached`
-                            : 'None'}
-                      </span>
-                    </div>
-
-                    {drawerFeedback && (
-                      <div className="mb-2.5 flex items-center justify-between rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-300">
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="size-3.5 shrink-0 text-emerald-400" />
-                          <span>{drawerFeedback}</span>
-                        </div>
-                        <Button variant="ghost" size="icon" className="size-4 hover:bg-transparent text-muted-foreground hover:text-white" onClick={() => setDrawerFeedback(null)}>
-                          <X className="size-3" />
-                        </Button>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      {(() => {
-                        const sgs = (selectedNodeDetail?.security_groups_detail && selectedNodeDetail.security_groups_detail.length > 0)
-                          ? selectedNodeDetail.security_groups_detail
-                          : (selectedNodeDetail?.security_groups && selectedNodeDetail.security_groups.length > 0)
-                            ? selectedNodeDetail.security_groups
-                            : [];
-
-                        if (sgs.length === 0) {
-                          return (
-                            <div className="rounded border border-dashed border-white/10 p-3 text-center text-xs text-muted-foreground">
-                              No security groups attached to this instance
-                            </div>
-                          );
-                        }
-
-                        return sgs.map((sg: any, idx: number) => {
-                          const ports = Array.isArray(sg.exposed_ports) ? sg.exposed_ports : [];
-                          const isExposed = Boolean(sg.is_publicly_exposed && ports.length > 0);
-                          const isRevoking = revokingDrawerSg === sg.group_id;
-                          return (
-                            <div key={sg.group_id || idx} className="rounded border border-white/5 bg-black/20 p-2.5 text-xs space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono text-cyan-300 font-medium">{sg.group_id || 'sg-default'}</span>
-                                <span className="text-muted-foreground">{sg.group_name || 'default'}</span>
-                              </div>
-                              {isExposed ? (
-                                <div className="space-y-2 pt-1 border-t border-white/5">
-                                  <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                    <div className="flex flex-wrap items-center gap-1">
-                                      <span className="text-[10px] text-red-400 flex items-center gap-1 font-medium">
-                                        <ShieldAlert className="size-3" /> Publicly Exposed:
-                                      </span>
-                                      {ports.map((p: any) => (
-                                        <Badge key={p} variant="outline" className="text-[10px] px-1 py-0 border-red-500/40 text-red-300 bg-red-500/10 font-mono">
-                                          {p}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      className="h-6 text-[11px] px-2"
-                                      disabled={isRevoking}
-                                      onClick={() => handleDrawerRevoke(sg)}
-                                    >
-                                      {isRevoking ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
-                                      Revoke Ingress
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400">
-                                  <ShieldCheck className="size-3" /> Protected (No public internet ingress)
-                                </div>
-                              )}
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </div>
-                </TabsContent>
-
-                {/* STORAGE / EBS VOLUMES */}
-                <TabsContent value="storage" className="space-y-3 mt-4">
-                  <div className="space-y-2.5">
-                    {Array.isArray(selectedNodeDetail?.volumes_detail) && selectedNodeDetail.volumes_detail.length > 0 ? (
-                      selectedNodeDetail.volumes_detail.map((v: any) => (
-                        <div key={v.volume_id} className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <HardDrive className="size-4 text-cyan-400" />
-                              <span className="font-mono font-medium">{v.volume_id}</span>
-                            </div>
-                            <Badge variant="outline" className="border-cyan-500/30 text-cyan-300 bg-cyan-500/10 text-[10px]">
-                              {v.volume_type || 'gp3'}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-[11px] pt-1 border-t border-white/5">
-                            <div>
-                              <span className="text-muted-foreground">Size:</span> <span className="font-medium text-white">{v.size_gb || 30} GiB</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">IOPS:</span> <span className="font-medium text-white">{v.iops || 3000}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Encrypted:</span> <span className="font-medium text-amber-400">{v.encrypted ? 'Yes' : 'No'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-white/8 bg-white/5 p-3 text-xs space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <HardDrive className="size-4 text-cyan-400" />
-                            <span className="font-mono font-medium">vol-054d30aa3228e5c73</span>
-                          </div>
-                          <Badge variant="outline" className="border-cyan-500/30 text-cyan-300 bg-cyan-500/10 text-[10px]">
-                            gp3
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 text-[11px] pt-1 border-t border-white/5">
-                          <div>
-                            <span className="text-muted-foreground">Size:</span> <span className="font-medium text-white">30 GiB</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">IOPS:</span> <span className="font-medium text-white">3000</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Encrypted:</span> <span className="font-medium text-amber-400">No</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-
-                {/* TELEMETRY: 8-CARD LIVE AWS EC2 MONITORING GRID */}
-                <TabsContent value="telemetry" className="space-y-4 mt-4">
-                  <Ec2MonitoringGrid
-                    instanceId={selectedNode?.instance_id || 'i-default'}
-                    instanceName={selectedNode?.name || 'EC2 Instance'}
-                    instanceType={selectedNodeDetail?.instance_type || selectedNode?.instance_type || selectedNode?.type || 't3.micro'}
-                    apiUrl={apiUrl}
-                  />
-                </TabsContent>
-              </Tabs>
-
-              <div className="flex gap-2 pt-2 border-t border-white/10">
-                <Button className="flex-1 bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-semibold h-9" onClick={() => { setSelectedNode(null); setSelectedNodeDetail(null); setSelectedNodeTelemetry([]); setView('telemetry'); }}>
-                  Open Full Telemetry Dashboard
-                </Button>
-                <Button variant="outline" className="border-white/10 text-xs h-9" onClick={() => setSelectedNode(null)}>
-                  Close
-                </Button>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      <InstanceDetailDrawer
+        open={Boolean(selectedNode)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setSelectedNode(null);
+            setSelectedNodeDetail(null);
+            setSelectedNodeTelemetry([]);
+          }
+        }}
+        node={selectedNode}
+        nodeDetail={selectedNodeDetail}
+        loading={selectedNodeLoading}
+        currency={currency}
+        rate={84.0}
+        apiUrl={apiUrl}
+        formatCurrency={formatCurrency}
+        onRevokeSg={handleDrawerRevoke}
+        onOpenFullTelemetry={(instId) => {
+          setSelectedNode(null);
+          setSelectedNodeDetail(null);
+          setSelectedNodeTelemetry([]);
+          setView('telemetry');
+        }}
+      />
       <ConnectModal
         open={connectOpen}
         onOpenChange={setConnectOpen}

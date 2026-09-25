@@ -60,6 +60,7 @@ export function InstanceDetailDrawer({
   apiUrl,
   onOpenFullTelemetry,
   onOpenGitOpsPr,
+  onRevokeSg,
   formatCurrency: formatCurrProp,
 }: InstanceDetailDrawerProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
