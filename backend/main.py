@@ -135,10 +135,37 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # =========================================================================
+    # 🛑 SRE GRACEFUL SHUTDOWN & CONNECTION DRAINING SEQUENCE
+    # =========================================================================
     try:
         scheduler_engine.stop_worker()
+        print("🛑 Background scheduler worker stopped gracefully.")
     except Exception:
         pass
+
+    try:
+        try:
+            from engines.focus_lakehouse import focus_lakehouse
+        except ImportError:
+            from backend.engines.focus_lakehouse import focus_lakehouse
+        if focus_lakehouse and hasattr(focus_lakehouse, "conn") and focus_lakehouse.conn:
+            focus_lakehouse.conn.close()
+            print("🛑 DuckDB Lakehouse connections drained.")
+    except Exception:
+        pass
+
+    try:
+        try:
+            from services.vector_store import vector_knowledge_store
+        except ImportError:
+            from backend.services.vector_store import vector_knowledge_store
+        if vector_knowledge_store:
+            vector_knowledge_store.save_to_disk()
+            print("🛑 Vector knowledge store synchronized to disk.")
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title="CloudPulse FinOps & Telemetry API",
@@ -158,14 +185,24 @@ app.add_middleware(
 
 try:
     from core.middleware import CorrelationIdMiddleware
+    from core.security import SecurityHeadersMiddleware
+    from core.rate_limiter import RateLimitMiddleware
     from core.state import REALTIME_STORE, get_realtime_store, resolve_active_inventory
     from api.v2 import api_v2_router
 except ImportError:
     from backend.core.middleware import CorrelationIdMiddleware
+    from backend.core.security import SecurityHeadersMiddleware
+    from backend.core.rate_limiter import RateLimitMiddleware
     from backend.core.state import REALTIME_STORE, get_realtime_store, resolve_active_inventory
     from backend.api.v2 import api_v2_router
 
-# Google SRE Correlation ID and Process Time Middleware
+# 1. OWASP & Google Security Headers Middleware (runs last on outgoing response)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. Production Sliding-Window Rate Limiter
+app.add_middleware(RateLimitMiddleware)
+
+# 3. Google SRE Correlation ID and Process Time Middleware (runs first on incoming request)
 app.add_middleware(CorrelationIdMiddleware)
 
 # Mount Modular Domain Routers

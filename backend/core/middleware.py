@@ -13,12 +13,15 @@ from starlette.responses import Response
 
 try:
     from core.metrics import record_request_metric, ACTIVE_REQUESTS
+    from core.logging import correlation_id_ctx
 except ImportError:
     try:
         from backend.core.metrics import record_request_metric, ACTIVE_REQUESTS
+        from backend.core.logging import correlation_id_ctx
     except ImportError:
         record_request_metric = None
         ACTIVE_REQUESTS = None
+        correlation_id_ctx = None
 
 logger = logging.getLogger("cloudpulse.sre.middleware")
 
@@ -34,6 +37,8 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
+        if correlation_id_ctx:
+            correlation_id_ctx.set(request_id)
 
         if ACTIVE_REQUESTS:
             ACTIVE_REQUESTS.inc()

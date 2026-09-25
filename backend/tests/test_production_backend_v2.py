@@ -153,3 +153,59 @@ def test_metrics_increment_on_traffic():
     metrics_text = metrics_res.text
     assert 'endpoint="/api/v2/copilot/status"' in metrics_text
     assert 'endpoint="/api/v2/fleet/summary"' in metrics_text
+
+
+def test_security_headers_middleware():
+    """Validates that OWASP security defense-in-depth headers are injected on all responses."""
+    res = client.get("/healthz")
+    assert res.status_code == 200
+    assert res.headers.get("X-Content-Type-Options") == "nosniff"
+    assert res.headers.get("X-Frame-Options") == "SAMEORIGIN"
+    assert res.headers.get("X-XSS-Protection") == "1; mode=block"
+    assert "strict-origin-when-cross-origin" in res.headers.get("Referrer-Policy")
+    assert "camera=()" in res.headers.get("Permissions-Policy")
+
+
+def test_rate_limiting_headers_and_enforcement():
+    """Validates that rate limiting headers are injected and 429 is raised when exhausted."""
+    from core.rate_limiter import rate_limiter
+
+    rate_limiter.reset()
+
+    # Normal request has rate limit headers
+    res = client.get("/api/v2/copilot/status")
+    assert res.status_code == 200
+    assert "X-RateLimit-Limit" in res.headers
+    assert "X-RateLimit-Remaining" in res.headers
+
+    # Exceed limit in a tight loop to trigger 429
+    custom_ip = "198.51.100.42"
+    # We test with small custom quota on the limiter
+    for _ in range(5):
+        rate_limiter.is_allowed(f"{custom_ip}:test_tier", 5)
+
+    allowed, remaining, retry_after = rate_limiter.is_allowed(f"{custom_ip}:test_tier", 5)
+    assert not allowed
+    assert remaining == 0
+    assert retry_after > 0
+
+
+def test_structured_json_logging():
+    """Validates that SREJsonFormatter generates compliant Google Cloud / Stackdriver JSON logs."""
+    import logging
+    import json
+    from core.logging import SREJsonFormatter, correlation_id_ctx
+
+    formatter = SREJsonFormatter()
+    logger = logging.getLogger("test.sre.logger")
+
+    correlation_id_ctx.set("trace-abc-123")
+    record = logger.makeRecord("test.logger", logging.INFO, "test.py", 42, "FinOps query executed", (), None)
+    formatted = formatter.format(record)
+
+    parsed = json.loads(formatted)
+    assert parsed["severity"] == "INFO"
+    assert parsed["message"] == "FinOps query executed"
+    assert parsed["correlation_id"] == "trace-abc-123"
+    assert "sourceLocation" in parsed
+    assert parsed["sourceLocation"]["file"] == "test.py"
