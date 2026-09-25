@@ -195,7 +195,7 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => {
 
   return {
     // Navigation & UI Layout
-    view: 'overview',
+    view: 'inventory',
     setView: (view) => set({ view }),
     collapsed: false,
     setCollapsed: (collapsed) => set({ collapsed }),

@@ -77,8 +77,6 @@ const nav = [
   { id: 'gitops-sla', label: 'GitOps & SLA Watchdog', icon: GitBranch },
   { id: 'fleet', label: 'Enterprise Fleet (100+)', icon: Network },
   { id: 'cicd', label: 'CI/CD & GitHub App', icon: GitPullRequest },
-  { id: 'kubernetes', label: 'Kubernetes (OpenCost)', icon: Cpu },
-  { id: 'lakehouse', label: 'FOCUS 1.0 Lakehouse', icon: Database },
   { id: 'copilot', label: 'AI FinOps Copilot', icon: Sparkles },
   { id: 'settings', label: 'Settings & Notifications', icon: Settings },
 ]
@@ -1001,16 +999,6 @@ export default function Page() {
                 {view === 'cicd' && (
                   <SectionErrorBoundary title="CI/CD Guardrails">
                     <CiCdGuardrailView currency={currency} apiUrl={apiUrl} />
-                  </SectionErrorBoundary>
-                )}
-                {view === 'kubernetes' && (
-                  <SectionErrorBoundary title="Kubernetes Optimization">
-                    <KubernetesView currency={currency} apiUrl={apiUrl} />
-                  </SectionErrorBoundary>
-                )}
-                {view === 'lakehouse' && (
-                  <SectionErrorBoundary title="FinOps Lakehouse">
-                    <LakehouseView currency={currency} apiUrl={apiUrl} />
                   </SectionErrorBoundary>
                 )}
                 {view === 'copilot' && (
