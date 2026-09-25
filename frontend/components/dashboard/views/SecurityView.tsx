@@ -32,7 +32,7 @@ interface SecurityViewProps {
   tab: string
   setTab: (tab: string) => void
   summary?: any
-  audit?: SecurityAudit
+  audit?: SecurityAudit | null
   sectionStatus?: 'idle' | 'loading' | 'ready' | 'partial' | 'error'
   apiUrl: (path: string) => string
   onRefresh?: (silent?: boolean) => void
