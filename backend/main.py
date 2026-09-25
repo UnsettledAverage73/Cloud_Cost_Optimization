@@ -2953,7 +2953,46 @@ async def attach_ssm_role(payload: Optional[Dict[str, Any]] = None):
             except Exception as e_prof:
                 logger.warning(f"Could not attach policy to existing profile {profile_name}: {e_prof}")
 
-        # 2. Instance has no instance profile: create/ensure CloudPulseSSMRole & Profile
+        # 2. Check for AWS Learner Lab / Academy pre-existing LabRole & LabInstanceProfile
+        lab_profile = None
+        for cand_prof in ["LabInstanceProfile", "LabRole"]:
+            try:
+                iam.get_instance_profile(InstanceProfileName=cand_prof)
+                lab_profile = cand_prof
+                break
+            except Exception:
+                pass
+
+        if lab_profile:
+            # AWS Learner Lab detected! Associate the pre-configured LabRole/LabInstanceProfile
+            try:
+                assoc_res = ec2.describe_iam_instance_profile_associations(
+                    Filters=[{"Name": "instance-id", "Values": [instance_id]}]
+                )
+                associations = [a for a in assoc_res.get("IamInstanceProfileAssociations", []) if a.get("State") in ["associating", "associated"]]
+                if associations:
+                    assoc_id = associations[0]["AssociationId"]
+                    ec2.replace_iam_instance_profile_association(
+                        IamInstanceProfile={"Name": lab_profile},
+                        AssociationId=assoc_id
+                    )
+                else:
+                    ec2.associate_iam_instance_profile(
+                        IamInstanceProfile={"Name": lab_profile},
+                        InstanceId=instance_id
+                    )
+                return {
+                    "status": "associated_learner_lab",
+                    "instance_id": instance_id,
+                    "role_name": "LabRole",
+                    "instance_profile": lab_profile,
+                    "message": f"AWS Learner Lab detected: Successfully associated pre-configured '{lab_profile}' (LabRole) with {instance_id}. SSM permissions are now active! The agent will register in ~60s.",
+                    "success": True,
+                }
+            except Exception as e_lab:
+                logger.warning(f"Error associating Learner Lab profile {lab_profile}: {e_lab}")
+
+        # 3. Standard AWS: Instance has no instance profile, create/ensure CloudPulseSSMRole & Profile
         role_name = "CloudPulseEC2SSMRole"
         profile_name = "CloudPulseEC2SSMProfile"
 
