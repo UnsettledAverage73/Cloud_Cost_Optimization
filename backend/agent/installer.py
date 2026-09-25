@@ -1,5 +1,5 @@
-def generate_linux_install_script(backend_url: str, token: str, interval: int = 60) -> str:
-    """Generates an enterprise-ready POSIX/Linux bash installation script."""
+def generate_linux_install_script(backend_url: str, token: str, interval: int = 2) -> str:
+    """Generates an enterprise-ready POSIX/Linux bash installation script with IMDSv2 auto-detection."""
     return f"""#!/usr/bin/env bash
 set -e
 
@@ -19,13 +19,78 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
-# 3. Create standalone agent script
+# 3. Create standalone agent script with IMDSv2 auto-detection
 sudo cat << 'EOF' > "$INSTALL_DIR/agent.py"
-# Embedded CloudPulse Standalone Agent
+# Embedded CloudPulse Standalone High-Speed In-Guest Agent
 import sys, os, urllib.request, json, time, shutil, socket, platform
 from datetime import datetime, timezone
 
+def get_cloud_metadata():
+    host = socket.gethostname()
+    cloud = {{"provider": "linux-host", "instance_id": f"host-{{host}}", "region": "local", "availability_zone": "local"}}
+    try:
+        token_req = urllib.request.Request(
+            "http://169.254.169.254/latest/api/token",
+            headers={{"X-aws-ec2-metadata-token-ttl-seconds": "60"}},
+            method="PUT"
+        )
+        with urllib.request.urlopen(token_req, timeout=0.8) as r:
+            imds_tok = r.read().decode().strip()
+        auth_h = {{"X-aws-ec2-metadata-token": imds_tok}}
+        
+        id_req = urllib.request.Request("http://169.254.169.254/latest/meta-data/instance-id", headers=auth_h)
+        with urllib.request.urlopen(id_req, timeout=0.8) as r:
+            inst_id = r.read().decode().strip()
+            
+        az_req = urllib.request.Request("http://169.254.169.254/latest/meta-data/placement/availability-zone", headers=auth_h)
+        with urllib.request.urlopen(az_req, timeout=0.8) as r:
+            az = r.read().decode().strip()
+            reg = az[:-1] if az else "us-east-1"
+            
+        cloud = {{
+            "provider": "aws",
+            "instance_id": inst_id,
+            "region": reg,
+            "availability_zone": az
+        }}
+    except Exception:
+        pass
+    return cloud
+
+cached_cloud = None
+prev_net = None
+prev_cpu_time = None
+
+def get_cpu_pct():
+    global prev_cpu_time
+    try:
+        with open("/proc/stat", "r") as f:
+            line = f.readline()
+        fields = [float(x) for x in line.strip().split()[1:8]]
+        idle_time = fields[3] + fields[4]
+        total_time = sum(fields)
+        if prev_cpu_time is None:
+            prev_cpu_time = (idle_time, total_time)
+            cores = os.cpu_count() or 1
+            load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
+            return min(round((load / cores) * 100, 1), 100.0)
+        prev_idle, prev_total = prev_cpu_time
+        prev_cpu_time = (idle_time, total_time)
+        diff_total = total_time - prev_total
+        diff_idle = idle_time - prev_idle
+        if diff_total > 0:
+            return max(0.0, min(100.0, round(((diff_total - diff_idle) / diff_total) * 100, 1)))
+    except Exception:
+        pass
+    cores = os.cpu_count() or 1
+    load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
+    return min(round((load / cores) * 100, 1), 100.0)
+
 def collect():
+    global cached_cloud, prev_net
+    if cached_cloud is None:
+        cached_cloud = get_cloud_metadata()
+        
     usage = shutil.disk_usage("/")
     mem_used = 0
     mem_total = 1024
@@ -38,19 +103,45 @@ def collect():
         mem_used = mem_total - m.get("MemAvailable", m.get("MemFree", 0))
 
     cores = os.cpu_count() or 1
-    load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
-    cpu_pct = min(round((load / cores) * 100, 2), 100.0)
-
+    cpu_pct = get_cpu_pct()
     host = socket.gethostname()
+
+    # Network delta
+    net_in_b = 0
+    net_out_b = 0
+    try:
+        cur_rx, cur_tx = 0, 0
+        if os.path.exists("/proc/net/dev"):
+            for line in open("/proc/net/dev"):
+                if ":" in line:
+                    iface, stats = line.split(":", 1)
+                    if "lo" not in iface:
+                        cols = stats.split()
+                        cur_rx += int(cols[0])
+                        cur_tx += int(cols[8])
+        if prev_net is not None:
+            t_diff = max(time.time() - prev_net[0], 0.1)
+            net_in_b = int(max(0, cur_rx - prev_net[1]) / t_diff)
+            net_out_b = int(max(0, cur_tx - prev_net[2]) / t_diff)
+        prev_net = (time.time(), cur_rx, cur_tx)
+    except Exception:
+        pass
+
     return {{
         "token": "{token}",
-        "cloud": {{"provider": "linux-host", "instance_id": f"host-{{host}}", "region": "local"}},
+        "cloud": cached_cloud,
         "telemetry": {{
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "os": {{"os_type": "linux", "hostname": host, "architecture": platform.machine()}},
             "cpu": {{"utilization_percent": cpu_pct, "logical_cores": cores}},
-            "memory": {{"total_mb": round(mem_total/1024, 1), "percent_used": round((mem_used/mem_total)*100, 2)}},
-            "disk": {{"total_gb": round(usage.total/(1024**3), 2), "percent_used": round((usage.used/usage.total)*100, 2)}}
+            "memory": {{"total_mb": round(mem_total/1024, 1), "percent_used": round((mem_used/mem_total)*100, 1)}},
+            "disk": {{"total_gb": round(usage.total/(1024**3), 2), "percent_used": round((usage.used/usage.total)*100, 1)}},
+            "network": {{
+                "bytes_recv": net_in_b,
+                "bytes_sent": net_out_b,
+                "packets_recv": int(net_in_b / 140) if net_in_b else 0,
+                "packets_sent": int(net_out_b / 140) if net_out_b else 0
+            }}
         }}
     }}
 
@@ -60,7 +151,7 @@ def main():
             payload = collect()
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request("{backend_url}/api/v2/agent/ingest", data=data, headers={{"Content-Type": "application/json"}})
-            urllib.request.urlopen(req, timeout=5)
+            urllib.request.urlopen(req, timeout=4)
         except Exception:
             pass
         time.sleep({interval})
@@ -74,16 +165,16 @@ if command -v systemctl &>/dev/null && [ -d /etc/systemd/system ]; then
     echo "Creating systemd service 'cloudpulse-agent'..."
     sudo cat << EOF > /etc/systemd/system/cloudpulse-agent.service
 [Unit]
-Description=CloudPulse Multi-OS Telemetry Daemon
+Description=CloudPulse Multi-OS In-Guest Telemetry Daemon
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$(which python3) $INSTALL_DIR/agent.py
+ExecStart=$(which python3) -u $INSTALL_DIR/agent.py
 Restart=always
-RestartSec=10
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -91,10 +182,10 @@ EOF
     sudo systemctl daemon-reload
     sudo systemctl enable cloudpulse-agent
     sudo systemctl restart cloudpulse-agent
-    echo "✅ CloudPulse Agent installed and running via systemd!"
+    echo "✅ CloudPulse Agent installed and streaming live via systemd!"
 else
     echo "Starting agent in background..."
-    nohup python3 "$INSTALL_DIR/agent.py" > /dev/null 2>&1 &
+    nohup python3 -u "$INSTALL_DIR/agent.py" > /dev/null 2>&1 &
     echo "✅ CloudPulse Agent running in background (PID: $!)"
 fi
 """

@@ -11,8 +11,8 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useRealtimeTelemetry } from '@/hooks/useRealtimeTelemetry';
+import { AgentDeploymentModal } from './AgentDeploymentModal';
 
 interface Ec2MonitoringGridProps {
   instanceId: string;
@@ -48,6 +48,7 @@ export function Ec2MonitoringGrid({
     latestPoint,
   } = useRealtimeTelemetry(instanceId, 60, apiUrl);
 
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
   const timeframes: Array<'1h' | '3h' | '12h' | '1d' | '3d' | '1w'> = ['1h', '3h', '12h', '1d', '3d', '1w'];
 
   // Current stats
@@ -99,8 +100,17 @@ export function Ec2MonitoringGrid({
           </div>
         </div>
 
-        {/* Timeframe selector & CWAgent Checkbox */}
+        {/* Timeframe selector & Agent Hub / CWAgent */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Agent Deployment Hub Button */}
+          <button
+            onClick={() => setAgentModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/15 hover:bg-cyan-500/25 px-2.5 py-1 text-[10px] font-semibold text-cyan-200 transition-all shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+          >
+            <Zap className="size-3 text-cyan-400 animate-pulse" />
+            <span>⚡️ Real-Time Agent Hub</span>
+          </button>
+
           {/* CWAgent Toggle */}
           <button
             onClick={() => setCwAgentEnabled(!cwAgentEnabled)}
@@ -436,6 +446,14 @@ export function Ec2MonitoringGrid({
         </Card>
 
       </div>
+
+      {/* Zero-Config Real-Time Agent Deployment & Consent Hub Modal */}
+      <AgentDeploymentModal
+        open={agentModalOpen}
+        onOpenChange={setAgentModalOpen}
+        apiUrl={apiUrl}
+        activeInstanceId={instanceId}
+      />
     </div>
   );
 }

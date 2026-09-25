@@ -184,7 +184,7 @@ export interface MetricCardProps {
   label: string
   value: string | number
   detail?: string
-  tone?: 'cyan' | 'emerald' | 'amber' | 'red' | 'purple'
+  tone?: 'cyan' | 'sky' | 'indigo' | 'emerald' | 'purple' | 'amber' | 'rose' | 'red' | 'blue'
   trend?: string
 }
 

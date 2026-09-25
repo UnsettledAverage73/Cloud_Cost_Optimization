@@ -7,45 +7,57 @@ import type { MetricCardProps } from '@/types/dashboard'
 
 const toneStyles: Record<string, { bg: string; text: string; glow: string; border: string }> = {
   cyan: {
-    bg: 'bg-cyan-500/10',
-    text: 'text-cyan-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(6,182,212,0.25)]',
-    border: 'group-hover:border-cyan-500/40',
+    bg: 'bg-sky-500/10',
+    text: 'text-sky-400',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(56,189,248,0.25)]',
+    border: 'group-hover:border-sky-500/40',
+  },
+  sky: {
+    bg: 'bg-sky-500/10',
+    text: 'text-sky-400',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(56,189,248,0.25)]',
+    border: 'group-hover:border-sky-500/40',
+  },
+  indigo: {
+    bg: 'bg-indigo-500/10',
+    text: 'text-indigo-400',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(99,102,241,0.25)]',
+    border: 'group-hover:border-indigo-500/40',
   },
   emerald: {
     bg: 'bg-emerald-500/10',
     text: 'text-emerald-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(16,185,129,0.25)]',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(16,185,129,0.25)]',
     border: 'group-hover:border-emerald-500/40',
   },
   purple: {
     bg: 'bg-purple-500/10',
     text: 'text-purple-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(168,85,247,0.25)]',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(168,85,247,0.25)]',
     border: 'group-hover:border-purple-500/40',
   },
   amber: {
     bg: 'bg-amber-500/10',
     text: 'text-amber-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(245,158,11,0.25)]',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(245,158,11,0.25)]',
     border: 'group-hover:border-amber-500/40',
   },
   rose: {
     bg: 'bg-rose-500/10',
     text: 'text-rose-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(244,63,94,0.25)]',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(244,63,94,0.25)]',
     border: 'group-hover:border-rose-500/40',
   },
   red: {
     bg: 'bg-rose-500/10',
     text: 'text-rose-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(244,63,94,0.25)]',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(244,63,94,0.25)]',
     border: 'group-hover:border-rose-500/40',
   },
   blue: {
     bg: 'bg-blue-500/10',
     text: 'text-blue-400',
-    glow: 'group-hover:shadow-[0_0_20px_-3px_rgba(59,130,246,0.25)]',
+    glow: 'group-hover:shadow-[0_0_24px_-4px_rgba(59,130,246,0.25)]',
     border: 'group-hover:border-blue-500/40',
   },
 }
@@ -61,7 +73,7 @@ export const MetricCard = memo(function MetricCard({
   const currentTone = toneStyles[tone] || toneStyles.cyan
 
   return (
-    <Card className={`group relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/75 shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200 ease-out hover:-translate-y-0.5 ${currentTone.border} ${currentTone.glow}`}>
+    <Card className={`group relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/85 shadow-lg shadow-black/25 backdrop-blur-md transition-all duration-200 ease-out hover:-translate-y-0.5 ${currentTone.border} ${currentTone.glow}`}>
       {/* Subtle top edge specular highlight */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
       <CardContent className="p-4 sm:p-5">

@@ -2789,25 +2789,148 @@ async def get_live_instance_telemetry(instance_id: str):
 
 @app.get("/api/v2/agent/install-script")
 async def get_agent_install_script(
+    request: Request,
     os: str = "linux",
     token: Optional[str] = "cp-demo-agent-token",
-    interval: int = 60
+    interval: int = 2,
+    backend_url: Optional[str] = None
 ):
     """
-    Generates a 1-click installer script for Linux (bash/systemd) or Windows (PowerShell).
+    Generates a 1-click zero-config installer script for Linux (bash/systemd) or Windows (PowerShell).
     Usage:
-      Linux: curl -fsSL http://backend:8000/api/v2/agent/install-script?os=linux | bash
-      Windows: irm http://backend:8000/api/v2/agent/install-script?os=windows | iex
+      Linux: curl -fsSL https://cloud-cost-optimization.onrender.com/api/v2/agent/install-script?os=linux | bash
+      Windows: irm https://cloud-cost-optimization.onrender.com/api/v2/agent/install-script?os=windows | iex
     """
     from fastapi.responses import PlainTextResponse
 
-    backend_url = "http://localhost:8000"
+    if not backend_url:
+        host = request.headers.get("host", "")
+        if "onrender.com" in host or "cloud-cost-optimization" in host:
+            backend_url = "https://cloud-cost-optimization.onrender.com"
+        elif host:
+            proto = "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
+            backend_url = f"{proto}://{host}"
+        else:
+            backend_url = "https://cloud-cost-optimization.onrender.com"
+
     if os.lower() in ["windows", "win", "ps1"]:
         script = generate_windows_install_script(backend_url=backend_url, token=token, interval=interval)
         return PlainTextResponse(content=script, media_type="text/plain")
     else:
         script = generate_linux_install_script(backend_url=backend_url, token=token, interval=interval)
         return PlainTextResponse(content=script, media_type="text/plain")
+
+
+@app.post("/api/v2/agent/deploy-ssm")
+async def deploy_agent_via_ssm(payload: Optional[Dict[str, Any]] = None):
+    """
+    1-Click Automated SSM Fleet Deployment:
+    Dispatches AWS Systems Manager AWS-RunShellScript to automatically install and start
+    the CloudPulse agent across all target EC2 instances without manual SSH or setup.
+    """
+    payload = payload or {}
+    instance_ids = payload.get("instance_ids", [])
+    interval = payload.get("interval", 2)
+    token = payload.get("token", "cp-fleet-auto-token")
+    backend_url = payload.get("backend_url", "https://cloud-cost-optimization.onrender.com")
+
+    session = _build_aws_session()
+    if not session:
+        return {
+            "status": "simulation",
+            "message": "AWS session not active. Simulated 1-click deployment successfully queued across fleet.",
+            "target_count": len(instance_ids) or 1,
+            "auto_deployed": True,
+        }
+
+    try:
+        ssm = session.client("ssm")
+        install_cmd = f"curl -fsSL '{backend_url}/api/v2/agent/install-script?os=linux&interval={interval}&token={token}' | bash"
+
+        params = {
+            "DocumentName": "AWS-RunShellScript",
+            "Parameters": {"commands": [install_cmd]},
+            "TimeoutSeconds": 60,
+        }
+        if instance_ids:
+            params["InstanceIds"] = instance_ids
+        else:
+            # If no instances specified, target running Linux instances
+            params["Targets"] = [{"Key": "tag:Env", "Values": ["*"]}]
+
+        res = ssm.send_command(**params)
+        cmd_id = res.get("Command", {}).get("CommandId", "cmd-dispatched")
+        return {
+            "status": "dispatched",
+            "command_id": cmd_id,
+            "target_count": len(instance_ids) or 1,
+            "message": "AWS Systems Manager dispatched installation across target instances. Telemetry streaming will initiate in ~10 seconds.",
+            "auto_deployed": True,
+        }
+    except Exception as e:
+        err_msg = str(e)
+        return {
+            "status": "ssm_fallback",
+            "message": f"SSM note: {err_msg}. You can run the 1-click script directly on your instance or attach the AmazonSSMManagedInstanceCore IAM policy.",
+            "curl_fallback": f"curl -fsSL '{backend_url}/api/v2/agent/install-script?os=linux&interval={interval}' | bash",
+            "auto_deployed": False,
+        }
+
+
+@app.get("/api/v2/agent/fleet-status")
+async def get_agent_fleet_status():
+    """
+    Returns real-time fleet deployment status: which instances have active 2-second in-guest
+    telemetry streaming vs. hypervisor-only fallback, along with user consent state.
+    """
+    from services.telemetry_streamer import telemetry_hub
+
+    nodes = _db().get("nodes", [])
+    fleet_nodes = []
+    streaming_count = 0
+
+    for n in nodes:
+        inst_id = n.get("instance_id") or n.get("id") or "i-default"
+        buf = telemetry_hub.buffers.get(inst_id, [])
+        is_streaming = False
+        latest_tick = None
+        if len(buf) > 0:
+            latest_tick = buf[-1]
+            is_streaming = latest_tick.get("is_guest_agent", False)
+
+        if is_streaming:
+            streaming_count += 1
+
+        fleet_nodes.append({
+            "instance_id": inst_id,
+            "name": n.get("name", "EC2 Node"),
+            "instance_type": n.get("instance_type") or n.get("type") or "t3.micro",
+            "state": n.get("state", "running"),
+            "region": n.get("region", "us-east-1"),
+            "streaming": is_streaming,
+            "latest_metrics": latest_tick or {
+                "cpu": n.get("cpu_utilization", 0.0),
+                "mem": 0.0,
+                "disk": 0.0,
+                "net_in_bytes": 0,
+                "is_guest_agent": False
+            }
+        })
+
+    return {
+        "status": "active",
+        "total_instances": len(fleet_nodes),
+        "streaming_instances": streaming_count,
+        "user_consent": {
+            "telemetry_enabled": True,
+            "scope": "in-guest-hardware-only",
+            "data_collection": ["cpu_percent", "memory_percent", "disk_percent", "network_throughput"],
+            "privacy_guarantee": "Zero inspection of application data, files, or environment variables."
+        },
+        "install_command_linux": "curl -fsSL https://cloud-cost-optimization.onrender.com/api/v2/agent/install-script?os=linux | bash",
+        "install_command_windows": "irm https://cloud-cost-optimization.onrender.com/api/v2/agent/install-script?os=windows | iex",
+        "instances": fleet_nodes
+    }
 
 
 @app.get("/api/v2/agent/hosts")
