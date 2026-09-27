@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { FileText, Loader2, Send, Sparkles } from 'lucide-react'
+import { FileText, Loader2, Send, Sparkles, Cpu, ShieldCheck, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,7 +14,7 @@ function formatInlineMarkdown(text: string): React.ReactNode {
   return parts.map((part, index) => {
     if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
       return (
-        <code key={index} className="rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 font-mono text-xs text-sky-300">
+        <code key={index} className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
           {part.slice(1, -1)}
         </code>
       )
@@ -40,9 +40,8 @@ function MarkdownText({ content }: { content: string }) {
         const trimmed = line.trim()
         if (!trimmed) return <div key={i} className="h-1" />
 
-        // Header ###
         if (trimmed.startsWith('### ')) {
-          return <h4 key={i} className="text-sm font-semibold text-sky-300 mt-2">{trimmed.slice(4)}</h4>
+          return <h4 key={i} className="text-sm font-semibold text-foreground mt-2">{trimmed.slice(4)}</h4>
         }
         if (trimmed.startsWith('## ')) {
           return <h3 key={i} className="text-base font-bold text-foreground mt-3">{trimmed.slice(3)}</h3>
@@ -51,18 +50,16 @@ function MarkdownText({ content }: { content: string }) {
           return <h2 key={i} className="text-lg font-bold text-foreground mt-3">{trimmed.slice(2)}</h2>
         }
 
-        // Bullet point
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           const bulletText = trimmed.slice(2)
           return (
             <div key={i} className="flex items-start gap-2 pl-2">
-              <span className="mt-1.5 size-1.5 rounded-full bg-sky-400 shrink-0 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
+              <span className="mt-1.5 size-1.5 rounded-full bg-foreground shrink-0" />
               <span>{formatInlineMarkdown(bulletText)}</span>
             </div>
           )
         }
 
-        // Standard line
         return <p key={i}>{formatInlineMarkdown(line)}</p>
       })}
     </div>
@@ -79,47 +76,25 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
     text: string
     model?: string
     tool?: string
-    citations?: string[]
-    formattedSavings?: string
+    confidence?: number
+    decisionProvider?: string
+    latencyMs?: number
+    executionPlan?: string[]
   }>>([
     {
       role: 'assistant',
-      text: "👋 Welcome to **CloudPulse Autonomous FinOps Copilot**, powered by **Groq Cloud LLM** (compound-mini / compound / Qwen 27B) and our unified multi-domain RAG pipeline.\n\nI continuously retrieve and correlate:\n- ⚡ **Live AWS Telemetry** (EC2, EBS, EIP, SGs, CloudWatch, S3)\n- ☸️ **CNCF OpenCost Container Allocations** (pod CPU/RAM efficiency & rightsizing diffs)\n- 🏛️ **FOCUS 1.0 Lakehouse** (DuckDB in-memory OLAP spend analytics)\n- 📚 **AWS Well-Architected Framework & Enterprise Tagging Policies**\n\nAsk me anything or click one of the quick prompts below!",
-      model: 'groq/compound-mini',
-      citations: ['Live AWS EC2 Telemetry', 'CNCF OpenCost', 'FOCUS 1.0 Lakehouse', 'Well-Architected KB'],
+      text: "👋 Welcome to **Jew System Architect**, the autonomous One-Model Cloud Architect agent.\n\nPowered by **SemIf (OpenJev open-source)** for sub-millisecond System-1 tool decision-making and instrumented with **LangSmith** tracing.\n\nI continuously perceive and optimize:\n- ⚡ **Live AWS CloudWatch Telemetry** (P95/P99 CPU, Memory, IOPS series)\n- 🛡️ **CloudTrail Spike Forensics** (Principal actors, CI/CD pipeline attribution)\n- 💰 **Real-Time AWS Pricing Rate Cards** (Graviton ARM64 rightsizing ROI)\n- 🛠️ **Automated OpenTofu / Terraform PRs** (Zero-downtime safe IaC remediation)\n- ⏱️ **SLA Safety Watchdog** (60-minute automated rollback guardrails)\n\nAsk me anything or select a prompt below!",
+      model: 'SemIf Decision Engine',
+      decisionProvider: 'SemIf (OpenJev open-source)',
     },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [ragStatus, setRagStatus] = useState<any>(null)
-  const [generatingReport, setGeneratingReport] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
-
-  // Fetch live RAG pipeline telemetry status
-  useEffect(() => {
-    let cancelled = false
-    const fetchRagStatus = async () => {
-      try {
-        const res = await fetch(apiUrl('/api/v2/copilot/rag/status'))
-        if (res.ok) {
-          const data = await res.json()
-          if (!cancelled) setRagStatus(data)
-        }
-      } catch {
-        // silent failover to default
-      }
-    }
-    fetchRagStatus()
-    const interval = setInterval(fetchRagStatus, 20000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [apiUrl])
 
   const sendMessage = async (queryText: string) => {
     const text = queryText.trim()
@@ -129,21 +104,23 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
     setLoading(true)
 
     try {
-      const res = await fetch(apiUrl('/api/v2/copilot/chat'), {
+      const res = await fetch(apiUrl('/api/v2/architect/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, prompt: text, history: [] }),
+        body: JSON.stringify({ message: text, query: text, history: [] }),
       })
       const data = await res.json()
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: data.answer || data.response || 'No response received from Copilot.',
-          model: data.model || ragStatus?.active_model || 'groq',
+          text: data.answer || 'No response received from Architect.',
+          model: data.provider || 'SemIf',
           tool: data.tool_called,
-          citations: data.citations || data.tool_result?.citations || [],
-          formattedSavings: data.formatted_monthly_savings || data.tool_result?.formatted_monthly_savings,
+          confidence: data.confidence,
+          decisionProvider: data.provider,
+          latencyMs: data.latency_ms,
+          executionPlan: data.execution_plan || [],
         },
       ])
     } catch (err: any) {
@@ -151,7 +128,7 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
         ...prev,
         {
           role: 'assistant',
-          text: `⚠️ Error communicating with Copilot: ${err?.message || err}`,
+          text: `⚠️ Error communicating with Jew System Architect: ${err?.message || err}`,
           model: 'error',
         },
       ])
@@ -160,121 +137,60 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
     }
   }
 
-  const generateExecutiveReport = async () => {
-    if (generatingReport || loading) return
-    setGeneratingReport(true)
-    setMessages((prev) => [
-      ...prev,
-      { role: 'user', text: '📊 Generate Executive FinOps & Container Optimization Report across all live infrastructure.' },
-    ])
-
-    try {
-      const res = await fetch(apiUrl('/api/v2/copilot/rag/recommendations'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focus_domain: 'all' }),
-      })
-      const data = await res.json()
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: data.report_markdown || 'Report generation complete.',
-          model: data.model || 'groq/compound-mini',
-          tool: 'finops_rag_recommendations',
-          citations: data.citations || ['AWS EC2 Telemetry', 'CNCF OpenCost', 'FOCUS 1.0 Lakehouse'],
-          formattedSavings: data.formatted_monthly_savings,
-        },
-      ])
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: `⚠️ Report generation failed: ${err?.message || err}`,
-          model: 'error',
-        },
-      ])
-    } finally {
-      setGeneratingReport(false)
-    }
-  }
-
   const chips = [
-    'Analyze Kubernetes container rightsizing & idle waste',
-    'Show spend breakdown by service (FOCUS 1.0)',
     'Compare m5.2xlarge with Graviton pricing',
-    'S3 Intelligent-Tiering & lifecycle optimization',
-    'Why did we have a spike in cloud spend?',
-    'Generate Terraform PR to downsize idle compute',
-    '/audit',
-    '/optimize',
-    '/forecast',
+    'Why did our compute cost spike on Friday?',
+    'Generate a terraform pull request to downsize idle compute',
+    'Inspect CloudWatch P95 telemetry series',
+    'Check SLA safety guardrail before modifying nodes',
+    'List unattached EBS volumes and exposed security groups',
   ]
 
   return (
     <>
       <SectionTitle
-        eyebrow="Autonomous Copilot & RAG Pipeline"
-        title="AI FinOps Architect & Telemetry Intelligence"
-        description="Multi-domain sovereign cloud economist powered by Groq LLM inference, CNCF OpenCost, DuckDB FOCUS 1.0 Lakehouse, and TimescaleDB."
+        eyebrow="One-Model AI Architect Console"
+        title="Jew System Architect"
+        description="Autonomous cloud system architect driven by SemIf (OpenJev) System-1 decision routing and LangSmith observability."
         action={
           <div className="flex items-center gap-2">
-            <Button
-              onClick={generateExecutiveReport}
-              disabled={generatingReport || loading}
-              variant="outline"
-              size="sm"
-              className="border-sky-400/30 bg-sky-400/10 text-sky-300 hover:bg-sky-400/20 text-xs"
-            >
-              {generatingReport ? (
-                <>
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                  Synthesizing Report...
-                </>
-              ) : (
-                <>
-                  <FileText className="mr-1.5 size-3.5" />
-                  Generate Executive Report
-                </>
-              )}
-            </Button>
-            <div className="flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs text-sky-300">
-              <Sparkles className="size-3.5" />
-              <span>Backend: <strong>{ragStatus?.active_model || 'Groq LLM'}</strong></span>
+            <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground shadow-xs">
+              <Zap className="size-3.5 text-foreground" />
+              <span>Decision Engine: <strong>SemIf (OpenJev)</strong></span>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground shadow-xs">
+              <ShieldCheck className="size-3.5 text-foreground" />
+              <span>LangSmith: <strong>Active</strong></span>
             </div>
           </div>
         }
       />
 
-      {/* Real-Time RAG Pipeline Status Bar */}
+      {/* Decision Status Bar */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-xs shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-            RAG Pipeline Live
+          <span className="flex items-center gap-1.5 font-medium text-foreground">
+            <span className="size-2 rounded-full bg-foreground" />
+            Decision Engine Online
           </span>
           <span className="text-border">|</span>
           <span className="text-muted-foreground">
-            Model: <strong className="text-foreground font-mono">{ragStatus?.active_model || 'groq/compound-mini'}</strong>
+            Model: <strong className="text-foreground font-mono">SemIf (OpenJev / Jev drop-in)</strong>
           </span>
           <span className="text-border">|</span>
           <span className="text-muted-foreground">
-            Policies: <strong className="text-sky-700 dark:text-sky-300">{ragStatus?.retrieval_sources?.indexed_finops_policies ?? 11} Indexed</strong>
+            Latency Target: <strong className="text-foreground font-mono">&lt; 15ms</strong>
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="border-sky-500/20 bg-sky-50 dark:bg-sky-400/5 text-[11px] text-sky-700 dark:text-sky-300">
-            AWS Compute: {ragStatus?.retrieval_sources?.compute_nodes ?? 0}
+          <Badge variant="outline" className="border-border bg-muted text-[11px] text-foreground font-mono">
+            Direct Logit Readout
           </Badge>
-          <Badge variant="outline" className="border-sky-500/20 bg-sky-50 dark:bg-sky-400/5 text-[11px] text-sky-700 dark:text-sky-300">
-            EBS Volumes: {ragStatus?.retrieval_sources?.ebs_volumes ?? 0}
+          <Badge variant="outline" className="border-border bg-muted text-[11px] text-foreground font-mono">
+            Zero-Token Generation
           </Badge>
-          <Badge variant="outline" className="border-purple-500/20 bg-purple-50 dark:bg-purple-400/5 text-[11px] text-purple-700 dark:text-purple-300">
-            K8s Pods: {ragStatus?.retrieval_sources?.kubernetes_workloads ?? 0}
-          </Badge>
-          <Badge variant="outline" className="border-amber-500/20 bg-amber-50 dark:bg-amber-400/5 text-[11px] text-amber-700 dark:text-amber-300">
-            FOCUS Lakehouse: Active
+          <Badge variant="outline" className="border-border bg-muted text-[11px] text-foreground font-mono">
+            LangSmith Traced
           </Badge>
         </div>
       </div>
@@ -285,7 +201,7 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
             key={i}
             onClick={() => sendMessage(chip)}
             disabled={loading}
-            className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition hover:border-sky-500/40 hover:bg-sky-50 dark:hover:bg-sky-400/10 hover:text-sky-700 dark:hover:text-sky-300 disabled:opacity-50 shadow-xs"
+            className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition hover:border-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 shadow-xs"
           >
             {chip}
           </button>
@@ -301,36 +217,42 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
                 className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {m.role === 'assistant' && (
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-400/20">
-                    <Sparkles className="size-4" />
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground border border-border">
+                    <Cpu className="size-4 text-foreground" />
                   </div>
                 )}
                 <div
                   className={`max-w-[85%] rounded-xl p-4 text-sm leading-relaxed ${
                     m.role === 'user'
-                      ? 'bg-sky-600 text-white font-medium shadow-xs'
-                      : 'border border-border bg-muted/30 text-foreground'
+                      ? 'bg-primary text-primary-foreground font-medium shadow-xs'
+                      : 'border border-border bg-card text-foreground'
                   }`}
                 >
-                  {m.role === 'assistant' && (
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                      {m.model && (
-                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
-                          {m.model}
+                  {m.role === 'assistant' && (m.tool || m.decisionProvider) && (
+                    <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground border-b border-border pb-2">
+                      {m.decisionProvider && (
+                        <span className="rounded bg-muted px-2 py-0.5 font-mono text-foreground border border-border">
+                          ⚡ {m.decisionProvider}
+                        </span>
+                      )}
+                      {m.latencyMs !== undefined && (
+                        <span className="rounded bg-muted px-2 py-0.5 font-mono text-foreground border border-border">
+                          {m.latencyMs}ms
+                        </span>
+                      )}
+                      {m.confidence !== undefined && (
+                        <span className="rounded bg-muted px-2 py-0.5 font-mono text-foreground border border-border">
+                          {Math.round(m.confidence * 100)}% Confidence
                         </span>
                       )}
                       {m.tool && (
-                        <span className="rounded border border-sky-500/20 bg-sky-50 dark:bg-sky-400/10 px-1.5 py-0.5 font-mono text-sky-700 dark:text-sky-300">
-                          tool: {m.tool}
-                        </span>
-                      )}
-                      {m.formattedSavings && (
-                        <span className="rounded border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-400/10 px-1.5 py-0.5 font-mono text-emerald-700 dark:text-emerald-300">
-                          💰 Recoverable: {m.formattedSavings}
+                        <span className="rounded bg-primary text-primary-foreground px-2 py-0.5 font-mono text-[10px]">
+                          Tool: {m.tool}
                         </span>
                       )}
                     </div>
                   )}
+
                   {m.role === 'assistant' ? (
                     <MarkdownText content={m.text} />
                   ) : (
@@ -338,33 +260,31 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
                       {m.text}
                     </div>
                   )}
-                  {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
-                    <div className="mt-3 border-t border-border pt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Grounded Sources:</span>
-                      {m.citations.map((c, ci) => (
-                        <span
-                          key={ci}
-                          className="rounded bg-sky-50 dark:bg-sky-400/10 border border-sky-200 dark:border-sky-400/20 px-2 py-0.5 text-[10px] text-sky-700 dark:text-sky-300 font-mono"
-                        >
-                          {c}
-                        </span>
-                      ))}
+
+                  {m.role === 'assistant' && m.executionPlan && m.executionPlan.length > 0 && (
+                    <div className="mt-3 border-t border-border pt-2 space-y-1">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">SemIf Execution Plan:</span>
+                      <div className="space-y-0.5 font-mono text-[11px] text-muted-foreground">
+                        {m.executionPlan.map((step, si) => (
+                          <div key={si}>{step}</div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
             ))}
             {loading && (
-              <div className="flex items-center gap-3 text-sm text-sky-700 dark:text-sky-300 animate-pulse">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-400/30 shadow-xs">
-                  <Sparkles className="size-4 animate-spin" />
+              <div className="flex items-center gap-3 text-sm text-foreground animate-pulse">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground border border-border shadow-xs">
+                  <Sparkles className="size-4 animate-spin text-foreground" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">Copilot is synthesizing telemetry across AWS, OpenCost, and FOCUS Lakehouse</span>
+                  <span className="text-xs">SemIf Decision Engine is evaluating logits and querying live AWS infrastructure...</span>
                   <span className="flex gap-1">
-                    <span className="size-1 rounded-full bg-sky-500 animate-bounce [animation-delay:-0.3s]" />
-                    <span className="size-1 rounded-full bg-sky-500 animate-bounce [animation-delay:-0.15s]" />
-                    <span className="size-1 rounded-full bg-sky-500 animate-bounce" />
+                    <span className="size-1 rounded-full bg-foreground animate-bounce [animation-delay:-0.3s]" />
+                    <span className="size-1 rounded-full bg-foreground animate-bounce [animation-delay:-0.15s]" />
+                    <span className="size-1 rounded-full bg-foreground animate-bounce" />
                   </span>
                 </div>
               </div>
@@ -377,14 +297,14 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
-              placeholder="Ask a question about AWS, Kubernetes containers, FOCUS spend, or type /audit, /optimize..."
+              placeholder="Ask Jew System Architect: e.g. 'Compare m5.2xlarge with Graviton pricing'..."
               disabled={loading}
-              className="border-border bg-background text-foreground placeholder:text-muted-foreground"
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground font-mono text-xs"
             />
             <Button
               onClick={() => sendMessage(input)}
               disabled={loading || !input.trim()}
-              className="bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
@@ -394,4 +314,5 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
     </>
   )
 }
+
 export default CopilotView
