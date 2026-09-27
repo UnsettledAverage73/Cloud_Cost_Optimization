@@ -17,6 +17,94 @@ class PredictivePrewarmEngine:
     ACTIVE_REQUESTS_THRESHOLD = 50   # Above 50 requests/min indicates incoming users
 
     @classmethod
+    def fetch_cloudwatch_telemetry_series(
+        cls,
+        instance_id: str,
+        days: int = 14,
+        session: Optional[Any] = None,
+        region_name: str = "us-east-1"
+    ) -> List[Dict[str, Any]]:
+        """
+        Extracts real-time historical CloudWatch metrics (CPUUtilization, NetworkIn)
+        over the requested days via Boto3 get_metric_data.
+        Returns empty list if no CloudWatch telemetry is returned.
+        """
+        try:
+            import boto3
+
+            if session is None:
+                session = boto3.Session()
+
+            cw = session.client("cloudwatch", region_name=region_name)
+            now = datetime.now(timezone.utc)
+            start_time = now - timedelta(days=days)
+            period = 3600 if days > 2 else 900
+
+            queries = [
+                {
+                    "Id": "cpu",
+                    "MetricStat": {
+                        "Metric": {
+                            "Namespace": "AWS/EC2",
+                            "MetricName": "CPUUtilization",
+                            "Dimensions": [{"Name": "InstanceId", "Value": instance_id}]
+                        },
+                        "Period": period,
+                        "Stat": "Average"
+                    }
+                },
+                {
+                    "Id": "net_in",
+                    "MetricStat": {
+                        "Metric": {
+                            "Namespace": "AWS/EC2",
+                            "MetricName": "NetworkIn",
+                            "Dimensions": [{"Name": "InstanceId", "Value": instance_id}]
+                        },
+                        "Period": period,
+                        "Stat": "Average"
+                    }
+                }
+            ]
+
+            res = cw.get_metric_data(MetricDataQueries=queries, StartTime=start_time, EndTime=now)
+            data_by_id = {
+                r["Id"]: dict(zip(r.get("Timestamps", []), r.get("Values", [])))
+                for r in res.get("MetricDataResults", [])
+            }
+
+            all_timestamps = sorted(list(set(ts for d in data_by_id.values() for ts in d.keys())))
+            if not all_timestamps:
+                return []
+
+            points = []
+            for ts in all_timestamps:
+                weekday = ts.weekday()
+                hour = ts.hour
+                minute = ts.minute
+                cpu = round(float(data_by_id.get("cpu", {}).get(ts, 0.0)), 2)
+                net_in = float(data_by_id.get("net_in", {}).get(ts, 0.0))
+                reqs = int(net_in / 1024)
+
+                points.append({
+                    "timestamp": ts.isoformat(),
+                    "time_label": ts.strftime("%Y-%m-%d %H:%M"),
+                    "instance_id": instance_id,
+                    "weekday": weekday,
+                    "hour": hour,
+                    "minute": minute,
+                    "cpu_utilization": max(0.0, min(100.0, cpu)),
+                    "memory_utilization": 0.0,
+                    "network_requests": max(0, reqs),
+                    "active_ssh": 0,
+                    "is_real_cloudwatch": True,
+                })
+            return points
+        except Exception as e:
+            logger.debug(f"CloudWatch telemetry collection for {instance_id} failed: {e}")
+            return []
+
+    @classmethod
     def generate_demo_telemetry_series(
         cls,
         days: int = 14,

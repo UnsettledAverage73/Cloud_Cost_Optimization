@@ -235,7 +235,7 @@ export function SettingsView({
       } else {
         setTestFeedback({
           type: 'error',
-          message: `⚠️ Idle instance detected (${data.instance_id || 'i-07d01b00f95a4cc41'}, CPU: ${data.cpu_utilization ?? 0.4}%), but Slack dispatch failed. Please verify your Slack Webhook URL or Bot Token.`,
+          message: `⚠️ Idle instance detected (${data.instance_id || 'unassigned-instance'}, CPU: ${data.cpu_utilization ?? 0.4}%), but Slack dispatch failed. Please verify your Slack Webhook URL or Bot Token.`,
         })
       }
       fetchHistory()

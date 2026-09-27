@@ -2162,14 +2162,10 @@ async def scan_idle_cpu_and_alert(payload: Optional[dict] = None):
         target_node = sorted_nodes[0]
     elif idle_nodes:
         target_node = idle_nodes[0]
+    elif nodes:
+        target_node = nodes[0]
     else:
-        target_node = {
-            "instance_id": "i-07d01b00f95a4cc41",
-            "name": "live-connected-worker",
-            "instance_type": "c5.2xlarge",
-            "cost": 60.80,
-            "metrics": {"cpu_utilization_avg": 0.4, "memory_utilization": 8.0}
-        }
+        raise HTTPException(status_code=400, detail="No active EC2 instances found in inventory to generate a test alert.")
 
     target_id = target_node.get("instance_id", "unknown-instance")
     target_name = target_node.get("name", target_id)
@@ -3651,23 +3647,59 @@ async def manual_trigger_job(payload: Request):
 
 
 @app.get("/api/v2/schedules/predictive/recommendations")
-async def get_predictive_recommendations(instance_id: Optional[str] = None, days: int = 14):
+async def get_predictive_recommendations(
+    instance_id: Optional[str] = None,
+    days: int = 14,
+    demo: bool = False
+):
     """
     Analyzes multi-day historical telemetry to detect recurring diurnal workload patterns,
     activity onset, and computes pre-warming schedules.
     """
+    nodes = _db().get("nodes", [])
     if not instance_id:
-        nodes = _db().get("nodes", [])
         running = [n["instance_id"] for n in nodes if n.get("state") == "running" and n.get("instance_id")]
-        instance_id = running[0] if running else "i-07d01b00f95a4cc41"
+        if running:
+            instance_id = running[0]
+        elif nodes and nodes[0].get("instance_id"):
+            instance_id = nodes[0]["instance_id"]
+        else:
+            instance_id = None
+
+    if not instance_id:
+        return {
+            "status": "empty",
+            "telemetry_points_analyzed": 0,
+            "recommendation": {
+                "instance_id": "",
+                "pattern_detected": False,
+                "confidence": 0.0,
+                "reason": "No active instances found in inventory to analyze. Connect your AWS environment to begin."
+            }
+        }
 
     try:
         from services.predictive_prewarm import PredictivePrewarmEngine
     except ImportError:
         from backend.services.predictive_prewarm import PredictivePrewarmEngine
 
-    telemetry = PredictivePrewarmEngine.generate_demo_telemetry_series(days=days, instance_id=instance_id)
+    if demo:
+        telemetry = PredictivePrewarmEngine.generate_demo_telemetry_series(days=days, instance_id=instance_id)
+    else:
+        session = _build_aws_session()
+        region = _db().get("region", "us-east-1")
+        telemetry = PredictivePrewarmEngine.fetch_cloudwatch_telemetry_series(
+            instance_id=instance_id,
+            days=days,
+            session=session,
+            region_name=region
+        )
+
     analysis = PredictivePrewarmEngine.analyze_usage_patterns(telemetry, prewarm_lead_minutes=15)
+    if not telemetry:
+        analysis["instance_id"] = instance_id
+        analysis["reason"] = f"No CloudWatch telemetry available for instance {instance_id} over the past {days} days."
+
     return {
         "status": "success",
         "telemetry_points_analyzed": len(telemetry),
@@ -3685,7 +3717,12 @@ async def apply_predictive_recommendation(payload: Request):
     if not instance_id:
         nodes = _db().get("nodes", [])
         running = [n["instance_id"] for n in nodes if n.get("state") == "running" and n.get("instance_id")]
-        instance_id = running[0] if running else "i-07d01b00f95a4cc41"
+        if running:
+            instance_id = running[0]
+        elif nodes and nodes[0].get("instance_id"):
+            instance_id = nodes[0]["instance_id"]
+        else:
+            raise HTTPException(status_code=400, detail="Target instance_id is required.")
 
     start_time = body.get("start_time", "07:35")
     stop_time = body.get("stop_time", "20:00")

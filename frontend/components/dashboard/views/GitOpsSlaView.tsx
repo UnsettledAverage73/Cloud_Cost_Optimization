@@ -34,7 +34,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
     return nodes.find((n: any) => n.state === 'running' || n.instance_state === 'running') || nodes[0];
   }, [nodes]);
 
-  const defaultInstanceId = runningNode?.instance_id || 'i-07d01b00f95a4cc41';
+  const defaultInstanceId = runningNode?.instance_id || '';
 
   const [activeTab, setActiveTab] = useState<'watchdog' | 'audit'>('watchdog');
   const [watches, setWatches] = useState<any[]>([]);
@@ -51,7 +51,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
     if (defaultInstanceId && !enrollResourceId) {
       setEnrollResourceId(defaultInstanceId);
     }
-  }, [defaultInstanceId]);
+  }, [defaultInstanceId, enrollResourceId]);
 
   // SLA Evaluation state
   const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
@@ -237,7 +237,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
         title="GitOps Autopilot & SLA Watchdog"
         description="Autonomous Terraform HCL PR generation across 5 resource vectors paired with 60-minute CloudWatch SLA watchdog monitoring."
         status={
-          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+          <Badge variant="outline" className="border-border bg-muted text-foreground">
             60-min Rollback Guarantee
           </Badge>
         }
@@ -248,7 +248,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
               size="sm"
               onClick={fetchSlaData}
               disabled={loading}
-              className="border-white/10 bg-white/5"
+              className="border-border bg-background text-foreground hover:bg-muted"
             >
               <RefreshCw className={`mr-1.5 size-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
             </Button>
@@ -259,13 +259,13 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                 if (!enrollResourceId && defaultInstanceId) setEnrollResourceId(defaultInstanceId);
                 setEnrollModalOpen(true);
               }}
-              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+              className="border-border bg-background text-foreground hover:bg-muted"
             >
               <Plus className="mr-1.5 size-3.5" /> Enroll Watch
             </Button>
             <Button
               size="sm"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+              className="bg-primary text-primary-foreground hover:opacity-90 font-medium"
               onClick={handleGenerateBatch}
             >
               <GitBranch className="mr-1.5 size-4" /> Synthesize Batch GitOps PR
@@ -275,46 +275,46 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Active 60-Min Watches</span>
-              <Activity className="size-4 text-cyan-400" />
+              <Activity className="size-4 text-foreground" />
             </div>
             <div className="mt-3 text-2xl font-bold text-foreground">{watches.length}</div>
             <div className="mt-1 text-xs text-muted-foreground">Live monitored workloads</div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Meeting SLA Targets</span>
-              <ShieldCheck className="size-4 text-emerald-400" />
+              <ShieldCheck className="size-4 text-foreground" />
             </div>
-            <div className="mt-3 text-2xl font-bold text-emerald-300">{healthyWatches.length}</div>
+            <div className="mt-3 text-2xl font-bold text-foreground">{healthyWatches.length}</div>
             <div className="mt-1 text-xs text-muted-foreground">P95 latency degradation &lt; 15%</div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Protected by Auto-Rollback</span>
-              <RotateCcw className="size-4 text-purple-400" />
+              <RotateCcw className="size-4 text-foreground" />
             </div>
-            <div className="mt-3 text-2xl font-bold text-purple-300">{breachedWatches.length}</div>
+            <div className="mt-3 text-2xl font-bold text-foreground">{breachedWatches.length}</div>
             <div className="mt-1 text-xs text-muted-foreground">Safe git revert PRs issued</div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Total GitOps PRs</span>
-              <GitPullRequest className="size-4 text-indigo-400" />
+              <GitPullRequest className="size-4 text-foreground" />
             </div>
-            <div className="mt-3 text-2xl font-bold text-indigo-300">{auditLog.length}</div>
+            <div className="mt-3 text-2xl font-bold text-foreground">{auditLog.length}</div>
             <div className="mt-1 text-xs text-muted-foreground">Audit log entries recorded</div>
           </CardContent>
         </Card>
@@ -374,7 +374,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow className="border-white/8 hover:bg-transparent">
+                        <TableRow className="border-border hover:bg-transparent">
                           <TableHead className="text-xs">Resource ID</TableHead>
                           <TableHead className="text-xs">Remediation</TableHead>
                           <TableHead className="text-xs">Config Transition</TableHead>
@@ -392,30 +392,30 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                             ? (((w.current_metrics.p95_latency_ms - w.baseline_metrics.p95_latency_ms) / w.baseline_metrics.p95_latency_ms) * 100).toFixed(1)
                             : '0.0';
                           return (
-                            <TableRow key={w.watch_id} className="border-white/8">
-                              <TableCell className="font-mono text-xs font-semibold text-cyan-300">
+                            <TableRow key={w.watch_id} className="border-border hover:bg-muted/50">
+                              <TableCell className="font-mono text-xs font-semibold text-foreground">
                                 {w.resource_id}
                                 <div className="text-[10px] text-muted-foreground font-sans">{w.watch_id}</div>
                               </TableCell>
                               <TableCell className="text-xs capitalize">
-                                <Badge variant="outline" className="border-white/10 text-[11px]">
+                                <Badge variant="outline" className="border-border bg-muted text-foreground text-[11px]">
                                   {w.remediation_action?.replace('_', ' ')}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-xs font-mono text-muted-foreground">
-                                <span className="text-slate-400">{w.previous_config?.instance_type || 'original'}</span>
-                                <span className="mx-1 text-cyan-400">→</span>
-                                <span className="text-emerald-300 font-semibold">{w.applied_config?.instance_type || 'optimized'}</span>
+                                <span className="text-muted-foreground">{w.previous_config?.instance_type || 'original'}</span>
+                                <span className="mx-1 text-foreground">→</span>
+                                <span className="text-foreground font-semibold">{w.applied_config?.instance_type || 'optimized'}</span>
                               </TableCell>
                               <TableCell className="text-right font-mono text-xs text-muted-foreground">
                                 {w.baseline_metrics?.p95_latency_ms ? `${w.baseline_metrics.p95_latency_ms} ms` : 'N/A'}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-xs font-medium">
-                                <span className={Number(latencyDiffPct) > 15 ? 'text-red-400' : 'text-emerald-300'}>
+                              <TableCell className="text-right font-mono text-xs font-medium text-foreground">
+                                <span>
                                   {w.current_metrics?.p95_latency_ms ? `${w.current_metrics.p95_latency_ms} ms` : 'N/A'}
                                 </span>
                                 {latencyDiffPct !== '0.0' && (
-                                  <span className={`ml-1 text-[10px] ${Number(latencyDiffPct) > 15 ? 'text-red-400' : 'text-slate-400'}`}>
+                                  <span className="ml-1 text-[10px] text-muted-foreground">
                                     ({Number(latencyDiffPct) > 0 ? `+${latencyDiffPct}%` : `${latencyDiffPct}%`})
                                   </span>
                                 )}
@@ -428,10 +428,8 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                                   variant="outline"
                                   className={
                                     isBreached
-                                      ? 'border-purple-400/30 bg-purple-400/10 text-purple-300'
-                                      : w.status === 'DEGRADED'
-                                      ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
-                                      : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                                      ? 'border-border bg-muted text-muted-foreground line-through'
+                                      : 'border-border bg-muted text-foreground'
                                   }
                                 >
                                   {isBreached ? 'ROLLED BACK' : w.status || 'MONITORING'}
@@ -442,18 +440,17 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-[11px] border-white/10 bg-white/5 hover:bg-cyan-400/10 hover:text-cyan-300"
+                                    className="h-7 text-[11px] border-border bg-background text-foreground hover:bg-muted"
                                     disabled={evaluatingId === w.watch_id}
                                     onClick={() => handleEvaluate(w.watch_id)}
                                   >
-                                    {evaluatingId === w.watch_id ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Activity className="mr-1 size-3 text-cyan-400" />}
+                                    {evaluatingId === w.watch_id ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Activity className="mr-1 size-3 text-foreground" />}
                                     Evaluate
                                   </Button>
                                   {w.rollback_pr ? (
                                     <Button
-                                      variant="secondary"
                                       size="sm"
-                                      className="h-7 text-[11px] bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30"
+                                      className="h-7 text-[11px] bg-primary text-primary-foreground hover:opacity-90 font-medium"
                                       onClick={() => {
                                         setRollbackPackage(w.rollback_pr);
                                       }}
@@ -464,7 +461,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="h-7 text-[11px] border-red-400/20 bg-red-400/5 text-red-300 hover:bg-red-400/15"
+                                      className="h-7 text-[11px] border-border bg-background text-foreground hover:bg-muted"
                                       onClick={() => {
                                         setRollbackWatch(w);
                                       }}
@@ -487,7 +484,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
         </TabsContent>
 
         <TabsContent value="audit">
-          <Card className="border-white/8 bg-card/70">
+          <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="text-base">GitOps Infrastructure Pull Request Audit Trail</CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
@@ -503,7 +500,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-white/8 hover:bg-transparent">
+                      <TableRow className="border-border hover:bg-transparent">
                         <TableHead className="text-xs">Timestamp</TableHead>
                         <TableHead className="text-xs">PR Title / Summary</TableHead>
                         <TableHead className="text-xs">Resource</TableHead>
@@ -524,7 +521,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                         const isRollback = log.is_rollback || log.status === 'rolled_back' || log.status === 'rollback_pr_ready';
 
                         return (
-                          <TableRow key={`${log.pr_id || idx}`} className="border-white/8 hover:bg-white/[0.02]">
+                          <TableRow key={`${log.pr_id || idx}`} className="border-border hover:bg-muted/50">
                             <TableCell className="text-xs text-muted-foreground font-mono">
                               {timeStr}
                             </TableCell>
@@ -534,7 +531,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                                   href={log.pull_request_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-indigo-300 hover:text-indigo-200 underline decoration-indigo-500/30 flex items-center gap-1"
+                                  className="text-foreground hover:underline flex items-center gap-1"
                                 >
                                   <span className="truncate">{log.title || log.pr_title || 'Autonomous Optimization PR'}</span>
                                   <ExternalLink className="size-3 shrink-0" />
@@ -543,10 +540,10 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                                 <span className="truncate">{log.title || log.pr_title || 'Autonomous Optimization PR'}</span>
                               )}
                             </TableCell>
-                            <TableCell className="text-xs font-mono text-cyan-300">
+                            <TableCell className="text-xs font-mono font-semibold text-foreground">
                               {targetRes}
                             </TableCell>
-                            <TableCell className="text-xs font-mono text-slate-400">
+                            <TableCell className="text-xs font-mono text-muted-foreground">
                               {log.branch_name || 'main'}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
@@ -555,16 +552,12 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                             <TableCell className="text-center">
                               <Badge
                                 variant="outline"
-                                className={
-                                  isRollback
-                                    ? 'border-purple-400/30 bg-purple-500/10 text-purple-300 text-[10px]'
-                                    : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300 text-[10px]'
-                                }
+                                className="border-border bg-muted text-foreground text-[10px]"
                               >
                                 {isRollback ? 'ROLLBACK PR' : (log.status || 'PR_READY')}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right text-xs font-semibold text-emerald-300">
+                            <TableCell className="text-right text-xs font-semibold text-foreground">
                               {savingsVal > 0 ? `Saves ${formatCurrency(savingsVal, currency)}` : (isRollback ? 'Safety Revert' : 'Optimized')}
                             </TableCell>
                           </TableRow>
@@ -581,9 +574,9 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Manual Rollback Trigger Dialog */}
       <Dialog open={!!rollbackWatch} onOpenChange={() => setRollbackWatch(null)}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base text-red-300">
+            <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
               <RotateCcw className="size-4" /> Trigger Safe Rollback PR
             </DialogTitle>
             <DialogDescription>
@@ -592,14 +585,14 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
           </DialogHeader>
           <div className="py-3 text-xs text-muted-foreground space-y-2">
             <p>
-              CloudPulse will immediately open a Git revert Pull Request to restore the workload configuration from <span className="text-emerald-300 font-mono">{rollbackWatch?.applied_config?.instance_type}</span> back to <span className="text-cyan-300 font-mono">{rollbackWatch?.previous_config?.instance_type}</span>.
+              CloudPulse will immediately open a Git revert Pull Request to restore the workload configuration from <span className="text-foreground font-semibold font-mono">{rollbackWatch?.applied_config?.instance_type}</span> back to <span className="text-foreground font-semibold font-mono">{rollbackWatch?.previous_config?.instance_type}</span>.
             </p>
           </div>
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
             <Button variant="ghost" size="sm" onClick={() => setRollbackWatch(null)}>Cancel</Button>
             <Button
               size="sm"
-              className="bg-red-500 hover:bg-red-600 text-white font-medium"
+              className="bg-primary text-primary-foreground hover:opacity-90 font-medium"
               disabled={rollingBack}
               onClick={async () => {
                 if (rollbackWatch) {
@@ -617,9 +610,9 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Rollback Details Modal */}
       <Dialog open={!!rollbackPackage} onOpenChange={() => setRollbackPackage(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base text-purple-300">
+            <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
               <RotateCcw className="size-4" /> Automated Safe Revert Pull Request Ready
             </DialogTitle>
             <DialogDescription>
@@ -629,15 +622,15 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
           {rollbackPackage && (
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-muted p-3">
                   <span className="text-[11px] text-muted-foreground">Rollback Branch</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-purple-300 truncate">
+                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
                     {rollbackPackage.branch_name}
                   </div>
                 </div>
-                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-muted p-3">
                   <span className="text-[11px] text-muted-foreground">Restored Configuration</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-emerald-300 truncate">
+                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
                     {rollbackPackage.restored_config?.instance_type || 'Original Spec'}
                   </div>
                 </div>
@@ -645,7 +638,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
               <div>
                 <span className="text-xs text-muted-foreground block mb-1.5 font-medium">Terraform Git Revert Diff:</span>
-                <pre className="max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3.5 font-mono text-xs text-red-300">
+                <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-muted p-3.5 font-mono text-xs text-foreground">
                   {rollbackPackage.revert_diff || rollbackPackage.diff || '# Revert diff generated'}
                 </pre>
               </div>
@@ -661,7 +654,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button size="sm" className="w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-medium">
+                    <Button size="sm" className="w-full sm:w-auto bg-primary text-primary-foreground hover:opacity-90 font-medium">
                       <ExternalLink className="mr-1.5 size-3.5" /> View Rollback on GitHub
                     </Button>
                   </a>
@@ -674,9 +667,9 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Batch GitOps PR Modal */}
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base text-indigo-300">
+            <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
               <GitBranch className="size-4" /> Multi-Resource Batch GitOps Pull Request
             </DialogTitle>
             <DialogDescription>
@@ -685,27 +678,27 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
           </DialogHeader>
           {batchGenerating ? (
             <div className="py-12 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="size-8 animate-spin text-indigo-400" />
+              <Loader2 className="size-8 animate-spin text-foreground" />
               <span className="text-xs text-muted-foreground">Synthesizing batch Terraform changes across all 5 vectors...</span>
             </div>
           ) : batchResult ? (
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-muted p-3">
                   <span className="text-[11px] text-muted-foreground">Branch</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-cyan-300 truncate">
+                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
                     {batchResult.branch_name}
                   </div>
                 </div>
-                <div className="rounded-lg border border-white/8 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-muted p-3">
                   <span className="text-[11px] text-muted-foreground">Monthly Net Savings</span>
-                  <div className="mt-1 text-xs font-bold text-emerald-300">
+                  <div className="mt-1 text-xs font-bold text-foreground">
                     {formatCurrency(batchResult.total_monthly_savings, currency)}/mo
                   </div>
                 </div>
-                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
-                  <span className="text-[11px] text-emerald-300">Annual Run-Rate ROI</span>
-                  <div className="mt-1 text-xs font-bold text-emerald-300">
+                <div className="rounded-lg border border-border bg-muted p-3">
+                  <span className="text-[11px] text-muted-foreground">Annual Run-Rate ROI</span>
+                  <div className="mt-1 text-xs font-bold text-foreground">
                     {formatCurrency(batchResult.total_annual_savings, currency)}/yr
                   </div>
                 </div>
@@ -713,7 +706,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
               <div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                  <span className="flex items-center gap-1"><FileCode className="size-3.5 text-indigo-400" /> Batch Terraform HCL Diff</span>
+                  <span className="flex items-center gap-1"><FileCode className="size-3.5 text-foreground" /> Batch Terraform HCL Diff</span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -724,11 +717,11 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                       setTimeout(() => setCopiedBatch(false), 2000);
                     }}
                   >
-                    {copiedBatch ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+                    {copiedBatch ? <Check className="mr-1 size-3 text-foreground" /> : <Copy className="mr-1 size-3" />}
                     {copiedBatch ? 'Copied' : 'Copy Diff'}
                   </Button>
                 </div>
-                <pre className="max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3.5 font-mono text-xs text-emerald-300">
+                <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-muted p-3.5 font-mono text-xs text-foreground">
                   {batchResult.diff || '# Batch diff synthesized'}
                 </pre>
               </div>
@@ -744,7 +737,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button size="sm" className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
+                    <Button size="sm" className="w-full sm:w-auto bg-primary text-primary-foreground hover:opacity-90 font-medium">
                       <ExternalLink className="mr-1.5 size-3.5" /> View Batch PR on GitHub
                     </Button>
                   </a>
@@ -761,10 +754,10 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Enroll SLA Watch Modal */}
       <Dialog open={enrollModalOpen} onOpenChange={setEnrollModalOpen}>
-        <DialogContent className="border-white/10 bg-slate-900 text-white max-w-md">
+        <DialogContent className="border-border bg-background text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
-              <Activity className="size-4 text-cyan-400" />
+              <Activity className="size-4 text-foreground" />
               Enroll in 60-Minute SLA Watchdog
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -775,10 +768,10 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
           <form onSubmit={handleEnrollWatch} className="space-y-4 pt-2">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-slate-300">Target AWS Resource</label>
+                <label className="text-xs font-medium text-foreground">Target AWS Resource</label>
                 {nodes && nodes.length > 0 && (
-                  <span className="text-[10px] text-cyan-400">
-                    Discovered: {nodes.find((n: any) => n.instance_id === enrollResourceId)?.name || defaultInstanceId}
+                  <span className="text-[10px] text-muted-foreground">
+                    Discovered: {nodes.find((n: any) => n.instance_id === enrollResourceId)?.name || defaultInstanceId || 'None'}
                   </span>
                 )}
               </div>
@@ -788,10 +781,10 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                     value={enrollResourceId || defaultInstanceId}
                     onValueChange={(val) => { if (val) setEnrollResourceId(val); }}
                   >
-                    <SelectTrigger className="bg-white/5 border-white/10 text-xs font-mono">
+                    <SelectTrigger className="bg-background border-border text-foreground text-xs font-mono">
                       <SelectValue placeholder="Select instance..." />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                    <SelectContent className="bg-background border-border text-foreground text-xs">
                       {nodes.map((n: any) => (
                         <SelectItem key={n.instance_id} value={n.instance_id}>
                           {n.instance_id} ({n.name || 'EC2'} · {n.state})
@@ -800,31 +793,31 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                     </SelectContent>
                   </Select>
                   <Input
-                    placeholder={`e.g. ${defaultInstanceId}`}
+                    placeholder="e.g. i-1234567890abcdef0"
                     value={enrollResourceId}
                     onChange={(e) => setEnrollResourceId(e.target.value)}
-                    className="bg-white/5 border-white/10 text-xs font-mono"
+                    className="bg-background border-border text-foreground text-xs font-mono"
                     required
                   />
                 </div>
               ) : (
                 <Input
-                  placeholder={`e.g. ${defaultInstanceId}`}
+                  placeholder="e.g. i-1234567890abcdef0"
                   value={enrollResourceId}
                   onChange={(e) => setEnrollResourceId(e.target.value)}
-                  className="bg-white/5 border-white/10 text-xs font-mono"
+                  className="bg-background border-border text-foreground text-xs font-mono"
                   required
                 />
               )}
             </div>
 
             <div>
-              <label className="text-xs font-medium text-slate-300">Remediation Action Type</label>
+              <label className="text-xs font-medium text-foreground">Remediation Action Type</label>
               <Select value={enrollAction} onValueChange={(val) => { if (val) setEnrollAction(val); }}>
-                <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-xs">
+                <SelectTrigger className="mt-1 bg-background border-border text-foreground text-xs">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                <SelectContent className="bg-background border-border text-foreground text-xs">
                   <SelectItem value="migrate_graviton">Migrate to AWS Graviton (t4g/m7g)</SelectItem>
                   <SelectItem value="downsize">Downsize Idle Compute</SelectItem>
                   <SelectItem value="upgrade_gp3">Modernize Storage gp2 -&gt; gp3</SelectItem>
@@ -833,7 +826,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
               </Select>
             </div>
 
-            <div className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 p-3 text-xs text-cyan-200">
+            <div className="rounded-lg border border-border bg-muted p-3 text-xs text-foreground">
               🛡️ <strong>Safety Guarantee:</strong> During the 60-minute window, if P95 latency degrades by &gt;15%, CloudPulse automatically generates an autonomous git revert PR.
             </div>
 
@@ -841,7 +834,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
               <Button type="button" variant="outline" size="sm" onClick={() => setEnrollModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={enrolling} className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium">
+              <Button type="submit" size="sm" disabled={enrolling} className="bg-primary text-primary-foreground hover:opacity-90 font-medium">
                 {enrolling ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Activity className="mr-1.5 size-3.5" />}
                 Enroll in Watchdog
               </Button>

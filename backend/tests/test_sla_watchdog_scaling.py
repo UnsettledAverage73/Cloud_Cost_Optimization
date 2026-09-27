@@ -4,9 +4,12 @@ Verifies 60-minute watch periods, CloudWatch SLA threshold comparisons, automate
 FastAPI endpoints, and CLI 'cloudpulse watch' command execution.
 """
 
+import os
 import json
 import argparse
 import pytest
+
+os.environ["CLOUDPULSE_SEED_DEMO_WATCHES"] = "true"
 
 try:
     from fastapi.testclient import TestClient
@@ -32,7 +35,7 @@ except ImportError:
 @pytest.fixture
 def watchdog():
     """Returns an isolated SLA watchdog instance for deterministic testing."""
-    return SLAWatchdog(load_disk=False)
+    return SLAWatchdog(load_disk=False, seed_demo=True)
 
 
 def test_watchdog_initialization(watchdog):

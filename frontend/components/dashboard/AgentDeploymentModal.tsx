@@ -45,7 +45,7 @@ export function AgentDeploymentModal({
   open,
   onOpenChange,
   apiUrl,
-  activeInstanceId = 'i-07d01b00f95a4cc41',
+  activeInstanceId = '',
 }: AgentDeploymentModalProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [userConsent, setUserConsent] = useState(true);

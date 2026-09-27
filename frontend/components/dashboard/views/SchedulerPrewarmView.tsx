@@ -40,7 +40,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
     return nodes.find((n: any) => n.state === 'running' || n.instance_state === 'running') || nodes[0];
   }, [nodes]);
 
-  const defaultInstanceId = runningNode?.instance_id || 'i-07d01b00f95a4cc41';
+  const defaultInstanceId = runningNode?.instance_id || '';
 
   const [schedules, setSchedules] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -79,7 +79,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
       if (!formInstanceId) setFormInstanceId(defaultInstanceId);
       if (!manualInstanceId) setManualInstanceId(defaultInstanceId);
     }
-  }, [defaultInstanceId]);
+  }, [defaultInstanceId, formInstanceId, manualInstanceId]);
 
   const fetchSchedulerData = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
@@ -250,17 +250,28 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
   const [analyzingTelemetry, setAnalyzingTelemetry] = useState(false);
 
   const handleAnalyzeTelemetry = async () => {
+    const targetId = formInstanceId.trim() || defaultInstanceId;
+    if (!targetId) {
+      setFeedback({ type: 'warning', message: 'No EC2 instance selected. Please select an instance or enter an instance ID to analyze.' });
+      return;
+    }
     setAnalyzingTelemetry(true);
     try {
-      const targetId = formInstanceId.trim() || defaultInstanceId;
       const res = await fetch(apiUrl(`/api/v2/schedules/predictive/recommendations?instance_id=${encodeURIComponent(targetId)}&days=14`));
       if (res.ok) {
         const data = await res.json();
         setPredictiveRecommendation(data.recommendation);
-        setFeedback({
-          type: 'success',
-          message: `Analyzed ${data.telemetry_points_analyzed} telemetry points for ${targetId} across 14 days. Recurrence confidence: ${Math.round(data.recommendation.confidence * 100)}%.`
-        });
+        if (data.telemetry_points_analyzed === 0) {
+          setFeedback({
+            type: 'warning',
+            message: data.recommendation?.reason || `No CloudWatch telemetry available for ${targetId}.`
+          });
+        } else {
+          setFeedback({
+            type: 'success',
+            message: `Analyzed ${data.telemetry_points_analyzed} CloudWatch datapoints for ${targetId}. Pattern confidence: ${Math.round((data.recommendation?.confidence || 0) * 100)}%.`
+          });
+        }
       }
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message });
@@ -322,7 +333,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               size="sm"
               onClick={handleAnalyzeTelemetry}
               disabled={analyzingTelemetry}
-              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+              className="border-border bg-background text-foreground hover:bg-muted"
             >
               {analyzingTelemetry ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Bot className="size-3.5 mr-1.5" />}
               AI Telemetry Analysis
@@ -332,7 +343,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               size="sm"
               onClick={() => handleEvaluateNow(true)}
               disabled={evaluating}
-              className="border-white/10 hover:bg-white/5"
+              className="border-border bg-background text-foreground hover:bg-muted"
             >
               {evaluating ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
               Evaluate Now
@@ -341,7 +352,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               variant="outline"
               size="sm"
               onClick={() => setTriggerModalOpen(true)}
-              className="border-white/10 hover:bg-white/5 text-amber-300"
+              className="border-border bg-background text-foreground hover:bg-muted"
             >
               <Zap className="size-3.5 mr-1.5" />
               Manual Trigger
@@ -349,7 +360,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
             <Button
               size="sm"
               onClick={() => setCreateModalOpen(true)}
-              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium"
+              className="bg-primary text-primary-foreground hover:opacity-90 font-medium"
             >
               <Plus className="size-3.5 mr-1.5" />
               New Schedule
@@ -359,28 +370,28 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
       />
 
       {predictiveRecommendation && (
-        <div className="rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-950/40 via-slate-900 to-emerald-950/30 p-5 shadow-xl shadow-cyan-950/20 backdrop-blur">
+        <div className="rounded-2xl border border-border bg-card p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="size-10 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 shrink-0">
+              <div className="size-10 rounded-xl border border-border bg-muted flex items-center justify-center text-foreground shrink-0">
                 <Sparkles className="size-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-cyan-200">Predictive Pre-Warming Pattern Detected</span>
-                  <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
+                  <span className="font-semibold text-foreground">Predictive Pre-Warming Pattern Detected</span>
+                  <Badge className="border-border bg-muted text-foreground">
                     {Math.round(predictiveRecommendation.confidence * 100)}% Confidence
                   </Badge>
                 </div>
-                <p className="mt-1 text-xs sm:text-sm text-slate-300">
+                <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                   {predictiveRecommendation.reason}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-                  <span className="text-slate-400">Target: <code className="text-cyan-300 font-mono">{predictiveRecommendation.instance_id}</code></span>
-                  <span className="text-slate-400">User Activity: <strong className="text-emerald-400">{predictiveRecommendation.detected_activity_start}</strong></span>
-                  <span className="text-slate-400">Pre-Warm Start: <strong className="text-cyan-400">{predictiveRecommendation.recommended_start_time}</strong></span>
-                  <span className="text-slate-400">Stop Time: <strong className="text-amber-400">{predictiveRecommendation.recommended_stop_time}</strong></span>
-                  <span className="text-emerald-400 font-medium">Est. Waste Reduction: ~{predictiveRecommendation.estimated_savings_percent}%</span>
+                  <span className="text-muted-foreground">Target: <code className="text-foreground font-mono font-semibold">{predictiveRecommendation.instance_id}</code></span>
+                  <span className="text-muted-foreground">User Activity: <strong className="text-foreground">{predictiveRecommendation.detected_activity_start}</strong></span>
+                  <span className="text-muted-foreground">Pre-Warm Start: <strong className="text-foreground">{predictiveRecommendation.recommended_start_time}</strong></span>
+                  <span className="text-muted-foreground">Stop Time: <strong className="text-foreground">{predictiveRecommendation.recommended_stop_time}</strong></span>
+                  <span className="text-foreground font-medium">Est. Waste Reduction: ~{predictiveRecommendation.estimated_savings_percent}%</span>
                 </div>
               </div>
             </div>
@@ -388,7 +399,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               <Button
                 size="sm"
                 onClick={handleApplyPredictive}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium"
+                className="bg-primary text-primary-foreground hover:opacity-90 font-medium"
               >
                 <Check className="size-3.5 mr-1.5" />
                 Activate Schedule
@@ -400,13 +411,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
       {feedback && (
         <div
-          className={`flex items-center justify-between p-3.5 rounded-xl border text-sm ${
-            feedback.type === 'success'
-              ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-              : feedback.type === 'warning'
-              ? 'bg-amber-950/40 border-amber-500/30 text-amber-300'
-              : 'bg-red-950/40 border-red-500/30 text-red-300'
-          }`}
+          className={`flex items-center justify-between p-3.5 rounded-xl border text-sm border-border bg-muted text-foreground`}
         >
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4 shrink-0" />
@@ -424,20 +429,20 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
           {notifyingJobs.map((job) => (
             <div
               key={job.id}
-              className="rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/30 p-5 shadow-xl shadow-amber-950/20 backdrop-blur"
+              className="rounded-2xl border border-border bg-card p-5"
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <div className="size-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0 animate-pulse">
+                  <div className="size-10 rounded-xl border border-border bg-muted flex items-center justify-center text-foreground shrink-0 animate-pulse">
                     <Bell className="size-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-amber-200">10-Minute Grace Period Active</span>
-                      <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30">PENDING STOP</Badge>
+                      <span className="font-semibold text-foreground">10-Minute Grace Period Active</span>
+                      <Badge className="border-border bg-muted text-foreground">PENDING STOP</Badge>
                     </div>
-                    <p className="mt-1 text-xs sm:text-sm text-slate-300">
-                      Instance <code className="font-mono text-cyan-300 font-bold">{job.instance_id}</code> will shut down according to scheduled business closure.
+                    <p className="mt-1 text-xs sm:text-sm text-foreground">
+                      Instance <code className="font-mono text-foreground font-bold">{job.instance_id}</code> will shut down according to scheduled business closure.
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       Reason: {job.reason || 'Evening operational power-off window reached.'}
@@ -450,16 +455,15 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                     size="sm"
                     variant="outline"
                     onClick={() => handleOverride(job.id, 'KEEP_RUNNING', 2)}
-                    className="border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
+                    className="border-border bg-background text-foreground hover:bg-muted"
                   >
                     <CheckCircle2 className="size-3.5 mr-1.5" />
                     KEEP RUNNING (2h)
                   </Button>
                   <Button
                     size="sm"
-                    variant="destructive"
                     onClick={() => handleOverride(job.id, 'STOP_NOW')}
-                    className="bg-red-500/80 hover:bg-red-600 text-white"
+                    className="bg-primary text-primary-foreground hover:opacity-90 font-medium"
                   >
                     <Zap className="size-3.5 mr-1.5" />
                     STOP NOW
@@ -478,39 +482,39 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
           label="Managed EC2 Schedules"
           value={schedules.length}
           detail="Active operational time windows"
-          tone="cyan"
+          tone="neutral"
         />
         <MetricCard
           icon={Zap}
           label="Predictive Pre-Warming"
           value="15m Lead"
           detail="Pre-heats instances before user surge"
-          tone="emerald"
+          tone="neutral"
         />
         <MetricCard
           icon={ShieldCheck}
           label="Guardian Safety Gate"
           value="Online"
           detail="SSH, Backup & Tag checks enforced"
-          tone="amber"
+          tone="neutral"
         />
         <MetricCard
           icon={CircleDollarSign}
           label="Est. Off-Hours Savings"
           value="~68%"
           detail="Eliminates overnight & weekend waste"
-          tone="cyan"
+          tone="neutral"
         />
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center justify-between border-b border-white/8 pb-3">
+      <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2">
           <Button
             variant={activeTab === 'schedules' ? 'default' : 'ghost'}
             size="sm"
             onClick={() => setActiveTab('schedules')}
-            className={activeTab === 'schedules' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-muted-foreground'}
+            className={activeTab === 'schedules' ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}
           >
             Operational Schedules ({schedules.length})
           </Button>
@@ -518,7 +522,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
             variant={activeTab === 'jobs' ? 'default' : 'ghost'}
             size="sm"
             onClick={() => setActiveTab('jobs')}
-            className={activeTab === 'jobs' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-muted-foreground'}
+            className={activeTab === 'jobs' ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}
           >
             Execution & Guardian Audit ({jobs.length})
           </Button>
@@ -546,7 +550,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                 title="No Active Schedules"
                 description="Configure working windows, grace periods, and pre-warm leads to eliminate off-hours idle waste."
                 action={
-                  <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => setCreateModalOpen(true)}>
+                  <Button size="sm" className="bg-primary text-primary-foreground hover:opacity-90 font-medium" onClick={() => setCreateModalOpen(true)}>
                     <Plus className="mr-1.5 size-3.5" />
                     New Schedule
                   </Button>
@@ -556,8 +560,8 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
             ) : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader className="bg-white/[0.02]">
-                    <TableRow className="border-white/8">
+                  <TableHeader className="bg-muted">
+                    <TableRow className="border-border">
                       <TableHead className="text-xs">Instance ID</TableHead>
                       <TableHead className="text-xs">Working Window</TableHead>
                       <TableHead className="text-xs">Active Days</TableHead>
@@ -580,27 +584,27 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                       ].filter(Boolean).join(', ');
 
                       return (
-                        <TableRow key={s.id} className="border-white/5 hover:bg-white/[0.02]">
-                          <TableCell className="font-mono text-xs font-medium text-cyan-300">
+                        <TableRow key={s.id} className="border-border hover:bg-muted/50">
+                          <TableCell className="font-mono text-xs font-semibold text-foreground">
                             {s.instance_id}
                           </TableCell>
                           <TableCell className="text-xs">
-                            <span className="font-medium text-emerald-400">{s.start_time}</span>
+                            <span className="font-medium text-foreground">{s.start_time}</span>
                             <span className="text-muted-foreground mx-1.5">to</span>
-                            <span className="font-medium text-amber-400">{s.stop_time}</span>
+                            <span className="font-medium text-foreground">{s.stop_time}</span>
                             <span className="text-[10px] text-muted-foreground ml-1.5">({s.timezone})</span>
                           </TableCell>
-                          <TableCell className="text-xs text-slate-300">
+                          <TableCell className="text-xs text-muted-foreground font-mono">
                             {daysActive || 'None'}
                           </TableCell>
-                          <TableCell className="text-xs font-mono text-emerald-300">
+                          <TableCell className="text-xs font-mono text-foreground">
                             {s.prewarm_minutes} mins
                           </TableCell>
-                          <TableCell className="text-xs font-mono text-amber-300">
+                          <TableCell className="text-xs font-mono text-muted-foreground">
                             {s.grace_period_minutes} mins
                           </TableCell>
                           <TableCell>
-                            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">
+                            <Badge className="border-border bg-muted text-foreground text-[10px]">
                               ENABLED
                             </Badge>
                           </TableCell>
@@ -609,7 +613,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeleteSchedule(s.id)}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 px-2 text-xs"
+                              className="text-muted-foreground hover:text-foreground underline h-7 px-2 text-xs"
                             >
                               Delete
                             </Button>
@@ -627,7 +631,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
       {/* TAB 2: EXECUTION & GUARDIAN AUDIT LEDGER */}
       {activeTab === 'jobs' && (
-        <Card className="border-white/8 bg-card/70 backdrop-blur">
+        <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium flex items-center justify-between">
               <span>Auditable Job Pipeline & Guardian Safety Gate</span>
@@ -647,8 +651,8 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
             ) : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader className="bg-white/[0.02]">
-                    <TableRow className="border-white/8">
+                  <TableHeader className="bg-muted">
+                    <TableRow className="border-border">
                       <TableHead className="text-xs">Job ID / Time</TableHead>
                       <TableHead className="text-xs">Instance</TableHead>
                       <TableHead className="text-xs">Action</TableHead>
@@ -659,45 +663,33 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                   </TableHeader>
                   <TableBody>
                     {jobs.map((j) => {
-                      const isSuccess = j.status === 'SUCCESS';
                       const isBlocked = j.status === 'BLOCKED';
                       const isNotifying = j.status === 'NOTIFYING';
-                      const isOverridden = j.status === 'OVERRIDDEN';
 
                       return (
-                        <TableRow key={j.id} className="border-white/5 hover:bg-white/[0.02]">
+                        <TableRow key={j.id} className="border-border hover:bg-muted/50">
                           <TableCell className="text-xs">
-                            <div className="font-mono text-slate-300">{j.id.slice(0, 8)}...</div>
+                            <div className="font-mono text-foreground font-semibold">{j.id.slice(0, 8)}...</div>
                             <div className="text-[10px] text-muted-foreground">
                               {j.scheduled_at ? new Date(j.scheduled_at).toLocaleTimeString() : 'N/A'}
                             </div>
                           </TableCell>
-                          <TableCell className="font-mono text-xs text-cyan-300">
+                          <TableCell className="font-mono text-xs text-foreground font-semibold">
                             {j.instance_id}
                           </TableCell>
                           <TableCell>
-                            <span
-                              className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                                j.action === 'START' || j.action === 'PREWARM'
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                              }`}
-                            >
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded border border-border bg-muted text-foreground">
                               {j.action}
                             </span>
                           </TableCell>
                           <TableCell>
                             <Badge
-                              className={`text-[10px] ${
-                                isSuccess
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                  : isBlocked
-                                  ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                              className={`text-[10px] border-border ${
+                                isBlocked
+                                  ? 'bg-muted text-muted-foreground line-through'
                                   : isNotifying
-                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse'
-                                  : isOverridden
-                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                  : 'bg-slate-500/10 text-slate-300 border-slate-500/20'
+                                  ? 'bg-muted text-foreground animate-pulse'
+                                  : 'bg-muted text-foreground'
                               }`}
                             >
                               {j.status}
@@ -705,9 +697,9 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                           </TableCell>
                           <TableCell className="text-xs max-w-xs">
                             {isBlocked ? (
-                              <div className="text-red-300 font-medium">🛑 {j.blocked_reason}</div>
+                              <div className="text-foreground font-medium underline">Blocked: {j.blocked_reason}</div>
                             ) : (
-                              <div className="text-slate-300">{j.reason || 'Normal schedule dispatch'}</div>
+                              <div className="text-muted-foreground">{j.reason || 'Normal schedule dispatch'}</div>
                             )}
                             {j.execution_details?.guardian_checks && (
                               <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -722,15 +714,14 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleOverride(j.id, 'KEEP_RUNNING', 2)}
-                                  className="text-emerald-400 hover:bg-emerald-500/10 h-6 px-2 text-[10px]"
+                                  className="text-foreground border border-border bg-background hover:bg-muted h-6 px-2 text-[10px]"
                                 >
                                   Override (2h)
                                 </Button>
                                 <Button
                                   size="sm"
-                                  variant="ghost"
                                   onClick={() => handleOverride(j.id, 'STOP_NOW')}
-                                  className="text-red-400 hover:bg-red-500/10 h-6 px-2 text-[10px]"
+                                  className="bg-primary text-primary-foreground hover:opacity-90 h-6 px-2 text-[10px]"
                                 >
                                   Stop Now
                                 </Button>
@@ -750,10 +741,10 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
       {/* CREATE SCHEDULE MODAL */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="border-white/10 bg-slate-900 text-white max-w-md">
+        <DialogContent className="border-border bg-background text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold flex items-center gap-2">
-              <Zap className="size-4 text-cyan-400" />
+              <Zap className="size-4 text-foreground" />
               Create Operational Schedule
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -764,10 +755,10 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
           <form onSubmit={handleSaveSchedule} className="space-y-4 pt-2">
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-300">EC2 Instance ID</label>
+                <label className="text-xs font-medium text-foreground">EC2 Instance ID</label>
                 {nodes && nodes.length > 0 && (
-                  <span className="text-[10px] text-cyan-400">
-                    Discovered: {nodes.find((n: any) => n.instance_id === formInstanceId)?.name || defaultInstanceId}
+                  <span className="text-[10px] text-muted-foreground">
+                    Discovered: {nodes.find((n: any) => n.instance_id === formInstanceId)?.name || defaultInstanceId || 'None'}
                   </span>
                 )}
               </div>
@@ -777,10 +768,10 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                     value={formInstanceId || defaultInstanceId}
                     onValueChange={(val) => { if (val) setFormInstanceId(val); }}
                   >
-                    <SelectTrigger className="bg-white/5 border-white/10 text-xs font-mono">
+                    <SelectTrigger className="bg-background border-border text-foreground text-xs font-mono">
                       <SelectValue placeholder="Select instance..." />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                    <SelectContent className="bg-background border-border text-foreground text-xs">
                       {nodes.map((n: any) => (
                         <SelectItem key={n.instance_id} value={n.instance_id}>
                           {n.instance_id} ({n.name || 'EC2'} · {n.state})
@@ -789,19 +780,19 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                     </SelectContent>
                   </Select>
                   <Input
-                    placeholder={`e.g. ${defaultInstanceId}`}
+                    placeholder="e.g. i-1234567890abcdef0"
                     value={formInstanceId}
                     onChange={(e) => setFormInstanceId(e.target.value)}
-                    className="bg-white/5 border-white/10 text-xs font-mono"
+                    className="bg-background border-border text-foreground text-xs font-mono"
                     required
                   />
                 </div>
               ) : (
                 <Input
-                  placeholder={`e.g. ${defaultInstanceId}`}
+                  placeholder="e.g. i-1234567890abcdef0"
                   value={formInstanceId}
                   onChange={(e) => setFormInstanceId(e.target.value)}
-                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  className="mt-1 bg-background border-border text-foreground text-xs font-mono"
                   required
                 />
               )}
@@ -809,12 +800,12 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-slate-300">Timezone</label>
+                <label className="text-xs font-medium text-foreground">Timezone</label>
                 <Select value={formTimezone} onValueChange={(val) => { if (val) setFormTimezone(val); }}>
-                  <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-xs">
+                  <SelectTrigger className="mt-1 bg-background border-border text-foreground text-xs">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                  <SelectContent className="bg-background border-border text-foreground text-xs">
                     <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem>
                     <SelectItem value="UTC">UTC</SelectItem>
                     <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
@@ -824,43 +815,43 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-300">Pre-Warm Lead (Mins)</label>
+                <label className="text-xs font-medium text-foreground">Pre-Warm Lead (Mins)</label>
                 <Input
                   type="number"
                   min="0"
                   max="60"
                   value={formPrewarmMins}
                   onChange={(e) => setFormPrewarmMins(Number(e.target.value))}
-                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  className="mt-1 bg-background border-border text-foreground text-xs font-mono"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-emerald-400">START Time (24h)</label>
+                <label className="text-xs font-medium text-foreground">START Time (24h)</label>
                 <Input
                   type="time"
                   value={formStartTime}
                   onChange={(e) => setFormStartTime(e.target.value)}
-                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  className="mt-1 bg-background border-border text-foreground text-xs font-mono"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-amber-400">STOP Time (24h)</label>
+                <label className="text-xs font-medium text-foreground">STOP Time (24h)</label>
                 <Input
                   type="time"
                   value={formStopTime}
                   onChange={(e) => setFormStopTime(e.target.value)}
-                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  className="mt-1 bg-background border-border text-foreground text-xs font-mono"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-xs font-medium text-slate-300 block mb-1.5">Active Days</label>
+              <label className="text-xs font-medium text-foreground block mb-1.5">Active Days</label>
               <div className="grid grid-cols-7 gap-1 text-center">
                 {[
                   { key: 'monday', label: 'Mon' },
@@ -877,8 +868,8 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                     onClick={() => setFormDays(prev => ({ ...prev, [d.key]: !prev[d.key as keyof typeof prev] }))}
                     className={`py-1.5 text-xs rounded border transition-colors ${
                       formDays[d.key as keyof typeof formDays]
-                        ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 font-semibold'
-                        : 'bg-white/5 border-white/10 text-muted-foreground'
+                        ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                        : 'bg-background border-border text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {d.label}
@@ -891,7 +882,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               <Button type="button" variant="outline" size="sm" onClick={() => setCreateModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-medium">
+              <Button type="submit" size="sm" className="bg-primary text-primary-foreground hover:opacity-90 font-medium">
                 Save Operational Schedule
               </Button>
             </div>
@@ -901,10 +892,10 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
       {/* MANUAL TRIGGER MODAL */}
       <Dialog open={triggerModalOpen} onOpenChange={setTriggerModalOpen}>
-        <DialogContent className="border-white/10 bg-slate-900 text-white max-w-md">
+        <DialogContent className="border-border bg-background text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold flex items-center gap-2">
-              <ShieldCheck className="size-4 text-amber-400" />
+              <ShieldCheck className="size-4 text-foreground" />
               Manual Trigger (Guardian Protected)
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -915,10 +906,10 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
           <form onSubmit={handleManualTrigger} className="space-y-4 pt-2">
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-300">EC2 Instance ID</label>
+                <label className="text-xs font-medium text-foreground">EC2 Instance ID</label>
                 {nodes && nodes.length > 0 && (
-                  <span className="text-[10px] text-cyan-400">
-                    Discovered: {nodes.find((n: any) => n.instance_id === manualInstanceId)?.name || defaultInstanceId}
+                  <span className="text-[10px] text-muted-foreground">
+                    Discovered: {nodes.find((n: any) => n.instance_id === manualInstanceId)?.name || defaultInstanceId || 'None'}
                   </span>
                 )}
               </div>
@@ -928,10 +919,10 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                     value={manualInstanceId || defaultInstanceId}
                     onValueChange={(val) => { if (val) setManualInstanceId(val); }}
                   >
-                    <SelectTrigger className="bg-white/5 border-white/10 text-xs font-mono">
+                    <SelectTrigger className="bg-background border-border text-foreground text-xs font-mono">
                       <SelectValue placeholder="Select instance..." />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                    <SelectContent className="bg-background border-border text-foreground text-xs">
                       {nodes.map((n: any) => (
                         <SelectItem key={n.instance_id} value={n.instance_id}>
                           {n.instance_id} ({n.name || 'EC2'} · {n.state})
@@ -940,19 +931,19 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
                     </SelectContent>
                   </Select>
                   <Input
-                    placeholder={`e.g. ${defaultInstanceId}`}
+                    placeholder="e.g. i-1234567890abcdef0"
                     value={manualInstanceId}
                     onChange={(e) => setManualInstanceId(e.target.value)}
-                    className="bg-white/5 border-white/10 text-xs font-mono"
+                    className="bg-background border-border text-foreground text-xs font-mono"
                     required
                   />
                 </div>
               ) : (
                 <Input
-                  placeholder={`e.g. ${defaultInstanceId}`}
+                  placeholder="e.g. i-1234567890abcdef0"
                   value={manualInstanceId}
                   onChange={(e) => setManualInstanceId(e.target.value)}
-                  className="mt-1 bg-white/5 border-white/10 text-xs font-mono"
+                  className="mt-1 bg-background border-border text-foreground text-xs font-mono"
                   required
                 />
               )}
@@ -960,12 +951,12 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-slate-300">Action</label>
+                <label className="text-xs font-medium text-foreground">Action</label>
                 <Select value={manualAction} onValueChange={(val) => { if (val) setManualAction(val); }}>
-                  <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-xs">
+                  <SelectTrigger className="mt-1 bg-background border-border text-foreground text-xs">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                  <SelectContent className="bg-background border-border text-foreground text-xs">
                     <SelectItem value="START">START Instance</SelectItem>
                     <SelectItem value="STOP">STOP Instance</SelectItem>
                     <SelectItem value="PREWARM">PREWARM Instance</SelectItem>
@@ -974,15 +965,15 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-300">Execution Mode</label>
+                <label className="text-xs font-medium text-foreground">Execution Mode</label>
                 <Select
                   value={manualDryRun ? 'dry_run' : 'live'}
                   onValueChange={(v) => setManualDryRun(v === 'dry_run')}
                 >
-                  <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-xs">
+                  <SelectTrigger className="mt-1 bg-background border-border text-foreground text-xs">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-white/10 text-white text-xs">
+                  <SelectContent className="bg-background border-border text-foreground text-xs">
                     <SelectItem value="dry_run">Dry Run (Simulate)</SelectItem>
                     <SelectItem value="live">Live AWS Execution</SelectItem>
                   </SelectContent>
@@ -990,7 +981,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               </div>
             </div>
 
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300/90">
+            <div className="rounded-lg border border-border bg-muted p-3 text-xs text-foreground">
               <span className="font-semibold">Guardian Gate:</span> Every request will verify active SSH sessions, EBS snapshots, and tag guardrails before any cloud action.
             </div>
 
@@ -998,7 +989,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
               <Button type="button" variant="outline" size="sm" onClick={() => setTriggerModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={triggering} className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-medium">
+              <Button type="submit" size="sm" disabled={triggering} className="bg-primary text-primary-foreground hover:opacity-90 font-medium">
                 {triggering ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Zap className="size-3.5 mr-1.5" />}
                 Dispatch through Guardian
               </Button>

@@ -177,8 +177,8 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
     );
   }, [accounts, deferredSearch]);
 
-  const totalRegistered = summary?.total_accounts_registered || Math.max(accounts.length, 1);
-  const totalSpend = summary?.total_fleet_monthly_spend || 68.40;
+  const totalRegistered = summary?.total_accounts_registered ?? accounts.length;
+  const totalSpend = summary?.total_fleet_monthly_spend ?? 0;
   const totalNodes = summary?.total_fleet_nodes || 0;
   const totalVolumes = summary?.total_fleet_volumes || 0;
   const totalEips = summary?.total_fleet_eips || 0;
@@ -190,7 +190,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
         title="100+ AWS Member Account Auto-Discovery"
         description="Centralized AWS Organizations visibility, multi-account health governance, and parallel cross-account waste sweeps."
         status={
-          <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300">
+          <Badge variant="outline" className="border-border bg-muted text-foreground">
             AWS Organizations Fleet
           </Badge>
         }
@@ -199,7 +199,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
             <Button
               variant="outline"
               size="sm"
-              className="border-white/10 bg-white/5 text-xs hover:bg-white/10"
+              className="border-border bg-background text-foreground text-xs hover:bg-muted"
               onClick={() => setEnrollOpen(true)}
             >
               <Plus className="mr-1.5 size-3.5" /> Enroll Account
@@ -207,7 +207,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
             <Button
               variant="outline"
               size="sm"
-              className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20 text-xs"
+              className="border-border bg-background text-foreground hover:bg-muted text-xs"
               onClick={handleDiscover}
               disabled={discovering}
             >
@@ -216,7 +216,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
             </Button>
             <Button
               size="sm"
-              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-medium"
+              className="bg-primary text-primary-foreground hover:opacity-90 text-xs font-medium"
               onClick={() => handleScanFleet()}
               disabled={scanning}
             >
@@ -228,22 +228,22 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Discovered Fleet Accounts</span>
-              <Network className="size-4 text-cyan-400" />
+              <Network className="size-4 text-foreground" />
             </div>
-            <div className="mt-3 text-2xl font-bold text-cyan-300">{totalRegistered}</div>
+            <div className="mt-3 text-2xl font-bold text-foreground">{totalRegistered}</div>
             <div className="mt-1 text-xs text-muted-foreground">Auto-discovered across AWS Org</div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Fleet-Wide Monthly Spend</span>
-              <CircleDollarSign className="size-4 text-emerald-400" />
+              <CircleDollarSign className="size-4 text-foreground" />
             </div>
             <div className="mt-3 text-2xl font-bold text-foreground">
               {formatCurrency(totalSpend, currency)}
@@ -252,13 +252,13 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Managed Cloud Footprint</span>
-              <Server className="size-4 text-indigo-400" />
+              <Server className="size-4 text-foreground" />
             </div>
-            <div className="mt-3 text-2xl font-bold text-indigo-300">
+            <div className="mt-3 text-2xl font-bold text-foreground">
               {formatInteger(totalNodes + totalVolumes + totalEips)}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
@@ -267,13 +267,13 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
           </CardContent>
         </Card>
 
-        <Card className="border-white/8 bg-card/70">
+        <Card className="border-border bg-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Last Fleet Sweep</span>
-              <Activity className="size-4 text-amber-400" />
+              <Activity className="size-4 text-foreground" />
             </div>
-            <div className="mt-3 text-2xl font-bold text-amber-300">
+            <div className="mt-3 text-2xl font-bold text-foreground">
               {summary?.scan_duration_seconds ? `${summary.scan_duration_seconds.toFixed(2)}s` : 'Active'}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
@@ -284,15 +284,15 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
       </div>
 
       {discoverResult && (
-        <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-400/10 p-3 text-xs text-cyan-200">
+        <div className="mb-4 rounded-lg border border-border bg-muted p-3 text-xs text-foreground">
           {discoverResult}
         </div>
       )}
 
       {scanFeedback && (
-        <div className="mb-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-emerald-200 flex items-center justify-between">
+        <div className="mb-4 rounded-lg border border-border bg-muted p-3 text-xs text-foreground flex items-center justify-between">
           <span>
-            ✅ Parallel scan completed across {scanFeedback.accounts_scanned} accounts in {scanFeedback.scan_duration_seconds}s! Total monthly spend analyzed: {formatCurrency(scanFeedback.total_fleet_monthly_spend, currency)}.
+            Parallel scan completed across {scanFeedback.accounts_scanned} accounts in {scanFeedback.scan_duration_seconds}s! Total monthly spend analyzed: {formatCurrency(scanFeedback.total_fleet_monthly_spend, currency)}.
           </span>
           <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={() => setScanFeedback(null)}>
             Dismiss
@@ -300,7 +300,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
         </div>
       )}
 
-      <Card className="border-white/8 bg-card/70">
+      <Card className="border-border bg-card">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-base font-semibold">AWS Member Accounts Directory</CardTitle>
@@ -315,7 +315,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 placeholder="Search account ID or name..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="pl-8 h-9 border-white/10 bg-white/5 text-xs"
+                className="pl-8 h-9 border-border bg-background text-xs text-foreground"
               />
             </div>
           </div>
@@ -334,7 +334,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                     Clear search
                   </Button>
                 ) : (
-                  <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={handleDiscover}>
+                  <Button size="sm" className="bg-primary text-primary-foreground hover:opacity-90" onClick={handleDiscover}>
                     Auto-Discover Org Accounts
                   </Button>
                 )
@@ -345,7 +345,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-white/8 hover:bg-transparent">
+                  <TableRow className="border-border hover:bg-transparent">
                     <TableHead className="text-xs">Account ID</TableHead>
                     <TableHead className="text-xs">Account Name</TableHead>
                     <TableHead className="text-xs">Region</TableHead>
@@ -360,26 +360,26 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                     const isMgmt = acc.is_management_account;
                     const isScanning = scanningAccId === acc.account_id;
                     return (
-                      <TableRow key={acc.account_id} className="border-white/8">
-                        <TableCell className="font-mono text-xs font-semibold text-cyan-300">
+                      <TableRow key={acc.account_id} className="border-border">
+                        <TableCell className="font-mono text-xs font-semibold text-foreground">
                           {acc.account_id}
                         </TableCell>
-                        <TableCell className="text-xs font-medium">
+                        <TableCell className="text-xs font-medium text-foreground">
                           {acc.account_name || 'Member Account'}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground font-mono">
                           {acc.region || 'us-east-1'}
                         </TableCell>
-                        <TableCell className="text-xs font-mono text-slate-400 max-w-xs truncate">
+                        <TableCell className="text-xs font-mono text-muted-foreground max-w-xs truncate">
                           {acc.role_arn || acc.auth_type || 'CloudPulseReadOnlyRole'}
                         </TableCell>
                         <TableCell className="text-xs">
                           {isMgmt ? (
-                            <Badge variant="outline" className="border-cyan-400/30 bg-cyan-400/10 text-cyan-300 text-[10px]">
+                            <Badge variant="outline" className="border-border bg-muted text-foreground text-[10px]">
                               Management Root
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="border-white/10 text-[10px]">
+                            <Badge variant="outline" className="border-border text-[10px]">
                               Member Account
                             </Badge>
                           )}
@@ -389,8 +389,8 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                             variant="outline"
                             className={
                               acc.status === 'SUSPENDED'
-                                ? 'border-red-400/30 text-red-300'
-                                : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                                ? 'border-border bg-muted text-muted-foreground line-through'
+                                : 'border-border bg-muted text-foreground'
                             }
                           >
                             {acc.status || 'ACTIVE'}
@@ -400,11 +400,11 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px] border-white/10 bg-white/5 hover:bg-cyan-400/10 hover:text-cyan-300"
+                            className="h-7 text-[11px] border-border bg-background text-foreground hover:bg-muted"
                             disabled={isScanning}
                             onClick={() => handleScanFleet([acc.account_id])}
                           >
-                            {isScanning ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Play className="mr-1 size-3 text-cyan-400" />}
+                            {isScanning ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Play className="mr-1 size-3 text-foreground" />}
                             Scan
                           </Button>
                         </TableCell>
@@ -420,10 +420,10 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
 
       {/* Enroll Account Modal */}
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
-              <Plus className="size-4 text-cyan-400" /> Enroll AWS Account into Fleet
+              <Plus className="size-4 text-foreground" /> Enroll AWS Account into Fleet
             </DialogTitle>
             <DialogDescription>
               Configure cross-account IAM Role ARN for automated multi-account optimization.
@@ -437,10 +437,10 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 value={newAccId}
                 onChange={e => setNewAccId(e.target.value)}
                 required
-                className="border-white/10 bg-white/5 text-xs font-mono"
+                className="border-border bg-background text-xs font-mono text-foreground"
               />
               {enrollErrors.account_id && (
-                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.account_id}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground underline">{enrollErrors.account_id}</p>
               )}
             </div>
             <div>
@@ -449,10 +449,10 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 placeholder="e.g. Acme Payments Production"
                 value={newAccName}
                 onChange={e => setNewAccName(e.target.value)}
-                className="border-white/10 bg-white/5 text-xs"
+                className="border-border bg-background text-xs text-foreground"
               />
               {enrollErrors.account_name && (
-                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.account_name}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground underline">{enrollErrors.account_name}</p>
               )}
             </div>
             <div>
@@ -461,10 +461,10 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 placeholder="arn:aws:iam::123456789:role/CloudPulseReadOnlyRole"
                 value={newAccRole}
                 onChange={e => setNewAccRole(e.target.value)}
-                className="border-white/10 bg-white/5 text-xs font-mono"
+                className="border-border bg-background text-xs font-mono text-foreground"
               />
               {enrollErrors.role_arn && (
-                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.role_arn}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground underline">{enrollErrors.role_arn}</p>
               )}
             </div>
             <div>
@@ -473,10 +473,10 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 placeholder="us-east-1"
                 value={newAccRegion}
                 onChange={e => setNewAccRegion(e.target.value)}
-                className="border-white/10 bg-white/5 text-xs"
+                className="border-border bg-background text-xs text-foreground"
               />
               {enrollErrors.region && (
-                <p className="mt-1 text-[11px] text-red-400">{enrollErrors.region}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground underline">{enrollErrors.region}</p>
               )}
             </div>
             <div className="flex items-center gap-2 pt-1">
@@ -485,7 +485,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 id="isMgmtAcc"
                 checked={isMgmtAcc}
                 onChange={e => setIsMgmtAcc(e.target.checked)}
-                className="rounded border-white/10"
+                className="rounded border-border accent-primary"
               />
               <label htmlFor="isMgmtAcc" className="text-xs text-muted-foreground cursor-pointer">
                 Mark as AWS Organizations Management (Payer) Account
@@ -493,7 +493,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
             </div>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEnrollOpen(false)}>Cancel</Button>
-              <Button type="submit" size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" disabled={enrolling}>
+              <Button type="submit" size="sm" className="bg-primary text-primary-foreground hover:opacity-90 font-medium" disabled={enrolling}>
                 {enrolling ? <Loader2 className="mr-1 size-3 animate-spin" /> : null} Enroll Account
               </Button>
             </div>

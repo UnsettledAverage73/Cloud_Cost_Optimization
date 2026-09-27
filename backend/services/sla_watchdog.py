@@ -84,13 +84,19 @@ DEFAULT_WATCH_PERIODS = [
 ]
 
 
+import os
+
 class SLAWatchdog:
     """
     Automates 60-minute post-remediation SLA verification and zero-downtime rollback safety.
     """
 
-    def __init__(self, load_disk: bool = True):
+    def __init__(self, load_disk: bool = True, seed_demo: Optional[bool] = None):
         self.load_disk = load_disk
+        if seed_demo is None:
+            self.seed_demo = os.getenv("CLOUDPULSE_SEED_DEMO_WATCHES", "").strip().lower() in ("true", "1")
+        else:
+            self.seed_demo = seed_demo
         self.watches: Dict[str, Dict[str, Any]] = {}
         self._load_or_bootstrap()
 
@@ -116,7 +122,7 @@ class SLAWatchdog:
             except Exception as e:
                 logger.debug(f"Could not load SLA watches from disk: {e}")
 
-        if not loaded:
+        if not loaded and self.seed_demo:
             for w in DEFAULT_WATCH_PERIODS:
                 self.watches[w["watch_id"]] = copy.deepcopy(w)
 
