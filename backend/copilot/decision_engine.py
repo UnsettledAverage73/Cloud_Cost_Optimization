@@ -89,7 +89,7 @@ class SemIfDecisionEngine(BaseDecisionEngine):
     """
 
     def __init__(self, endpoint: Optional[str] = None, model: str = "qwen3.5-4b-bf16"):
-        self.endpoint = endpoint or os.getenv("SEMIF_ENDPOINT", "http://localhost:8001")
+        self.endpoint = endpoint if endpoint is not None else os.getenv("SEMIF_ENDPOINT", "")
         self.model = model or os.getenv("SEMIF_MODEL", "qwen3.5-4b-bf16")
         self.provider_name = "SemIf (OpenJev open-source)"
         self.langsmith_enabled = bool(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"))
@@ -105,10 +105,11 @@ class SemIfDecisionEngine(BaseDecisionEngine):
         candidates = candidates or ARCHITECT_DECISION_CANDIDATES
         intent_lower = user_intent.lower()
 
-        # Check if remote SemIf/OpenJev server is reachable
-        remote_res = self._try_remote_semif(user_intent, cloud_context, candidates)
-        if remote_res:
-            return remote_res
+        # Check if remote SemIf/OpenJev server is configured and reachable
+        if self.endpoint and self.endpoint.strip() not in ("", "none", "disabled"):
+            remote_res = self._try_remote_semif(user_intent, cloud_context, candidates)
+            if remote_res:
+                return remote_res
 
         # High-performance in-process logit probability emulation (SemIf Direct Decision Layer)
         # Evaluates candidate logit match scores over single forward pass
