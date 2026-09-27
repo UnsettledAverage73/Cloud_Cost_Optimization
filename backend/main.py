@@ -1684,6 +1684,20 @@ async def copilot_chat(payload: dict):
     return response
 
 
+@app.post("/api/v2/architect/chat")
+async def architect_chat(payload: dict):
+    """
+    Jew / Jev System Architect: One-Model AI Cloud System Architect.
+    Uses SemIf (OpenJev open-source) for fast System-1 tool/function decision-making,
+    pluggable with Jev (TypeSafe AI), instrumented with LangSmith tracing.
+    """
+    from backend.copilot.jew_architect import jew_architect
+    user_message = payload.get("message") or payload.get("prompt") or payload.get("query") or ""
+    history = payload.get("history", [])
+    response = jew_architect.chat(user_message=user_message, history=history)
+    return response
+
+
 @app.post("/api/v2/copilot/diagnose-spike")
 async def copilot_diagnose_spike(payload: dict):
     """
