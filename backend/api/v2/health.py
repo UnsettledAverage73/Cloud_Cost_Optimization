@@ -47,10 +47,13 @@ async def readiness_probe():
     # 1. Database check
     try:
         db_alive = ping_database()
-        checks["database"] = "connected" if db_alive else "disconnected"
+        db_status = db_alive.get("status", "disconnected") if isinstance(db_alive, dict) else ("connected" if db_alive else "disconnected")
+        checks["database"] = db_status
+        if db_status != "connected":
+            is_ready = False
     except Exception as e:
         checks["database"] = f"error: {str(e)}"
-        # Note: In hybrid dev/local mode, DB may be optional, but we report it accurately
+        is_ready = False
 
     # 2. Vector Store check
     try:

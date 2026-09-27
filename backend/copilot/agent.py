@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 from typing import Dict, Any, List, Optional
@@ -9,11 +10,13 @@ try:
     from copilot.tools.pricing_rag_tool import lookup_aws_pricing
     from copilot.tools.cloudtrail_forensics_tool import investigate_event_spikes
     from copilot.tools.terraform_pr_tool import generate_terraform_remediation_pr
+    from copilot.tools.schemas import TOOL_DEFINITIONS
 except ImportError:
     from backend.copilot.tools.sql_analytics_tool import execute_readonly_sql, generate_finops_sql_template
     from backend.copilot.tools.pricing_rag_tool import lookup_aws_pricing
     from backend.copilot.tools.cloudtrail_forensics_tool import investigate_event_spikes
     from backend.copilot.tools.terraform_pr_tool import generate_terraform_remediation_pr
+    from backend.copilot.tools.schemas import TOOL_DEFINITIONS
 
 try:
     from services.llm_engine import llm_engine, FINOPS_SYSTEM_PROMPT
@@ -112,6 +115,10 @@ class FinOpsAutonomousCopilot:
             return {"error": "Vector knowledge store not available"}
         return {"error": f"Unknown tool: {tool_name}"}
 
+    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+        """Returns standard JSON schemas of all registered tools for LLM function calling."""
+        return TOOL_DEFINITIONS
+
     def _get_cloud_context(self) -> str:
         """Gathers live telemetry and inventory context for LLM prompt grounding."""
         try:
@@ -174,16 +181,27 @@ class FinOpsAutonomousCopilot:
                 if llm_rep:
                     llm_rationale = f"\n\n🤖 **AI Forensics Assessment ({active_model}):**\n{llm_rep}"
 
-            answer = (
-                f"🚨 **Root-Cause Anomaly Forensic Report:**\n\n"
-                f"- **Target Service:** `{tool_res.get('service_investigated')}`\n"
-                f"- **Detected Event:** `{suspect.get('event_name')}` at `{suspect.get('event_time')}`\n"
-                f"- **Responsible Actor:** `{suspect.get('username')}` ({suspect.get('user_arn')})\n"
-                f"- **Resources Launched:** `{', '.join(suspect.get('resources', []))}` ({suspect.get('resource_type')})\n"
-                f"- **Diagnosis:** {suspect.get('forensic_finding')}"
-                f"{llm_rationale}\n\n"
-                f"💡 **Recommended Next Step:** Click **Generate Terraform PR** to open a pull request downsizing or terminating this resource."
-            )
+            sim_notice = "\n> ⚠️ *Note: Running in demonstration simulation mode. Connect live AWS IAM Role for production account audit.*\n" if tool_res.get("is_simulated") else ""
+
+            if not suspect:
+                answer = (
+                    f"ℹ️ **CloudTrail Forensic Investigation:**\n\n"
+                    f"- **Target Service:** `{tool_res.get('service_investigated')}`\n"
+                    f"- **Result:** No high-spend or unauthorized resource modification events detected in the current window.\n"
+                    f"{sim_notice}"
+                )
+            else:
+                answer = (
+                    f"🚨 **Root-Cause Anomaly Forensic Report:**\n\n"
+                    f"{sim_notice}"
+                    f"- **Target Service:** `{tool_res.get('service_investigated')}`\n"
+                    f"- **Detected Event:** `{suspect.get('event_name')}` at `{suspect.get('event_time')}`\n"
+                    f"- **Responsible Actor:** `{suspect.get('username')}` ({suspect.get('user_arn')})\n"
+                    f"- **Resources Launched:** `{', '.join(suspect.get('resources', []))}` ({suspect.get('resource_type')})\n"
+                    f"- **Diagnosis:** {suspect.get('forensic_finding')}"
+                    f"{llm_rationale}\n\n"
+                    f"💡 **Recommended Next Step:** Click **Generate Terraform PR** to open a pull request downsizing or terminating this resource."
+                )
             return {
                 "answer": answer,
                 "tool_called": "cloudtrail_forensics",
@@ -193,13 +211,21 @@ class FinOpsAutonomousCopilot:
             }
 
         # Route 2: Pricing / Graviton / Savings Plan query -> pricing_rag tool
-        if any(w in msg_lower for w in ["pricing", "price", "rate", "graviton", "m5", "t3", "c5", "arm64", "t4g"]):
+        if any(w in msg_lower for w in ["pricing", "price", "rate", "graviton", "instance", "ec2", "m5", "t3", "c5", "arm64", "t4g", "m6g", "c7g"]):
             detected_type = "m5.2xlarge"
-            for t in ["m5.2xlarge", "m5.xlarge", "m5.large", "t3.micro", "t3.medium", "t3.large", "c5.xlarge", "t4g.medium"]:
-                if t in msg_lower:
-                    detected_type = t
-                    break
-            tool_res = self.run_tool("pricing_rag", {"resource_type": detected_type})
+            inst_match = re.search(r"\b([a-z][0-9][a-z0-9]*\.[a-z0-9]+)\b", msg_lower)
+            if inst_match:
+                detected_type = inst_match.group(1)
+            else:
+                for t in ["m5.2xlarge", "m5.xlarge", "m5.large", "t3.micro", "t3.medium", "t3.large", "c5.xlarge", "t4g.medium"]:
+                    if t in msg_lower:
+                        detected_type = t
+                        break
+
+            region_match = re.search(r"\b(us-[a-z]+-\d+|eu-[a-z]+-\d+|ap-[a-z]+-\d+|sa-[a-z]+-\d+|ca-[a-z]+-\d+)\b", msg_lower)
+            detected_region = region_match.group(1) if region_match else "us-east-1"
+
+            tool_res = self.run_tool("pricing_rag", {"resource_type": detected_type, "region": detected_region})
             graviton = tool_res.get("graviton_recommendation")
             graviton_text = ""
             if graviton:

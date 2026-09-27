@@ -10,11 +10,13 @@ def investigate_event_spikes(
     service: str,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
-    boto_session: Optional[boto3.Session] = None
+    boto_session: Optional[boto3.Session] = None,
+    allow_simulation: bool = True
 ) -> Dict[str, Any]:
     """
     Forensics Tool: Queries CloudTrail to identify which IAM users, CI/CD pipelines,
     or roles launched or modified resources responsible for a sudden cost spike.
+    Explicitly tracks whether data is live or simulated to prevent false incidents.
     """
     if not end_time:
         end_time = datetime.now(timezone.utc)
@@ -34,6 +36,7 @@ def investigate_event_spikes(
 
     # Attempt live CloudTrail lookup if credentials/session exist
     events_found = []
+    is_live = False
     try:
         session = boto_session or boto3.Session()
         ct_client = session.client("cloudtrail")
@@ -55,8 +58,10 @@ def investigate_event_spikes(
                         "event_time": item.get("EventTime").isoformat() if item.get("EventTime") else None,
                         "username": item.get("Username"),
                         "resources": [r.get("ResourceName") for r in item.get("Resources", [])],
-                        "source": "AWS CloudTrail Live"
+                        "source": "AWS CloudTrail Live",
+                        "is_simulated": False
                     })
+                    is_live = True
             except ClientError as e:
                 logger.warning(f"CloudTrail lookup for {ev_name} not available: {e}")
                 break
@@ -64,8 +69,12 @@ def investigate_event_spikes(
     except Exception as e:
         logger.warning(f"CloudTrail client initialization failed: {e}")
 
-    # Fallback to high-fidelity forensics simulation if CloudTrail is not enabled on Learner Lab
-    if not events_found:
+    # Fallback to high-fidelity forensics simulation ONLY if explicitly enabled/allowed
+    is_simulated = False
+    simulation_notice = None
+    if not events_found and allow_simulation:
+        is_simulated = True
+        simulation_notice = "DEMO SIMULATION: Live AWS CloudTrail credentials not configured or no live events found. Providing synthetic forensics demonstration."
         events_found = [
             {
                 "event_id": "ct-ev-9812481023",
@@ -76,6 +85,8 @@ def investigate_event_spikes(
                 "resources": ["i-09f81a2b3c4d5e6f7"],
                 "resource_type": "m5.2xlarge",
                 "source_ip": "52.88.14.92",
+                "source": "Synthetic Simulation (Demo)",
+                "is_simulated": True,
                 "parameters": {"instance_type": "m5.2xlarge", "count": 1, "tags": {"Environment": "dev", "Owner": "ai-team"}},
                 "forensic_finding": "Resource launched via CI/CD pipeline without auto-shutdown schedule or Spot instance flag."
             }
@@ -89,5 +100,8 @@ def investigate_event_spikes(
         },
         "matched_events_count": len(events_found),
         "events": events_found,
-        "primary_suspect": events_found[0] if events_found else None
+        "primary_suspect": events_found[0] if events_found else None,
+        "is_simulated": is_simulated,
+        "status": "LIVE_EVENTS_DETECTED" if is_live else ("SIMULATED_DEMO" if is_simulated else "NO_LIVE_EVENTS"),
+        "simulation_notice": simulation_notice
     }

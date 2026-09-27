@@ -183,10 +183,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for Next.js / React / v0.dev frontend connections
+# Enable CORS with secure origins per W3C specification (disallows wildcard '*' when allow_credentials=True)
+_cors_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+if _cors_origins_env:
+    _allowed_cors_origins = [orig.strip() for orig in _cors_origins_env.split(",") if orig.strip()]
+else:
+    _allowed_cors_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://cloud-cost-optimization-frontend.onrender.com",
+        "https://cloud-cost-optimization.onrender.com",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to your frontend domain in production
+    allow_origins=_allowed_cors_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$|^https://[a-zA-Z0-9-]+\.onrender\.com$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

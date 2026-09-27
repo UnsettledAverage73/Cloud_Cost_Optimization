@@ -660,13 +660,13 @@ export default function Page() {
         <aside className={`fixed inset-y-0 left-0 z-30 hidden border-r border-border bg-sidebar/95 transition-all lg:flex lg:flex-col ${collapsed ? 'w-20' : 'w-64'}`}>
           <div className="flex h-16 items-center justify-between border-b border-border px-4">
             <a href="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
-                <CloudCog className="size-5 text-white" />
+              <div className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
+                <CloudCog className="size-5" />
               </div>
-              {!collapsed && <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-sky-600 dark:text-cyan-400">Pulse</span></span>}
+              {!collapsed && <span className="text-lg font-bold tracking-tight text-foreground">CloudPulse</span>}
             </a>
             {!collapsed && (
-              <a href="/" className="rounded-md px-2 py-1 text-xs font-medium text-sky-600 dark:text-cyan-400 hover:bg-muted hover:text-sky-700 dark:hover:text-cyan-300 transition-colors">
+              <a href="/" className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                 ← Home
               </a>
             )}
@@ -679,21 +679,17 @@ export default function Page() {
                 <button
                   key={item.id}
                   onClick={() => setView(item.id)}
-                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-150 ${
+                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-150 ${
                     isActive
-                      ? 'bg-sky-50 dark:bg-sky-500/15 border border-sky-200 dark:border-cyan-500/25 text-sky-800 dark:text-cyan-300 font-medium shadow-xs'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-0.5'
+                      ? 'bg-primary text-primary-foreground font-semibold border border-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
-                  {isActive && (
-                    <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-sky-600 dark:bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-                  )}
-                  <Icon className={`size-4 shrink-0 transition-transform duration-150 ${isActive ? 'text-sky-600 dark:text-cyan-400 scale-105' : 'group-hover:scale-105'}`} />
+                  <Icon className="size-4 shrink-0 transition-transform duration-150" />
                   {!collapsed && <span className="truncate">{item.label}</span>}
                   {item.id === 'security' && !collapsed && (
                     <span className="ml-auto flex size-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full size-2 bg-red-500" />
+                      <span className={`relative inline-flex rounded-full size-2 ${isActive ? 'bg-primary-foreground' : 'bg-foreground'}`} />
                     </span>
                   )}
                 </button>
@@ -702,15 +698,14 @@ export default function Page() {
           </div>
           {!collapsed && (
             <div className="border-t border-border p-3">
-              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-xs">
+              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="relative flex size-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-                    <span className="relative inline-flex rounded-full size-2 bg-emerald-500" />
+                    <span className="relative inline-flex rounded-full size-2 bg-foreground" />
                   </span>
                   <span className="text-[11px] text-muted-foreground font-medium">FinOps Core</span>
                 </div>
-                <span className="rounded bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Active</span>
+                <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-foreground border border-border">Active</span>
               </div>
             </div>
           )}
@@ -722,15 +717,15 @@ export default function Page() {
             <div className="flex flex-1 flex-col overflow-y-auto">
               <div className="flex h-16 items-center border-b border-border px-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
-                    <CloudCog className="size-5 text-white" />
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
+                    <CloudCog className="size-5" />
                   </div>
-                  <span className="text-lg font-semibold tracking-tight">Cloud<span className="text-sky-600 dark:text-cyan-400">Pulse</span></span>
+                  <span className="text-lg font-bold tracking-tight text-foreground">CloudPulse</span>
                 </div>
               </div>
 
               {/* Mobile Quick Context (Currency, Provider, Account) */}
-              <div className="border-b border-border bg-muted/20 p-3">
+              <div className="border-b border-border bg-secondary/50 p-3">
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quick Filters</div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -800,11 +795,11 @@ export default function Page() {
                         setView(item.id);
                         setMobileNavOpen(false);
                       }}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${isActive ? 'bg-sky-50 dark:bg-cyan-400/10 text-sky-800 dark:text-cyan-300 font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isActive ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
                     >
                       <Icon className="size-4 shrink-0" />
                       <span className="truncate flex-1">{item.label}</span>
-                      {item.id === 'security' && <span className="size-1.5 rounded-full bg-red-400" />}
+                      {item.id === 'security' && <span className="size-1.5 rounded-full bg-foreground" />}
                     </button>
                   );
                 })}
@@ -818,7 +813,7 @@ export default function Page() {
                   setConnectOpen(true);
                   setMobileNavOpen(false);
                 }}
-                className="w-full bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300 font-medium"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
               >
                 <Plus className="mr-1.5 size-4" /> Connect Cloud Account
               </Button>
@@ -827,9 +822,9 @@ export default function Page() {
         </Sheet>
 
         <div className={`transition-all ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-border bg-background/80 px-3 sm:px-4 backdrop-blur-xl lg:px-8 shadow-xs">
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 sm:gap-4 border-b border-border bg-background px-3 sm:px-4 lg:px-8">
             {syncing && (
-              <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-400 animate-pulse z-30" />
+              <div className="absolute top-0 inset-x-0 h-[2px] bg-foreground animate-pulse z-30" />
             )}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Button
@@ -842,10 +837,10 @@ export default function Page() {
                 <Menu className="size-5" />
               </Button>
               <div className="flex items-center gap-2 lg:hidden min-w-0">
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
-                  <CloudCog className="size-4 text-white" />
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
+                  <CloudCog className="size-4" />
                 </div>
-                <span className="text-base font-semibold tracking-tight truncate">Cloud<span className="text-sky-600 dark:text-cyan-400">Pulse</span></span>
+                <span className="text-base font-bold tracking-tight text-foreground truncate">CloudPulse</span>
               </div>
               <Button variant="ghost" size="icon" className="hidden lg:inline-flex" onClick={() => setCollapsed(!collapsed)} aria-label="Collapse sidebar"><PanelLeft /></Button>
               <div className="hidden items-center gap-2 text-sm md:flex min-w-0 max-w-[200px]">
@@ -855,12 +850,9 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shadow-xs') : 'border-border bg-muted/50 text-muted-foreground'}`}>
+              <div className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs md:flex shrink-0 ${connectionState?.connected ? 'border-border bg-secondary text-foreground' : 'border-border bg-muted text-muted-foreground'}`}>
                 <span className="relative flex size-2">
-                  {connectionState?.connected && (
-                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                  )}
-                  <span className={`relative inline-flex rounded-full size-2 ${connectionState?.connected ? (connectionAccessMode === 'limited' ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-slate-500'}`} />
+                  <span className={`relative inline-flex rounded-full size-2 ${connectionState?.connected ? 'bg-foreground' : 'bg-muted-foreground'}`} />
                 </span>
                 {connectionState?.connected
                   ? (connectionAccessMode === 'limited'
@@ -985,9 +977,9 @@ export default function Page() {
                   });
                 }}
                 title={autoRefresh ? "Auto-refresh is active (every 60s). Click to pause." : "Auto-refresh is paused. Click to enable."}
-                className={`h-8 px-2 text-xs font-medium border transition-all ${autoRefresh ? 'bg-sky-50 dark:bg-cyan-500/15 text-sky-800 dark:text-cyan-300 border-sky-300 dark:border-cyan-500/30 shadow-xs' : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                className={`h-8 px-2 text-xs font-medium border transition-all ${autoRefresh ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
               >
-                <span className={`mr-1.5 size-1.5 rounded-full ${autoRefresh ? 'bg-cyan-500 animate-pulse' : 'bg-slate-400'}`} />
+                <span className={`mr-1.5 size-1.5 rounded-full ${autoRefresh ? 'bg-background' : 'bg-muted-foreground'}`} />
                 <span className="hidden lg:inline">{autoRefresh ? 'Auto-sync ON' : 'Auto-sync OFF'}</span>
                 <span className="lg:hidden">{autoRefresh ? 'Auto' : 'Manual'}</span>
               </Button>
@@ -1006,7 +998,7 @@ export default function Page() {
                 className="size-8 sm:size-9"
                 title="Manual refresh"
               >
-                <RefreshCw className={`size-4 ${syncing ? 'animate-spin text-sky-600 dark:text-cyan-400' : ''}`} />
+                <RefreshCw className={`size-4 ${syncing ? 'animate-spin text-foreground' : ''}`} />
               </Button>
               <Button
                 variant="ghost"
@@ -1022,19 +1014,19 @@ export default function Page() {
                 aria-label="Toggle theme"
                 className="size-8 sm:size-9"
               >
-                {light ? <Moon className="size-4" /> : <Sun className="size-4 text-amber-500" />}
+                {light ? <Moon className="size-4" /> : <Sun className="size-4" />}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCliModalOpen(true)}
-                className="h-8 sm:h-9 border-border bg-card hover:bg-muted text-foreground px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-xs"
+                className="h-8 sm:h-9 border-border bg-card hover:bg-muted text-foreground px-2.5 sm:px-3 text-xs sm:text-sm font-medium"
                 title="Install CloudPulse CLI on your system"
               >
-                <Terminal className="size-4 shrink-0 text-sky-600 dark:text-cyan-400" />
+                <Terminal className="size-4 shrink-0 text-foreground" />
                 <span className="hidden sm:inline ml-1.5">CLI Tool</span>
               </Button>
-              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300 px-2.5 sm:px-3 text-xs sm:text-sm font-medium shadow-xs">
+              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 sm:px-3 text-xs sm:text-sm font-medium">
                 <Plus className="size-4 shrink-0" />
                 <span className="hidden sm:inline ml-1">Connect Account</span>
                 <span className="sm:hidden ml-1">Connect</span>
@@ -1046,7 +1038,7 @@ export default function Page() {
             {loading ? (
               <Card className="border-border bg-card">
                 <CardContent className="flex min-h-96 flex-col items-center justify-center gap-4 p-8 text-center">
-                  <Loader2 className="size-8 animate-spin text-sky-600 dark:text-cyan-400" />
+                  <Loader2 className="size-8 animate-spin text-foreground" />
                   <div>
                     <h2 className="text-lg font-semibold text-foreground">Syncing AWS account</h2>
                     <p className="mt-2 max-w-lg text-sm text-muted-foreground">
@@ -1063,23 +1055,23 @@ export default function Page() {
                 </CardContent>
               </Card>
             ) : !connectionState?.connected ? (
-              <Card className="border-amber-500/20 bg-amber-500/5">
+              <Card className="border-border bg-card">
                 <CardContent className="p-8 text-center">
-                  <Cloud className="mx-auto size-8 text-amber-600 dark:text-amber-300" />
+                  <Cloud className="mx-auto size-8 text-foreground" />
                   <h2 className="mt-4 text-lg font-semibold text-foreground">Live AWS data is not loaded</h2>
                   <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">{dataError || 'Connect an AWS account to continue.'}</p>
-                  <Button className="mt-5 bg-sky-600 dark:bg-cyan-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-cyan-300" onClick={() => setConnectOpen(true)}>Connect AWS account</Button>
+                  <Button className="mt-5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setConnectOpen(true)}>Connect AWS account</Button>
                 </CardContent>
               </Card>
             ) : (
               <>
                 {connectionAccessMode === 'limited' && (
-                  <Card className="mb-6 border-amber-500/20 bg-amber-500/10">
+                  <Card className="mb-6 border-border bg-secondary">
                     <CardContent className="flex items-start gap-3 p-4">
-                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-300" />
+                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-foreground" />
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-amber-900 dark:text-amber-100">Restricted IAM Permissions</div>
-                        <p className="mt-1 text-sm text-amber-800/90 dark:text-amber-100/80">
+                        <div className="text-sm font-medium text-foreground">Restricted IAM Permissions</div>
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {connectionWarning || 'AWS account connected. Additional read-only permissions (ec2:Describe*, cloudwatch:GetMetricData) are recommended to unlock full real-time telemetry.'}
                         </p>
                       </div>
