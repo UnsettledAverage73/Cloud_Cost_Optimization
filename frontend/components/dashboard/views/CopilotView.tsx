@@ -8,63 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { SectionTitle } from '@/components/dashboard'
 
-function formatInlineMarkdown(text: string): React.ReactNode {
-  if (!text) return null
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
-  return parts.map((part, index) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
-      return (
-        <code key={index} className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
-          {part.slice(1, -1)}
-        </code>
-      )
-    }
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 3) {
-      return (
-        <strong key={index} className="font-semibold text-foreground">
-          {part.slice(2, -2)}
-        </strong>
-      )
-    }
-    return part
-  })
-}
-
-function MarkdownText({ content }: { content: string }) {
-  if (!content) return null
-  const lines = content.split('\n')
-
-  return (
-    <div className="space-y-1.5 text-sm leading-relaxed">
-      {lines.map((line, i) => {
-        const trimmed = line.trim()
-        if (!trimmed) return <div key={i} className="h-1" />
-
-        if (trimmed.startsWith('### ')) {
-          return <h4 key={i} className="text-sm font-semibold text-foreground mt-2">{trimmed.slice(4)}</h4>
-        }
-        if (trimmed.startsWith('## ')) {
-          return <h3 key={i} className="text-base font-bold text-foreground mt-3">{trimmed.slice(3)}</h3>
-        }
-        if (trimmed.startsWith('# ')) {
-          return <h2 key={i} className="text-lg font-bold text-foreground mt-3">{trimmed.slice(2)}</h2>
-        }
-
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          const bulletText = trimmed.slice(2)
-          return (
-            <div key={i} className="flex items-start gap-2 pl-2">
-              <span className="mt-1.5 size-1.5 rounded-full bg-foreground shrink-0" />
-              <span>{formatInlineMarkdown(bulletText)}</span>
-            </div>
-          )
-        }
-
-        return <p key={i}>{formatInlineMarkdown(line)}</p>
-      })}
-    </div>
-  )
-}
+import { RichChatRenderer } from '@/components/dashboard/chat/RichChatRenderer'
 
 interface CopilotViewProps {
   apiUrl: (path: string) => string
@@ -254,7 +198,7 @@ export function CopilotView({ apiUrl }: CopilotViewProps) {
                   )}
 
                   {m.role === 'assistant' ? (
-                    <MarkdownText content={m.text} />
+                    <RichChatRenderer content={m.text} />
                   ) : (
                     <div className="whitespace-pre-wrap font-sans leading-relaxed">
                       {m.text}
