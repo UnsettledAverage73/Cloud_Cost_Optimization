@@ -368,6 +368,14 @@ class GitHubAppEngine:
             "check_run": check_run
         }
 
+    def get_status(self) -> Dict[str, Any]:
+        """Returns the current operational status of the GitHub App guardrail engine."""
+        return {
+            "status": "active",
+            "spike_threshold_usd": self.spike_threshold_usd,
+            "webhook_configured": bool(self.webhook_secret)
+        }
+
 
 # Global Singleton
 github_app_engine = GitHubAppEngine()

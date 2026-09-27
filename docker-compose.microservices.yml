@@ -1,0 +1,233 @@
+version: '3.8'
+
+# =============================================================================
+# CloudPulse Distributed Microservices Orchestration Compose Manifest
+# =============================================================================
+# Run mode:
+#   docker-compose -f docker-compose.microservices.yml up --build
+#
+# Ports Summary:
+#   - 8000: Gateway Orchestrator (Main FastAPI Proxy)
+#   - 8001: Copilot Decision & RAG Service (SemIf / Jev System-1)
+#   - 8002: Analytics & FOCUS Lakehouse Engine
+#   - 8003: Real-time Telemetry & WebSocket Hub
+#   - 8004: Autonomous Remediation & GitOps Engine
+#   - 8005: Multi-Cloud Fleet Ingestion & AWS Organizations
+#   - 8006: Multi-Channel Notifications & Incidents
+#   - 8007: Operational Scheduler & Predictive Pre-Warming
+#   - 8008: Kubernetes & OpenCost Rightsizing Engine
+#   - 8009: Guest Agent Onboarding & SSM Generator
+#   - 5432: TimescaleDB / PostgreSQL Hypertable
+#   - 6379: Redis Distributed Cache
+#   - 3000: Next.js Black & White Modern Dashboard
+# =============================================================================
+
+x-common-env: &common-env
+  POSTGRES_HOST: timescaledb
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: cloudpulse_db
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgrespassword
+  DATABASE_URL: postgresql://postgres:postgrespassword@timescaledb:5432/cloudpulse_db
+  ASYNC_DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/cloudpulse_db
+  REDIS_URL: redis://redis:6379/0
+  LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
+  GROQ_API_KEY: ${GROQ_API_KEY}
+  MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+  TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: cloudpulse-micro-timescaledb
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=cloudpulse_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgrespassword
+    volumes:
+      - micro-timescaledb-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cloudpulse_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloudpulse-micro-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - micro-redis-data:/data
+
+  # 1. API Gateway Orchestrator
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-gateway
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+      PORT: 8000
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # 2. Copilot & SemIf Decision Service
+  copilot-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-copilot-service
+    command: ["uvicorn", "microservices.copilot_service:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
+    environment:
+      <<: *common-env
+      PORT: 8001
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 3. Analytics & Lakehouse Service
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-analytics-service
+    command: ["uvicorn", "microservices.analytics_service:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
+    environment:
+      <<: *common-env
+      PORT: 8002
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 4. Telemetry & Streaming Service
+  telemetry-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-telemetry-service
+    command: ["uvicorn", "microservices.telemetry_service:app", "--host", "0.0.0.0", "--port", "8003"]
+    ports:
+      - "8003:8003"
+    environment:
+      <<: *common-env
+      PORT: 8003
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 5. Remediation & GitOps Service
+  remediation-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-remediation-service
+    command: ["uvicorn", "microservices.remediation_service:app", "--host", "0.0.0.0", "--port", "8004"]
+    ports:
+      - "8004:8004"
+    environment:
+      <<: *common-env
+      PORT: 8004
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 6. Fleet Ingestion Service
+  fleet-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-fleet-service
+    command: ["uvicorn", "microservices.fleet_service:app", "--host", "0.0.0.0", "--port", "8005"]
+    ports:
+      - "8005:8005"
+    environment:
+      <<: *common-env
+      PORT: 8005
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 7. Notifications Service
+  notifications-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-notifications-service
+    command: ["uvicorn", "microservices.notifications_service:app", "--host", "0.0.0.0", "--port", "8006"]
+    ports:
+      - "8006:8006"
+    environment:
+      <<: *common-env
+      PORT: 8006
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 8. Scheduler Service
+  scheduler-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-scheduler-service
+    command: ["uvicorn", "microservices.scheduler_service:app", "--host", "0.0.0.0", "--port", "8007"]
+    ports:
+      - "8007:8007"
+    environment:
+      <<: *common-env
+      PORT: 8007
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 9. Kubernetes Service
+  kubernetes-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-kubernetes-service
+    command: ["uvicorn", "microservices.kubernetes_service:app", "--host", "0.0.0.0", "--port", "8008"]
+    ports:
+      - "8008:8008"
+    environment:
+      <<: *common-env
+      PORT: 8008
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+  # 10. Agent Ingestion Service
+  agent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudpulse-agent-service
+    command: ["uvicorn", "microservices.agent_service:app", "--host", "0.0.0.0", "--port", "8009"]
+    ports:
+      - "8009:8009"
+    environment:
+      <<: *common-env
+      PORT: 8009
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+volumes:
+  micro-timescaledb-data:
+  micro-redis-data:

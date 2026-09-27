@@ -285,9 +285,11 @@ class FleetManager:
                 fleet_cache.trigger_async_refresh("fleet_summary", self.scan_fleet_parallel)
             return cached
 
-        if summary.get("accounts_scanned", 0) == 0:
+        if self.accounts:
+            summary = self.scan_fleet_parallel()
+        else:
             summary = {
-                "total_accounts_registered": len(self.accounts),
+                "total_accounts_registered": 0,
                 "accounts_scanned": 0,
                 "successful_scans": 0,
                 "failed_scans": 0,
