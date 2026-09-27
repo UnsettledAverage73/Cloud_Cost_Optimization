@@ -1702,7 +1702,14 @@ async def copilot_generate_iac_pr(payload: dict):
     Generates ready-to-merge Terraform/OpenTofu Pull Request code for safe remediation.
     """
     finding_id = payload.get("finding_id", "find-idle-ec2-m5")
-    resource_id = payload.get("resource_id", "i-09f81a2b3c4d5e6f7")
+    resource_id = payload.get("resource_id")
+    if not resource_id:
+        db = _db()
+        nodes = db.get("nodes", [])
+        if nodes:
+            resource_id = nodes[0].get("instance_id")
+        else:
+            resource_id = "unidentified-workload"
     action_type = payload.get("action_type", "downsize_ec2")
     current_config = payload.get("current_config", {"instance_type": "m5.2xlarge", "name": "worker_node"})
     recommended_config = payload.get("recommended_config", {"instance_type": "t4g.medium"})
@@ -3462,12 +3469,15 @@ async def get_pov_summary(currency: str = "INR", rate: float = 84.0):
     focus_records = FOCUSNormalizer.convert_inventory_to_focus(inventory)
     anomalies = anomaly_detector.scan_inventory_and_focus(inventory, focus_records)
 
-    gross_monthly = inventory.get("summary", {}).get("estimated_monthly_spend", 68.40)
-    savings_monthly = round(gross_monthly * 0.40, 2)
+    gross_monthly = float(inventory.get("summary", {}).get("estimated_monthly_spend", 0.0))
+    eval_res = FinOpsAnalyzer.evaluate(_db())
+    findings = eval_res.get("findings", [])
+    savings_monthly = round(sum(float(f.get("monthly_savings", 0.0)) for f in findings), 2)
     savings_annual = round(savings_monthly * 12, 2)
+    acct_id = inventory.get("metadata", {}).get("account_id") or "Connected Account"
 
     return {
-        "account_id": inventory.get("metadata", {}).get("account_id", "582812122408"),
+        "account_id": acct_id,
         "currency": currency.upper(),
         "exchange_rate": rate,
         "gross_monthly_spend_usd": gross_monthly,

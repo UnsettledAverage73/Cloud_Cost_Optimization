@@ -40,11 +40,8 @@ export function TelemetryView({
   nodes = [],
   apiUrl,
 }: TelemetryViewProps) {
-  const nodeList = Array.isArray(nodes) && nodes.length > 0 ? nodes : [
-    { instance_id: 'i-036358db85d245e3a', name: 'api-gateway-prod', instance_type: 't3.micro' },
-    { instance_id: 'i-09f81a2b3c4d5e6f7', name: 'worker-node-01', instance_type: 't3.medium' },
-  ]
-  const [selectedInstId, setSelectedInstId] = useState<string>(nodeList[0]?.instance_id || 'i-036358db85d245e3a')
+  const nodeList = Array.isArray(nodes) ? nodes : []
+  const [selectedInstId, setSelectedInstId] = useState<string>(nodeList[0]?.instance_id || '')
   const activeNode = nodeList.find((n: any) => n.instance_id === selectedInstId) || nodeList[0]
 
   return (
@@ -55,37 +52,51 @@ export function TelemetryView({
         description="Sub-second streaming of CPU, Memory, Disk, and Network telemetry for every active cloud instance."
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground font-medium">Select Instance:</span>
-            <Select
-              value={selectedInstId}
-              onValueChange={(val) => {
-                if (val) setSelectedInstId(val)
-              }}
-            >
-              <SelectTrigger className="w-56 border-border bg-card text-xs font-mono text-sky-700 dark:text-sky-300">
-                <Server className="size-3.5 mr-1 text-sky-600 dark:text-sky-400" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {nodeList.map((n: any) => (
-                  <SelectItem key={n.instance_id} value={n.instance_id} className="text-xs font-mono">
-                    {n.name ? `${n.name} (${n.instance_id})` : n.instance_id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          nodeList.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground font-medium">Select Instance:</span>
+              <Select
+                value={selectedInstId || nodeList[0]?.instance_id}
+                onValueChange={(val) => {
+                  if (val) setSelectedInstId(val)
+                }}
+              >
+                <SelectTrigger className="w-56 border-border bg-card text-xs font-mono text-foreground">
+                  <Server className="size-3.5 mr-1 text-foreground" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {nodeList.map((n: any) => (
+                    <SelectItem key={n.instance_id} value={n.instance_id} className="text-xs font-mono">
+                      {n.name ? `${n.name} (${n.instance_id})` : n.instance_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : undefined
         }
       />
 
-      {/* 8-Card Real-Time Live Monitoring Grid */}
-      <Ec2MonitoringGrid
-        instanceId={selectedInstId}
-        instanceName={activeNode?.name || 'EC2 Instance'}
-        instanceType={(activeNode as any)?.instance_type || (activeNode as any)?.type || 't3.micro'}
-        apiUrl={apiUrl}
-      />
+      {nodeList.length === 0 ? (
+        <Card className="border-border bg-card p-8 text-center my-6">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full border border-border bg-muted mb-4">
+            <Server className="size-6 text-foreground" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">No Compute Instances Discovered</h3>
+          <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto">
+            Connect your live AWS account in Settings or launch EC2 instances in your configured region to stream real-time CloudWatch telemetry.
+          </p>
+        </Card>
+      ) : (
+        /* 8-Card Real-Time Live Monitoring Grid */
+        <Ec2MonitoringGrid
+          instanceId={selectedInstId || nodeList[0]?.instance_id}
+          instanceName={activeNode?.name || 'EC2 Instance'}
+          instanceType={(activeNode as any)?.instance_type || (activeNode as any)?.type || 't3.micro'}
+          apiUrl={apiUrl}
+        />
+      )}
 
       {/* Fleet-Wide Aggregated Signals */}
       <div className="mt-8 pt-6 border-t border-border space-y-4">
@@ -119,7 +130,7 @@ export function TelemetryView({
                   <CardTitle className="text-sm font-semibold">{title}</CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">{unit} · last {timeframe}</p>
                 </div>
-                <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <span className="size-2 rounded-full bg-foreground" />
               </CardHeader>
               <CardContent className="h-56">
                 {sectionStatus === 'loading' ? (

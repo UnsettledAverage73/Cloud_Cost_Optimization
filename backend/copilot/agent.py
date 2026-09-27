@@ -161,11 +161,11 @@ class FinOpsAutonomousCopilot:
         # Route 1: Spikes / Anomaly / CloudTrail forensics (highest specificity)
         if any(w in msg_lower for w in ["spike", "surge", "anomaly", "who launched", "why did"]):
             tool_res = self.run_tool("cloudtrail_forensics", {"service": "AmazonEC2"})
-            suspect = tool_res.get("primary_suspect", {})
+            suspect = tool_res.get("primary_suspect") or {}
 
             # Synthesize AI-grounded forensic report
             llm_rationale = ""
-            if self.engine and self.engine.is_available():
+            if suspect and suspect.get("event_name") and self.engine and self.engine.is_available():
                 prompt = (
                     f"Explain this CloudTrail event spike investigation to the DevOps team:\n"
                     f"Service: {tool_res.get('service_investigated')}\n"
@@ -434,22 +434,44 @@ class FinOpsAutonomousCopilot:
 
         # Route 4: Remediation / Pull Request / Terraform
         if any(w in msg_lower for w in ["pr", "pull request", "terraform", "iac", "fix", "remediate", "remediation"]):
-            tool_res = self.run_tool("terraform_pr", {
-                "finding_id": "find-idle-ec2-m5",
-                "resource_id": "i-09f81a2b3c4d5e6f7",
-                "action_type": "downsize_ec2",
-                "current_config": {"instance_type": "m5.2xlarge", "name": "ml_training_worker"},
-                "recommended_config": {"instance_type": "t4g.medium"},
-                "monthly_savings": 243.80
-            })
-            answer = (
-                f"✅ **Terraform Pull Request Generated Successfully!**\n\n"
-                f"- **Branch:** `{tool_res.get('branch_name')}`\n"
-                f"- **Title:** `{tool_res.get('pr_title')}`\n"
-                f"- **Estimated Monthly Savings:** **$243.80/month** ($2,925.60/year)\n\n"
-                f"```diff\n{tool_res.get('unified_diff')}\n```\n"
-                f"Ready to submit directly to your GitHub/GitLab repository."
-            )
+            try:
+                from main import _db
+                inv = _db()
+            except Exception:
+                inv = {}
+            nodes = inv.get("nodes", [])
+            idle_nodes = [n for n in nodes if n.get("metrics", {}).get("cpu_utilization_avg", 100) < 15]
+            target_node = idle_nodes[0] if idle_nodes else (nodes[0] if nodes else None)
+
+            if target_node:
+                res_id = target_node.get("instance_id", "unknown-node")
+                curr_type = target_node.get("type", target_node.get("instance_type", "m5.large"))
+                rec_type = "t4g.small" if "micro" in curr_type or "small" in curr_type else "t4g.medium"
+                savings = 45.0 if "micro" in curr_type else 180.0
+                tool_res = self.run_tool("terraform_pr", {
+                    "finding_id": f"find-remediate-{res_id}",
+                    "resource_id": res_id,
+                    "action_type": "downsize_ec2",
+                    "current_config": {"instance_type": curr_type, "name": target_node.get("name", "worker")},
+                    "recommended_config": {"instance_type": rec_type},
+                    "monthly_savings": savings
+                })
+                answer = (
+                    f"✅ **Terraform Pull Request Generated for Live Node `{res_id}`!**\n\n"
+                    f"- **Target Resource:** `{res_id}` ({curr_type} → {rec_type})\n"
+                    f"- **Branch:** `{tool_res.get('branch_name')}`\n"
+                    f"- **Title:** `{tool_res.get('pr_title')}`\n"
+                    f"- **Estimated Monthly Savings:** **${savings:.2f}/month** (${savings * 12:.2f}/year)\n\n"
+                    f"```diff\n{tool_res.get('unified_diff')}\n```\n"
+                    f"Ready to submit directly to your GitHub/GitLab repository."
+                )
+            else:
+                answer = (
+                    f"ℹ️ **Terraform Remediation:**\n\n"
+                    f"No active compute resources found in the live inventory that currently require downsizing or Graviton migration."
+                )
+                tool_res = {"status": "NO_TARGET_RESOURCES"}
+
             return {
                 "answer": answer,
                 "tool_called": "terraform_pr",
@@ -506,9 +528,19 @@ class FinOpsAutonomousCopilot:
         logger.info(f"Diagnosing spike for service {service} on {spike_date}...")
         forensics = investigate_event_spikes(service=service)
         pricing = lookup_aws_pricing(resource_type="m5.2xlarge")
+
+        try:
+            from main import _db
+            inv = _db()
+        except Exception:
+            inv = {}
+        nodes = inv.get("nodes", [])
+        primary_suspect = forensics.get("primary_suspect")
+        suspect_resource = (primary_suspect.get("resources", [None])[0] if primary_suspect else None) or (nodes[0].get("instance_id") if nodes else "unidentified-workload")
+
         pr = generate_terraform_remediation_pr(
             finding_id="spike-anomaly-finding",
-            resource_id="i-09f81a2b3c4d5e6f7",
+            resource_id=suspect_resource,
             action_type="downsize_ec2",
             current_config={"instance_type": "m5.2xlarge", "name": "worker_node"},
             recommended_config={"instance_type": "t4g.medium"},

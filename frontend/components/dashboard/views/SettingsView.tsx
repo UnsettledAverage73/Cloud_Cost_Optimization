@@ -288,7 +288,7 @@ export function SettingsView({
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                <Bell className="size-4 text-sky-600 dark:text-sky-400" />
+                <Bell className="size-4 text-foreground" />
                 Slack & Teams Escalations
               </CardTitle>
               <div className="flex items-center gap-1.5">
@@ -296,8 +296,8 @@ export function SettingsView({
                   variant="outline"
                   className={
                     slackWebhookUrl || slackBotToken
-                      ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10'
-                      : 'border-border text-muted-foreground'
+                      ? 'border-border bg-foreground text-background'
+                      : 'border-border bg-muted text-muted-foreground'
                   }
                 >
                   Slack: {slackWebhookUrl || slackBotToken ? 'Connected' : 'Offline'}
@@ -306,8 +306,8 @@ export function SettingsView({
                   variant="outline"
                   className={
                     teamsWebhookUrl
-                      ? 'border-indigo-500/40 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10'
-                      : 'border-border text-muted-foreground'
+                      ? 'border-border bg-foreground text-background'
+                      : 'border-border bg-muted text-muted-foreground'
                   }
                 >
                   Teams: {teamsWebhookUrl ? 'Connected' : 'Offline'}
@@ -421,11 +421,7 @@ export function SettingsView({
 
             {testFeedback && (
               <div
-                className={`rounded-lg p-3 text-xs ${
-                  testFeedback.type === 'success'
-                    ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                    : 'border border-rose-400/30 bg-rose-400/10 text-rose-300'
-                }`}
+                className="rounded-lg border border-border bg-card p-3 text-xs text-foreground shadow-xs"
               >
                 {testFeedback.message}
               </div>
@@ -434,7 +430,7 @@ export function SettingsView({
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <Button
                 size="sm"
-                className="bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold text-xs shadow-xs"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs"
                 onClick={handleSave}
                 disabled={saving || !loaded}
               >
@@ -453,12 +449,12 @@ export function SettingsView({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs hover:bg-amber-500/20 font-medium"
+                className="border-border bg-card text-xs hover:bg-muted text-foreground font-medium"
                 onClick={triggerIdleAlert}
                 disabled={triggeringIdle}
                 title="Scan connected AWS EC2 instances for low CPU utilization and dispatch real-time Block Kit card to Slack"
               >
-                {triggeringIdle ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Zap className="mr-1 size-3 text-amber-500" />}
+                {triggeringIdle ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Zap className="mr-1 size-3 text-foreground" />}
                 Scan Live CPU & Alert Slack
               </Button>
               <Button
@@ -479,7 +475,7 @@ export function SettingsView({
         <Card className="border-border bg-card shadow-sm lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <History className="size-4 text-sky-600 dark:text-sky-400" />
+              <History className="size-4 text-foreground" />
               Recent Notification Deliveries & Audit Trail
             </CardTitle>
             <Button
@@ -516,7 +512,7 @@ export function SettingsView({
                           {d.iso_time || (d.timestamp ? new Date(d.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19) : 'Just now')}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={d.channel?.includes('slack') ? 'border-sky-500/30 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10' : 'border-indigo-500/30 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10'}>
+                          <Badge variant="outline" className="border-border bg-muted text-foreground">
                             {d.channel?.toUpperCase() || 'WEBHOOK'}
                           </Badge>
                         </TableCell>
@@ -524,7 +520,7 @@ export function SettingsView({
                           {d.target || 'all-average'}
                         </TableCell>
                         <TableCell>
-                          <Badge className={d.status === 'DELIVERED' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'}>
+                          <Badge className="bg-foreground text-background font-mono text-[10px]">
                             {d.status}
                           </Badge>
                         </TableCell>
@@ -543,15 +539,15 @@ export function SettingsView({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {connectionState?.connected ? (
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
-                <div className="text-sm font-medium text-emerald-900 dark:text-emerald-200">{connectionState.account_name || 'Connected account'}</div>
-                <div className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-100/80">
+              <div className="rounded-lg border border-border bg-muted/40 p-4 text-foreground">
+                <div className="text-sm font-medium text-foreground">{connectionState.account_name || 'Connected account'}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
                   {connectionState.provider || 'AWS'} · {connectionState.region || 'us-east-1'}
                 </div>
                 {connectionState.role_arn && (
-                  <div className="mt-2 font-mono text-[11px] text-emerald-800/70 dark:text-emerald-100/70">{connectionState.role_arn}</div>
+                  <div className="mt-2 font-mono text-[11px] text-muted-foreground">{connectionState.role_arn}</div>
                 )}
-                <div className="mt-3 text-xs text-emerald-800/70 dark:text-emerald-100/70">
+                <div className="mt-3 text-xs text-muted-foreground">
                   Active profile is restored from backend storage after refresh.
                 </div>
               </div>

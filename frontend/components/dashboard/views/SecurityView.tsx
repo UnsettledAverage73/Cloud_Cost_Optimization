@@ -142,17 +142,13 @@ export function SecurityView({
 
       {feedback && (
         <div
-          className={`mb-4 flex items-center justify-between rounded-lg border p-3 text-xs ${
-            feedback.type === 'success'
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-              : 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-          }`}
+          className="mb-4 flex items-center justify-between rounded-lg border border-border bg-card p-3 text-xs text-foreground shadow-xs"
         >
           <div className="flex items-center gap-2">
             {feedback.type === 'success' ? (
-              <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+              <CheckCircle2 className="size-4 shrink-0 text-foreground" />
             ) : (
-              <AlertCircle className="size-4 shrink-0 text-rose-400" />
+              <AlertCircle className="size-4 shrink-0 text-foreground" />
             )}
             <span>{feedback.message}</span>
           </div>
@@ -213,7 +209,7 @@ export function SecurityView({
                 <Button
                   variant={sgFilter === 'exposed' ? 'secondary' : 'ghost'}
                   size="sm"
-                  className={`h-7 text-xs px-2.5 ${exposedSecurityGroups.length > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}
+                  className="h-7 text-xs px-2.5 font-medium"
                   onClick={() => setSgFilter('exposed')}
                 >
                   Exposed risks ({exposedSecurityGroups.length})
@@ -221,7 +217,7 @@ export function SecurityView({
                 <Button
                   variant={sgFilter === 'secured' ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="h-7 text-xs px-2.5 text-emerald-600 dark:text-emerald-400"
+                  className="h-7 text-xs px-2.5 font-medium"
                   onClick={() => setSgFilter('secured')}
                 >
                   Secured ({Math.max(0, allSecurityGroups.length - exposedSecurityGroups.length)})
@@ -267,9 +263,9 @@ export function SecurityView({
                           </TableCell>
                           <TableCell>
                             {isExposed ? (
-                              <Badge className="border-rose-400/20 bg-rose-400/10 text-rose-300">Publicly exposed</Badge>
+                              <Badge className="border-border bg-foreground text-background">Publicly exposed</Badge>
                             ) : (
-                              <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex items-center gap-1 w-fit">
+                              <Badge variant="outline" className="border-border bg-muted text-foreground flex items-center gap-1 w-fit">
                                 <ShieldCheck className="size-3" /> Secured
                               </Badge>
                             )}
@@ -281,11 +277,7 @@ export function SecurityView({
                                   <Badge
                                     key={port}
                                     variant="outline"
-                                    className={
-                                      port === 22 || port === 3389
-                                        ? 'border-rose-400/30 text-rose-300 font-mono text-[11px]'
-                                        : 'font-mono text-[11px]'
-                                    }
+                                    className="border-border text-foreground font-mono text-[11px]"
                                   >
                                     {port}
                                     {port === 22 ? ' SSH' : port === 3389 ? ' RDP' : port === 5901 ? ' VNC' : port === 6080 ? ' Web' : ''}
@@ -302,15 +294,14 @@ export function SecurityView({
                             {isExposed ? (
                               <Button
                                 size="sm"
-                                variant="destructive"
-                                className="h-8 text-xs font-semibold"
+                                className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90"
                                 onClick={() => handleRevokeClick(group)}
                               >
                                 Revoke Ingress
                               </Button>
                             ) : (
-                              <span className="text-xs text-emerald-400/80 inline-flex items-center gap-1 font-medium">
-                                <Check className="size-3 text-emerald-400" /> Protected
+                              <span className="text-xs text-muted-foreground inline-flex items-center gap-1 font-medium">
+                                <Check className="size-3 text-foreground" /> Protected
                               </span>
                             )}
                           </TableCell>
@@ -352,7 +343,7 @@ export function SecurityView({
                     <TableRow key={eip.public_ip} className="border-b border-border">
                       <TableCell className="font-mono text-xs">{eip.public_ip}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10">
+                        <Badge variant="outline" className="border-border bg-muted text-foreground">
                           Unattached
                         </Badge>
                       </TableCell>
@@ -363,14 +354,14 @@ export function SecurityView({
               </Table>
             ) : (
               <div className="p-6">
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center sm:text-left flex flex-col sm:flex-row items-center gap-4">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    <CheckCircle2 className="size-6" />
+                <div className="rounded-xl border border-border bg-card p-6 text-center sm:text-left flex flex-col sm:flex-row items-center gap-4">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted text-foreground border border-border">
+                    <CheckCircle2 className="size-6 text-foreground" />
                   </div>
                   <div className="flex-1 space-y-1">
                     <div className="text-sm font-semibold text-foreground flex items-center gap-2 justify-center sm:justify-start">
                       Optimal FinOps Hygiene: Zero Unattached Elastic IPs
-                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 text-[10px]">
+                      <Badge variant="outline" className="border-border bg-muted text-foreground text-[10px]">
                         $0.00 / mo Waste
                       </Badge>
                     </div>
@@ -388,15 +379,15 @@ export function SecurityView({
           <Card className="border-border bg-card p-6 space-y-4 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20">
-                  <Activity className="size-5" />
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground border border-border">
+                  <Activity className="size-5 text-foreground" />
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold text-foreground">VPC Flow Logs & Security Telemetry</h4>
                   <p className="text-xs text-muted-foreground">Real-time packet inspection and port brute-force detection</p>
                 </div>
               </div>
-              <Badge variant="outline" className="border-sky-500/30 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10 text-xs">
+              <Badge variant="outline" className="border-border bg-muted text-foreground text-xs">
                 CloudWatch Insights
               </Badge>
             </div>
@@ -408,7 +399,7 @@ export function SecurityView({
               </div>
               <div className="rounded-lg border border-border bg-muted/30 p-3">
                 <div className="text-[11px] text-muted-foreground">VPC Packet Rejection</div>
-                <div className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">Flow Logs Active</div>
+                <div className="mt-1 text-xs font-semibold text-foreground">Flow Logs Active</div>
               </div>
               <div className="rounded-lg border border-border bg-muted/30 p-3">
                 <div className="text-[11px] text-muted-foreground">Target AWS Region</div>
@@ -444,8 +435,8 @@ export function SecurityView({
       <Dialog open={revokeModalOpen} onOpenChange={setRevokeModalOpen}>
         <DialogContent className="border-border bg-card sm:max-w-md shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <AlertTriangle className="size-5 text-amber-500 shrink-0" />
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <AlertTriangle className="size-5 text-foreground shrink-0" />
               Confirm Ingress Revocation
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -454,11 +445,11 @@ export function SecurityView({
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-xs">
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-200 leading-relaxed">
+            <div className="rounded-lg border border-border bg-muted p-3 text-foreground leading-relaxed">
               <span className="font-semibold">Warning:</span> Revoking <code>0.0.0.0/0</code> ingress will close public access on:
               <div className="mt-1.5 flex flex-wrap gap-1 font-mono">
                 {(selectedGroupToRevoke?.exposed_ports || []).map((port: number) => (
-                  <Badge key={port} variant="outline" className="border-amber-400/40 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-400/10 text-[10px]">
+                  <Badge key={port} variant="outline" className="border-border bg-card text-foreground text-[10px]">
                     Port {port}
                   </Badge>
                 ))}
@@ -473,7 +464,7 @@ export function SecurityView({
             <Button variant="outline" size="sm" onClick={() => setRevokeModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" size="sm" disabled={revoking} onClick={confirmRevoke}>
+            <Button size="sm" className="bg-foreground text-background hover:bg-foreground/90 font-semibold" disabled={revoking} onClick={confirmRevoke}>
               {revoking ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <ShieldAlert className="mr-1.5 size-3.5" />}
               {revoking ? 'Revoking Ingress...' : 'Confirm & Revoke Ingress'}
             </Button>
