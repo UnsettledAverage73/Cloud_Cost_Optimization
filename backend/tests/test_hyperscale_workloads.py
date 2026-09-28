@@ -163,3 +163,26 @@ def test_fastapi_hyperscale_endpoints():
 
     # Restore policy
     client.post("/api/v2/policies/pol-idle-dev-cpu/toggle", json={"is_enabled": True})
+
+
+def test_policy_remediation_and_commitments():
+    """Verifies 1-click Terraform PR generation for guardrails and commitment arbitrage engine."""
+    # 1. Remediate zombie EBS volume
+    res_rem = client.post("/api/v2/policies/pol-zombie-ebs/remediate", json={"resource_id": "vol-0a1b2c3d4e5f"})
+    assert res_rem.status_code == 200
+    rem_data = res_rem.json()
+    assert rem_data["status"] == "success"
+    assert "terraform_hcl" in rem_data
+    assert "resource \"aws_ebs_snapshot\"" in rem_data["terraform_hcl"]
+    assert rem_data["estimated_monthly_savings"] > 0
+    assert "canary_watchdog_id" in rem_data
+
+    # 2. Get commitment portfolio
+    res_port = client.get("/api/v2/commitments/portfolio?coverage_target=0.80")
+    assert res_port.status_code == 200
+    port_data = res_port.json()
+    assert port_data["coverage_target_ratio"] == 0.80
+    assert len(port_data["plans"]) >= 3
+    assert port_data["plans"][0]["monthly_savings"] > 0
+    assert "iac_templates" in port_data
+    assert "aws_savingsplans_savings_plan" in port_data["iac_templates"]["terraform"]

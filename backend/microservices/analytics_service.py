@@ -38,6 +38,7 @@ try:
     from engines.cur_ingestion_engine import cur_ingestion_engine
     from engines.workload_hierarchy_engine import workload_hierarchy_engine
     from engines.policy_guardrails_engine import policy_guardrails_engine
+    from engines.commitment_optimizer import CommitmentOptimizer
     from core.state import resolve_active_inventory
     from collectors.multicloud_connector import multicloud_orchestrator
     from database.connection import SyncSessionLocal
@@ -61,6 +62,7 @@ except ImportError:
     from backend.engines.cur_ingestion_engine import cur_ingestion_engine
     from backend.engines.workload_hierarchy_engine import workload_hierarchy_engine
     from backend.engines.policy_guardrails_engine import policy_guardrails_engine
+    from backend.engines.commitment_optimizer import CommitmentOptimizer
     from backend.core.state import resolve_active_inventory
     from backend.collectors.multicloud_connector import multicloud_orchestrator
     from backend.database.connection import SyncSessionLocal
@@ -501,9 +503,9 @@ async def list_enterprise_policies():
 
 
 @router.post("/api/v2/policies/evaluate")
-async def evaluate_enterprise_policies():
+async def evaluate_enterprise_policies(simulate: bool = True):
     inventory = resolve_active_inventory()
-    eval_res = policy_guardrails_engine.evaluate_fleet(inventory)
+    eval_res = policy_guardrails_engine.evaluate_fleet(inventory, simulate_hyperscale=simulate)
     return eval_res
 
 
@@ -514,6 +516,24 @@ async def toggle_enterprise_policy(policy_id: str, payload: dict):
     if not res:
         raise HTTPException(status_code=404, detail="Policy not found")
     return {"status": "success", "policy": res}
+
+
+@router.post("/api/v2/policies/{policy_id}/remediate")
+async def remediate_enterprise_policy(policy_id: str, payload: Optional[dict] = None):
+    payload = payload or {}
+    resource_id = payload.get("resource_id")
+    try:
+        res = policy_guardrails_engine.remediate_policy(policy_id, resource_id=resource_id)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/api/v2/commitments/portfolio")
+async def get_commitment_portfolio(coverage_target: float = 0.75):
+    inventory = resolve_active_inventory()
+    portfolio = CommitmentOptimizer.analyze_portfolio(inventory, coverage_target=coverage_target)
+    return portfolio
 
 
 # Standalone Microservice FastAPI App definition

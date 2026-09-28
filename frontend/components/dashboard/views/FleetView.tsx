@@ -18,7 +18,12 @@ import {
   ChevronDown,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  TrendingUp,
+  GitPullRequest,
+  Copy,
+  Check,
+  Sliders
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +39,7 @@ import { formatCurrency, formatInteger } from '@/lib/formatters'
 import type { Currency } from '@/types/dashboard'
 
 export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR'; apiUrl: (path: string) => string }) {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'workloads' | 'guardrails'>('accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'workloads' | 'guardrails' | 'commitments'>('accounts');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<any>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -55,6 +60,19 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
   const [policies, setPolicies] = useState<any[]>([]);
   const [policyEval, setPolicyEval] = useState<any | null>(null);
   const [evaluatingPolicies, setEvaluatingPolicies] = useState(false);
+  const [simulateHyperscale, setSimulateHyperscale] = useState(true);
+
+  // Remediation Modal State
+  const [remediateModalOpen, setRemediateModalOpen] = useState(false);
+  const [remediationData, setRemediationData] = useState<any | null>(null);
+  const [remediatingPolicyId, setRemediatingPolicyId] = useState<string | null>(null);
+  const [copiedTf, setCopiedTf] = useState(false);
+
+  // Commitment Portfolio State
+  const [portfolio, setPortfolio] = useState<any | null>(null);
+  const [coverageTarget, setCoverageTarget] = useState<number>(0.75);
+  const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+  const [copiedCli, setCopiedCli] = useState(false);
 
   // Enroll Account state
   const [enrollOpen, setEnrollOpen] = useState(false);
@@ -169,7 +187,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
   const handleEvaluatePolicies = async () => {
     setEvaluatingPolicies(true);
     try {
-      const res = await fetch(apiUrl('/api/v2/policies/evaluate'), { method: 'POST' });
+      const res = await fetch(apiUrl(`/api/v2/policies/evaluate?simulate=${simulateHyperscale}`), { method: 'POST' });
       if (res.ok) {
         setPolicyEval(await res.json());
       }
@@ -179,6 +197,46 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
       setEvaluatingPolicies(false);
     }
   };
+
+  const handleRemediatePolicy = async (policyId: string, resourceId?: string) => {
+    setRemediatingPolicyId(policyId);
+    try {
+      const res = await fetch(apiUrl(`/api/v2/policies/${policyId}/remediate`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resource_id: resourceId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRemediationData(data);
+        setRemediateModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Failed to remediate policy:', err);
+    } finally {
+      setRemediatingPolicyId(null);
+    }
+  };
+
+  const fetchPortfolio = useCallback(async (target: number) => {
+    setLoadingPortfolio(true);
+    try {
+      const res = await fetch(apiUrl(`/api/v2/commitments/portfolio?coverage_target=${target}`));
+      if (res.ok) {
+        setPortfolio(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch commitment portfolio:', err);
+    } finally {
+      setLoadingPortfolio(false);
+    }
+  }, [apiUrl]);
+
+  useEffect(() => {
+    if (activeTab === 'commitments') {
+      fetchPortfolio(coverageTarget);
+    }
+  }, [activeTab, coverageTarget, fetchPortfolio]);
 
   const handleTogglePolicy = async (policyId: string, currentEnabled: boolean) => {
     try {
@@ -297,7 +355,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
 
         <button
           onClick={() => setActiveTab('guardrails')}
-          className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
+          className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
             activeTab === 'guardrails'
               ? 'border-foreground text-foreground'
               : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -306,6 +364,19 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
           <ShieldCheck className="size-3.5" />
           <span>Automated Policy Guardrails</span>
           <Badge variant="outline" className="text-[10px] py-0 px-1 border-border">{policies.length}</Badge>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('commitments')}
+          className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
+            activeTab === 'commitments'
+              ? 'border-foreground text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <TrendingUp className="size-3.5" />
+          <span>Commitment Portfolio & Arbitrage</span>
+          <Badge variant="outline" className="text-[10px] py-0 px-1 border-border">Savings Plans</Badge>
         </button>
       </div>
 
@@ -640,15 +711,26 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 Continuously evaluates 50,000+ resources against idle CPU, detached storage, and scheduling rules.
               </p>
             </div>
-            <Button
-              size="sm"
-              className="bg-primary text-primary-foreground hover:opacity-90 text-xs font-medium"
-              onClick={handleEvaluatePolicies}
-              disabled={evaluatingPolicies}
-            >
-              {evaluatingPolicies ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Play className="size-3.5 mr-1.5" />}
-              {evaluatingPolicies ? 'Evaluating Fleet...' : 'Run Guardrails Fleet Sweep'}
-            </Button>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={simulateHyperscale}
+                  onChange={e => setSimulateHyperscale(e.target.checked)}
+                  className="rounded border-border accent-foreground size-3.5"
+                />
+                <span>Simulate 50k Fleet</span>
+              </label>
+              <Button
+                size="sm"
+                className="bg-primary text-primary-foreground hover:opacity-90 text-xs font-medium"
+                onClick={handleEvaluatePolicies}
+                disabled={evaluatingPolicies}
+              >
+                {evaluatingPolicies ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Play className="size-3.5 mr-1.5" />}
+                {evaluatingPolicies ? 'Evaluating Fleet...' : 'Run Guardrails Fleet Sweep'}
+              </Button>
+            </div>
           </div>
 
           {policyEval && (
@@ -674,38 +756,272 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
           )}
 
           <div className="space-y-3">
-            {policies.map(pol => (
-              <Card key={pol.id} className="border-border bg-card">
-                <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-foreground">{pol.name}</span>
-                      <Badge variant="outline" className="text-[10px] py-0 border-border uppercase">
-                        {pol.severity}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] py-0 border-border">
-                        {pol.category}
-                      </Badge>
+            {policies.map(pol => {
+              const evalItem = policyEval?.policy_evaluations?.find((e: any) => e.policy?.id === pol.id);
+              const violationCount = evalItem?.violation_count || 0;
+              const potSavings = evalItem?.potential_monthly_savings || 0;
+
+              return (
+                <Card key={pol.id} className="border-border bg-card">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">{pol.name}</span>
+                          <Badge variant="outline" className="text-[10px] py-0 border-border uppercase">
+                            {pol.severity}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px] py-0 border-border">
+                            {pol.category}
+                          </Badge>
+                          {violationCount > 0 && (
+                            <Badge variant="outline" className="text-[10px] py-0 border-border text-foreground font-semibold">
+                              {violationCount} Violations
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{pol.description}</p>
+                        <p className="text-[11px] font-mono text-muted-foreground">Condition: {pol.condition} &rarr; Action: {pol.action}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {violationCount > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs border-border flex items-center gap-1.5"
+                            onClick={() => handleRemediatePolicy(pol.id)}
+                            disabled={remediatingPolicyId === pol.id}
+                          >
+                            {remediatingPolicyId === pol.id ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <GitPullRequest className="size-3" />
+                            )}
+                            <span>1-Click Remediate PR ({formatCurrency(potSavings, currency)}/mo)</span>
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={`h-7 text-xs border-border font-medium ${pol.is_enabled ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+                          onClick={() => handleTogglePolicy(pol.id, pol.is_enabled)}
+                        >
+                          {pol.is_enabled ? 'Enabled' : 'Disabled'}
+                        </Button>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">{pol.description}</p>
-                    <p className="text-[11px] font-mono text-muted-foreground">Condition: {pol.condition} &rarr; Action: {pol.action}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className={`h-7 text-xs border-border font-medium ${pol.is_enabled ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
-                      onClick={() => handleTogglePolicy(pol.id, pol.is_enabled)}
-                    >
-                      {pol.is_enabled ? 'Enabled' : 'Disabled'}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+
+                    {evalItem?.matched_resources && evalItem.matched_resources.length > 0 && (
+                      <div className="pt-2 border-t border-border/60">
+                        <span className="text-[11px] font-medium text-muted-foreground block mb-1.5">Sample Non-Compliant Resources:</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {evalItem.matched_resources.slice(0, 3).map((r: any, idx: number) => (
+                            <div key={idx} className="p-2 rounded border border-border/60 bg-muted/20 text-xs">
+                              <div className="font-mono text-[11px] font-semibold text-foreground truncate">{r.resource_id}</div>
+                              <div className="text-[11px] text-muted-foreground truncate">{r.name} &bull; {r.metric}</div>
+                              <div className="text-[11px] text-foreground font-medium mt-0.5">Recover +{formatCurrency(r.recoverable_savings, currency)}/mo</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}
+
+      {/* TAB 4: COMMITMENT PORTFOLIO & ARBITRAGE */}
+      {activeTab === 'commitments' && (
+        <div className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border border-border bg-card">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <TrendingUp className="size-4" /> Enterprise Savings Plans & RI Commitment Portfolio
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Automated rate arbitrage for steady-state compute floor across AWS Organizations with zero downtime risk.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <Sliders className="size-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Target Coverage:</span>
+                <span className="font-bold text-foreground">{Math.round(coverageTarget * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.50"
+                max="0.95"
+                step="0.05"
+                value={coverageTarget}
+                onChange={e => setCoverageTarget(parseFloat(e.target.value))}
+                className="w-32 accent-foreground cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {loadingPortfolio ? (
+            <div className="p-12 text-center">
+              <Loader2 className="size-6 animate-spin mx-auto text-muted-foreground" />
+              <p className="text-xs text-muted-foreground mt-2">Modeling commitment scenarios...</p>
+            </div>
+          ) : portfolio ? (
+            <>
+              {/* Financial KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="border-border bg-card">
+                  <CardContent className="p-4">
+                    <span className="text-xs text-muted-foreground">Steady-State Baseline</span>
+                    <div className="text-2xl font-bold mt-1 text-foreground">
+                      {formatCurrency(portfolio.steady_state_monthly_compute, currency)}/mo
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">24/7 minimum compute floor</span>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardContent className="p-4">
+                    <span className="text-xs text-muted-foreground">Hourly Commitment Target</span>
+                    <div className="text-2xl font-bold mt-1 text-foreground">
+                      ${portfolio.recommended_hourly_commitment}/hr
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      At {Math.round(portfolio.coverage_target_ratio * 100)}% coverage
+                    </span>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardContent className="p-4">
+                    <span className="text-xs text-muted-foreground">Discounted Spend Share</span>
+                    <div className="text-2xl font-bold mt-1 text-foreground">
+                      {formatCurrency(portfolio.covered_monthly_spend, currency)}/mo
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">Protected against on-demand pricing</span>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardContent className="p-4">
+                    <span className="text-xs text-muted-foreground">On-Demand Risk Exposure</span>
+                    <div className="text-2xl font-bold mt-1 text-foreground">
+                      {formatCurrency(portfolio.on_demand_exposed_monthly_spend, currency)}/mo
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">Buffer for elasticity & scaling</span>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Plan Options Comparison */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {portfolio.plans?.map((p: any) => (
+                  <Card key={p.plan_id} className={`border-border bg-card flex flex-col justify-between ${p.recommended ? 'ring-1 ring-foreground' : ''}`}>
+                    <CardHeader className="p-4 pb-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <Badge variant="outline" className="text-[10px] py-0 border-border uppercase">
+                          {p.term}
+                        </Badge>
+                        {p.recommended && (
+                          <Badge className="bg-foreground text-background text-[10px] py-0 font-medium">
+                            Recommended
+                          </Badge>
+                        )}
+                      </div>
+                      <CardTitle className="text-sm font-semibold text-foreground">{p.name}</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Locks in a {Math.round(p.discount_rate * 100)}% effective discount rate.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2 space-y-3">
+                      <div className="p-3 rounded border border-border bg-muted/20">
+                        <div className="text-xs text-muted-foreground">Projected Annual Savings</div>
+                        <div className="text-xl font-bold text-foreground mt-0.5">
+                          {formatCurrency(p.annual_savings, currency)}/yr
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {formatCurrency(p.monthly_savings, currency)}/mo net savings
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Upfront Cost:</span>
+                          <span className="font-semibold text-foreground">$0.00 (No Upfront)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Break-Even Period:</span>
+                          <span className="font-semibold text-foreground">Day 1 (Immediate ROI)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Risk Classification:</span>
+                          <span className="font-semibold text-foreground">{p.risk_level}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* IaC Automation Block */}
+              <Card className="border-border bg-card">
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-sm font-semibold text-foreground">Infrastructure as Code (IaC) Execution Template</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Deploy via GitOps pipeline or execute via AWS CLI to activate savings.</p>
+                </CardHeader>
+                <CardContent className="p-4 pt-2 space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-mono font-medium text-foreground">terraform/commitments.tf</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] border-border"
+                        onClick={() => {
+                          navigator.clipboard.writeText(portfolio.iac_templates.terraform);
+                          setCopiedTf(true);
+                          setTimeout(() => setCopiedTf(false), 2000);
+                        }}
+                      >
+                        {copiedTf ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                        {copiedTf ? 'Copied' : 'Copy HCL'}
+                      </Button>
+                    </div>
+                    <pre className="p-3 rounded bg-muted/40 border border-border text-[11px] font-mono text-foreground overflow-x-auto whitespace-pre">
+                      {portfolio.iac_templates.terraform}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-mono font-medium text-foreground">AWS CLI Command</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] border-border"
+                        onClick={() => {
+                          navigator.clipboard.writeText(portfolio.iac_templates.aws_cli);
+                          setCopiedCli(true);
+                          setTimeout(() => setCopiedCli(false), 2000);
+                        }}
+                      >
+                        {copiedCli ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                        {copiedCli ? 'Copied' : 'Copy CLI'}
+                      </Button>
+                    </div>
+                    <pre className="p-3 rounded bg-muted/40 border border-border text-[11px] font-mono text-foreground overflow-x-auto whitespace-pre">
+                      {portfolio.iac_templates.aws_cli}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
+        </div>
+      )}
+
 
       {/* Enroll Account Modal */}
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
@@ -775,6 +1091,83 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* 1-Click Remediation PR Modal */}
+      <Dialog open={remediateModalOpen} onOpenChange={setRemediateModalOpen}>
+        <DialogContent className="border-border bg-background sm:max-w-xl text-foreground">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+              <GitPullRequest className="size-4" /> Autonomous FinOps GitOps PR Generated
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Production Terraform PR constructed with closed-loop SLA watchdog canary monitoring.
+            </DialogDescription>
+          </DialogHeader>
+
+          {remediationData && (
+            <div className="space-y-4 pt-2 text-xs">
+              <div className="grid grid-cols-2 gap-2 p-3 rounded border border-border bg-muted/20">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">GitOps Target Branch</span>
+                  <span className="font-mono font-semibold text-foreground truncate block">{remediationData.branch_name}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Estimated Monthly Recovery</span>
+                  <span className="font-semibold text-foreground">{formatCurrency(remediationData.estimated_monthly_savings, currency)}/mo</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">SLA Canary Watchdog</span>
+                  <span className="font-mono text-foreground">{remediationData.canary_watchdog_id} (60m Window)</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Policy Rule</span>
+                  <span className="font-semibold text-foreground">{remediationData.policy_name}</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-semibold text-xs text-foreground">Generated Terraform / OpenTofu HCL</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[11px] border-border"
+                    onClick={() => {
+                      navigator.clipboard.writeText(remediationData.terraform_hcl);
+                      setCopiedTf(true);
+                      setTimeout(() => setCopiedTf(false), 2000);
+                    }}
+                  >
+                    {copiedTf ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                    {copiedTf ? 'Copied HCL' : 'Copy HCL'}
+                  </Button>
+                </div>
+                <pre className="p-3 rounded bg-muted/40 border border-border font-mono text-[11px] text-foreground max-h-56 overflow-y-auto whitespace-pre">
+                  {remediationData.terraform_hcl}
+                </pre>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs border-border"
+                  onClick={() => setRemediateModalOpen(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground text-xs"
+                  onClick={() => setRemediateModalOpen(false)}
+                >
+                  Merge via CI/CD GitOps
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>
