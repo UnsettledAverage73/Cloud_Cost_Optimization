@@ -24,6 +24,8 @@ import { MetricCard, SectionTitle, SectionStatusBadge } from '@/components/dashb
 import { formatCurrency, formatInteger } from '@/lib/formatters'
 import type { Currency, ViewType } from '@/types/dashboard'
 
+import { FeatureExplainer } from '@/components/ui/feature-explainer'
+
 interface OverviewViewProps {
   accessMode?: string
   setView: (view: ViewType) => void
@@ -92,16 +94,24 @@ export function OverviewView({
         status={<SectionStatusBadge status={sectionStatus} />}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              className="border-border bg-card text-foreground hover:bg-muted font-medium"
-              onClick={() => setPovOpen(true)}
-            >
-              <FileText className="mr-2 size-4 text-foreground" />Executive PoV Audit
-            </Button>
-            <Button variant="outline" onClick={() => setView('optimization')} className="border-border bg-card text-foreground hover:bg-muted">
-              <Sparkles className="mr-1.5 size-4 text-foreground" />View savings opportunities
-            </Button>
+            <FeatureExplainer featureKey="control-pov-audit" placement="bottom">
+              <Button
+                variant="outline"
+                className="border-border bg-card text-foreground hover:bg-muted font-medium transition-all duration-150"
+                onClick={() => setPovOpen(true)}
+              >
+                <FileText className="mr-2 size-4 text-foreground" />Executive PoV Audit
+              </Button>
+            </FeatureExplainer>
+            <FeatureExplainer featureKey="action-savings-view" placement="bottom">
+              <Button
+                variant="outline"
+                onClick={() => setView('optimization')}
+                className="border-border bg-card text-foreground hover:bg-muted transition-all duration-150"
+              >
+                <Sparkles className="mr-1.5 size-4 text-foreground" />View savings opportunities
+              </Button>
+            </FeatureExplainer>
           </div>
         }
       />
@@ -123,6 +133,7 @@ export function OverviewView({
               detail={`Last synced ${lastSynced}`}
               tone="sky"
               trend="Live"
+              featureKey="metric-total-spend"
             />
             <MetricCard
               icon={Cpu}
@@ -130,6 +141,7 @@ export function OverviewView({
               value={formatInteger(activeNodes)}
               detail={`${formatInteger(Math.max(totalNodes - activeNodes, 0))} stopped · ${formatInteger(totalNodes)} total`}
               tone="emerald"
+              featureKey="metric-active-nodes"
             />
             <MetricCard
               icon={ArrowDownRight}
@@ -137,6 +149,7 @@ export function OverviewView({
               value={formatCurrency(wastedSpend, currency)}
               detail="Actionable savings"
               tone="amber"
+              featureKey="metric-wasted-spend"
             />
             <MetricCard
               icon={ShieldAlert}
@@ -144,6 +157,7 @@ export function OverviewView({
               value={formatInteger(criticalRisks)}
               detail="Exposure alerts from the backend"
               tone="rose"
+              featureKey="metric-security-risks"
             />
           </>
         )}
@@ -258,68 +272,69 @@ export function OverviewView({
 
       {/* PoV Executive Modal */}
       <Dialog open={povOpen} onOpenChange={setPovOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border border-border bg-card text-foreground shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
-              <FileText className="size-4 text-foreground" />
+        <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 border border-border bg-card text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg font-bold text-foreground">
+              <FileText className="size-5 text-foreground shrink-0" />
               Enterprise Proof-of-Value (PoV) Audit Dossier
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
               Executive briefing summarizing waste reduction, financial ROI, and production guardrail posture.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+
+          <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-border bg-muted/40 p-3.5 shadow-xs flex flex-col justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">Annual Run Rate</span>
-                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-foreground">
+                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-foreground truncate">
                   {povData?.gross_annual_spend_formatted || formatCurrency(totalSpend * 12, currency)}
                 </div>
               </div>
-              <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
+              <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs flex flex-col justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">Recoverable / Year</span>
-                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-foreground">
+                <div className="mt-1 text-sm sm:text-base font-bold font-mono text-foreground truncate">
                   {povData?.recoverable_annual_savings_formatted || formatCurrency(wastedSpend * 12, currency)}
                 </div>
               </div>
-              <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
+              <div className="rounded-xl border border-border bg-card p-3.5 shadow-xs flex flex-col justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">Actionable Waste</span>
                 <div className="mt-1 text-sm sm:text-base font-bold font-mono text-foreground">
                   {povData?.waste_percentage ?? 0}%
                 </div>
               </div>
-              <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+              <div className="rounded-xl border border-border bg-muted/40 p-3.5 shadow-xs flex flex-col justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">Security Posture</span>
-                <div className="mt-1 text-sm sm:text-base font-bold text-foreground">98.2% CIS</div>
+                <div className="mt-1 text-sm sm:text-base font-bold text-foreground truncate">98.2% CIS Benchmark</div>
               </div>
             </div>
 
             <div className="rounded-xl border border-border bg-muted/30 p-4 text-xs space-y-2">
               <div className="font-bold text-foreground">Audit Highlights & Vectors Identified:</div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-muted-foreground">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-muted-foreground">
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-foreground" />
+                  <CheckCircle2 className="size-3.5 text-foreground shrink-0" />
                   <span>Compute: Graviton ARM64 Rightsizing</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-foreground" />
+                  <CheckCircle2 className="size-3.5 text-foreground shrink-0" />
                   <span>Storage: gp2 to gp3 Volume Upgrade</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-foreground" />
+                  <CheckCircle2 className="size-3.5 text-foreground shrink-0" />
                   <span>Network: Unused EIPs & Idle Load Balancers</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-foreground" />
+                  <CheckCircle2 className="size-3.5 text-foreground shrink-0" />
                   <span>SLA Watchdog: 60-min CloudWatch Rollback</span>
                 </div>
               </div>
             </div>
 
             {/* Persona-Specific Audit Dossiers Selection */}
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2.5">
               <span className="text-xs font-bold text-foreground">Select Report Persona & Dossier Format:</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(reportCatalog.length > 0 ? reportCatalog : [
                   { id: 'executive', name: 'Executive CFO Board Dossier', description: 'Financial run-rate, waste %, dual currency, and commitment arbitrage.', target_audience: 'CFO, Finance VP' },
                   { id: 'engineering', name: 'Engineering Rightsizing Matrix', description: 'Node-level CPU/RAM, ASGs, downsize recommendations, and Graviton roadmap.', target_audience: 'VP Eng, DevOps Leads' },
@@ -330,39 +345,50 @@ export function OverviewView({
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedReportType(cat.id)}
-                    className={`p-3 rounded-lg border text-left transition-all ${
+                    className={`p-3.5 rounded-lg border text-left transition-all flex flex-col justify-between ${
                       selectedReportType === cat.id
                         ? 'border-foreground bg-muted/50 ring-1 ring-foreground'
                         : 'border-border bg-card hover:bg-muted/20'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs text-foreground">{cat.name}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-xs text-foreground leading-tight">{cat.name}</span>
                       {selectedReportType === cat.id && (
-                        <Badge className="bg-foreground text-background text-[9px] py-0 px-1">Selected</Badge>
+                        <Badge className="bg-foreground text-background text-[9px] py-0 px-1.5 shrink-0">Selected</Badge>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{cat.description}</p>
-                    <span className="text-[10px] text-muted-foreground block mt-1.5 font-mono">Audience: {cat.target_audience}</span>
+                    <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">{cat.description}</p>
+                    <span className="text-[10px] text-muted-foreground block mt-2 font-mono">Audience: {cat.target_audience}</span>
                   </button>
                 ))}
               </div>
             </div>
+          </div>
 
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
-              <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)}>Close</Button>
+          {/* Dialog Sticky Footer */}
+          <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+            <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)} className="w-full sm:w-auto">
+              Close
+            </Button>
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+              <a
+                href={apiUrl('/api/v2/analytics/pov/report.html')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto"
+              >
+                <Button variant="outline" size="sm" className="w-full sm:w-auto border-border bg-card hover:bg-muted text-foreground">
+                  <ExternalLink className="mr-1.5 size-3.5" />Interactive HTML
+                </Button>
+              </a>
               <a
                 href={apiUrl(`/api/v2/reports/pdf?report_type=${selectedReportType}&currency=${currency}`)}
                 target="_blank"
                 rel="noopener noreferrer"
+                className="w-full sm:w-auto"
               >
                 <Button size="sm" className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-xs">
                   <Download className="mr-1.5 size-3.5" />Download {selectedReportType === 'executive' ? 'Executive CFO' : selectedReportType === 'engineering' ? 'Engineering' : selectedReportType === 'security_hygiene' ? 'Security & Waste' : 'Telemetry SLA'} PDF
-                </Button>
-              </a>
-              <a href={apiUrl('/api/v2/analytics/pov/report.html')} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm" className="w-full sm:w-auto border-border bg-card hover:bg-muted text-foreground">
-                  <ExternalLink className="mr-1.5 size-3.5" />Interactive HTML
                 </Button>
               </a>
             </div>

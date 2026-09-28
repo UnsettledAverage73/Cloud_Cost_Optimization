@@ -22,4 +22,21 @@ describe('MetricCard Component', () => {
     expect(props.value).toBe('$4,280')
     expect(props.tone).toBe('cyan')
   })
+
+  it('supports featureKey and custom explainer props for Apple-style hover insights', () => {
+    const props = {
+      icon: CircleDollarSign,
+      label: 'Monthly Spend',
+      value: '$4,280',
+      featureKey: 'metric-total-spend',
+      explainer: {
+        title: 'Total Monthly Spend',
+        description: 'Estimated cloud run rate over 30 days',
+        impact: 'Tracks overall cloud budget consumption',
+      }
+    }
+
+    expect(props.featureKey).toBe('metric-total-spend')
+    expect(props.explainer.title).toBe('Total Monthly Spend')
+  })
 })

@@ -186,6 +186,13 @@ export interface MetricCardProps {
   detail?: string
   tone?: 'cyan' | 'sky' | 'indigo' | 'emerald' | 'purple' | 'amber' | 'rose' | 'red' | 'blue' | 'neutral'
   trend?: string
+  featureKey?: string
+  explainer?: {
+    title?: string
+    description?: string
+    impact?: string
+    tip?: string
+  }
 }
 
 export interface SectionTitleProps {

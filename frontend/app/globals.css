@@ -204,3 +204,25 @@ html, body {
 .animate-mono-pulse {
   animation: monochrome-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* ==========================================================================
+   APPLE HUMAN INTERFACE & GOOGLE CORE PERFORMANCE UTILITIES
+   - Natural spring physics: cubic-bezier(0.16, 1, 0.3, 1)
+   - Monochrome hairline depth & zero-jank micro-interactions
+   ========================================================================== */
+:root {
+  --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-spring {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-card-hover {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-card-hover:hover {
+  transform: translateY(-1.5px);
+}
+

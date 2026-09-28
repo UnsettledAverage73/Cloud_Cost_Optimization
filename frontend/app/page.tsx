@@ -51,6 +51,7 @@ import dynamic from 'next/dynamic'
 import { ConnectModal } from '@/components/dashboard/modals/ConnectModal'
 import { CommandPaletteModal } from '@/components/dashboard/modals/CommandPaletteModal'
 import { CliInstallModal } from '@/components/dashboard/modals/CliInstallModal'
+import { FeatureExplainer } from '@/components/ui/feature-explainer'
 
 const OverviewView = dynamic(() => import('@/components/dashboard/views/OverviewView'), {
   loading: () => <MetricCardSkeleton />,
@@ -676,23 +677,29 @@ export default function Page() {
               const Icon = item.icon;
               const isActive = view === item.id;
               return (
-                <button
+                <FeatureExplainer
                   key={item.id}
-                  onClick={() => setView(item.id)}
-                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-150 ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground font-semibold border border-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
+                  featureKey={`nav-${item.id}`}
+                  placement="right"
+                  className="w-full block"
                 >
-                  <Icon className="size-4 shrink-0 transition-transform duration-150" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                  {item.id === 'security' && !collapsed && (
-                    <span className="ml-auto flex size-2 relative">
-                      <span className={`relative inline-flex rounded-full size-2 ${isActive ? 'bg-primary-foreground' : 'bg-foreground'}`} />
-                    </span>
-                  )}
-                </button>
+                  <button
+                    onClick={() => setView(item.id)}
+                    className={`w-full group relative flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-150 ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground font-semibold border border-primary'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="size-4 shrink-0 transition-transform duration-150 group-hover:scale-105" />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {item.id === 'security' && !collapsed && (
+                      <span className="ml-auto flex size-2 relative">
+                        <span className={`relative inline-flex rounded-full size-2 ${isActive ? 'bg-primary-foreground' : 'bg-foreground'}`} />
+                      </span>
+                    )}
+                  </button>
+                </FeatureExplainer>
               )
             })}
           </div>
@@ -861,93 +868,99 @@ export default function Page() {
                   : 'Not connected'}
               </div>
               {connectionState?.connected && (
-                <Select
-                  value={selectedAccountKey || connectionKey(connectionState)}
-                  onValueChange={(value) => {
-                    if (value === '__disconnect__') {
-                      disconnectAccount();
-                      toast({
-                        title: 'Account Disconnected',
-                        description: 'Removed cloud credentials from active session.',
-                        type: 'warning'
-                      });
-                      return;
-                    }
-                    const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
-                    const next = accounts.find((account: any) => connectionKey(account) === value);
-                    if (next) {
-                      switchAccount(next);
-                      toast({
-                        title: 'Switched Account',
-                        description: `Now monitoring ${next.account_name || 'account'} (${next.region || 'us-east-1'}).`,
-                        type: 'info'
-                      });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="hidden h-9 max-w-[200px] border-border bg-card sm:flex">
-                    <span className="truncate text-xs font-medium">
-                      {(() => {
-                        const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
-                        const matched = accounts.find((a: any) => connectionKey(a) === (selectedAccountKey || connectionKey(connectionState)));
-                        if (matched?.account_name) {
-                          return `${matched.account_name} (${matched.region || 'us-east-1'})`;
-                        }
-                        if (connectionState?.account_name) {
-                          return `${connectionState.account_name} (${connectionState.region || 'us-east-1'})`;
-                        }
-                        return 'Connected AWS';
-                      })()}
-                    </span>
+                <FeatureExplainer featureKey="control-account-switcher" placement="bottom">
+                  <Select
+                    value={selectedAccountKey || connectionKey(connectionState)}
+                    onValueChange={(value) => {
+                      if (value === '__disconnect__') {
+                        disconnectAccount();
+                        toast({
+                          title: 'Account Disconnected',
+                          description: 'Removed cloud credentials from active session.',
+                          type: 'warning'
+                        });
+                        return;
+                      }
+                      const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
+                      const next = accounts.find((account: any) => connectionKey(account) === value);
+                      if (next) {
+                        switchAccount(next);
+                        toast({
+                          title: 'Switched Account',
+                          description: `Now monitoring ${next.account_name || 'account'} (${next.region || 'us-east-1'}).`,
+                          type: 'info'
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="hidden h-9 max-w-[200px] border-border bg-card sm:flex">
+                      <span className="truncate text-xs font-medium">
+                        {(() => {
+                          const accounts = Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState];
+                          const matched = accounts.find((a: any) => connectionKey(a) === (selectedAccountKey || connectionKey(connectionState)));
+                          if (matched?.account_name) {
+                            return `${matched.account_name} (${matched.region || 'us-east-1'})`;
+                          }
+                          if (connectionState?.account_name) {
+                            return `${connectionState.account_name} (${connectionState.region || 'us-east-1'})`;
+                          }
+                          return 'Connected AWS';
+                        })()}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState]).map((account: any) => (
+                        <SelectItem key={connectionKey(account)} value={connectionKey(account)}>
+                          {account?.account_name || 'Connected account'} · {account?.region || 'us-east-1'}{account?.active ? ' · Active' : ''}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__disconnect__" className="text-red-400 focus:text-red-300">
+                        Disconnect Account
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FeatureExplainer>
+              )}
+              <FeatureExplainer featureKey="control-provider-filter" placement="bottom">
+                <Select value={provider} onValueChange={(value) => {
+                  const next = value ?? 'all';
+                  setProvider(next);
+                  toast({
+                    title: `Provider Filter: ${next.toUpperCase()}`,
+                    description: next === 'all' ? 'Displaying resources across all active cloud accounts.' : `Filtered views to ${next.toUpperCase()} infrastructure.`,
+                    type: 'info'
+                  });
+                }}>
+                  <SelectTrigger className="hidden h-9 w-32 border-border bg-card sm:flex">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(Array.isArray(connectedAccounts) && connectedAccounts.length > 0 ? connectedAccounts : [connectionState]).map((account: any) => (
-                      <SelectItem key={connectionKey(account)} value={connectionKey(account)}>
-                        {account?.account_name || 'Connected account'} · {account?.region || 'us-east-1'}{account?.active ? ' · Active' : ''}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="__disconnect__" className="text-red-400 focus:text-red-300">
-                      Disconnect Account
-                    </SelectItem>
+                    <SelectItem value="all">All providers</SelectItem>
+                    <SelectItem value="aws">AWS</SelectItem>
+                    <SelectItem value="gcp">GCP</SelectItem>
+                    <SelectItem value="azure">Azure</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-              <Select value={provider} onValueChange={(value) => {
-                const next = value ?? 'all';
-                setProvider(next);
-                toast({
-                  title: `Provider Filter: ${next.toUpperCase()}`,
-                  description: next === 'all' ? 'Displaying resources across all active cloud accounts.' : `Filtered views to ${next.toUpperCase()} infrastructure.`,
-                  type: 'info'
-                });
-              }}>
-                <SelectTrigger className="hidden h-9 w-32 border-border bg-card sm:flex">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All providers</SelectItem>
-                  <SelectItem value="aws">AWS</SelectItem>
-                  <SelectItem value="gcp">GCP</SelectItem>
-                  <SelectItem value="azure">Azure</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={currency} onValueChange={(value) => {
-                const next = (value as 'USD' | 'INR') || 'USD';
-                setCurrency(next);
-                toast({
-                  title: `Currency: ${next}`,
-                  description: next === 'INR' ? 'Recalculated all fleet costs and savings to INR (₹ Lakhs / Crores).' : 'Recalculated all fleet costs and savings to USD ($).',
-                  type: 'info'
-                });
-              }}>
-                <SelectTrigger className="hidden h-9 w-28 border-border bg-card text-xs font-medium sm:flex">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USD">USD ($)</SelectItem>
-                  <SelectItem value="INR">INR (₹ Lakhs)</SelectItem>
-                </SelectContent>
-              </Select>
+              </FeatureExplainer>
+              <FeatureExplainer featureKey="control-currency-switcher" placement="bottom">
+                <Select value={currency} onValueChange={(value) => {
+                  const next = (value as 'USD' | 'INR') || 'USD';
+                  setCurrency(next);
+                  toast({
+                    title: `Currency: ${next}`,
+                    description: next === 'INR' ? 'Recalculated all fleet costs and savings to INR (₹ Lakhs / Crores).' : 'Recalculated all fleet costs and savings to USD ($).',
+                    type: 'info'
+                  });
+                }}>
+                  <SelectTrigger className="hidden h-9 w-28 border-border bg-card text-xs font-medium sm:flex">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="INR">INR (₹ Lakhs)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FeatureExplainer>
               <Button
                 variant="outline"
                 size="sm"
@@ -1026,11 +1039,13 @@ export default function Page() {
                 <Terminal className="size-4 shrink-0 text-foreground" />
                 <span className="hidden sm:inline ml-1.5">CLI Tool</span>
               </Button>
-              <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 sm:px-3 text-xs sm:text-sm font-medium">
-                <Plus className="size-4 shrink-0" />
-                <span className="hidden sm:inline ml-1">Connect Account</span>
-                <span className="sm:hidden ml-1">Connect</span>
-              </Button>
+              <FeatureExplainer featureKey="control-connect-account" placement="bottom">
+                <Button size="sm" onClick={() => setConnectOpen(true)} className="h-8 sm:h-9 bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 sm:px-3 text-xs sm:text-sm font-medium transition-all duration-150">
+                  <Plus className="size-4 shrink-0" />
+                  <span className="hidden sm:inline ml-1">Connect Account</span>
+                  <span className="sm:hidden ml-1">Connect</span>
+                </Button>
+              </FeatureExplainer>
             </div>
           </header>
 
