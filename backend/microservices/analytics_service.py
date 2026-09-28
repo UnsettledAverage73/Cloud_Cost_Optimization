@@ -35,6 +35,9 @@ try:
     from engines.focus_spec import FOCUSNormalizer
     from engines.focus_lakehouse import focus_lakehouse
     from engines.finops_analyzer import FinOpsAnalyzer
+    from engines.cur_ingestion_engine import cur_ingestion_engine
+    from engines.workload_hierarchy_engine import workload_hierarchy_engine
+    from engines.policy_guardrails_engine import policy_guardrails_engine
     from core.state import resolve_active_inventory
     from collectors.multicloud_connector import multicloud_orchestrator
     from database.connection import SyncSessionLocal
@@ -55,6 +58,9 @@ except ImportError:
     from backend.engines.focus_spec import FOCUSNormalizer
     from backend.engines.focus_lakehouse import focus_lakehouse
     from backend.engines.finops_analyzer import FinOpsAnalyzer
+    from backend.engines.cur_ingestion_engine import cur_ingestion_engine
+    from backend.engines.workload_hierarchy_engine import workload_hierarchy_engine
+    from backend.engines.policy_guardrails_engine import policy_guardrails_engine
     from backend.core.state import resolve_active_inventory
     from backend.collectors.multicloud_connector import multicloud_orchestrator
     from backend.database.connection import SyncSessionLocal
@@ -455,6 +461,59 @@ async def get_pov_pdf_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f'{disposition}; filename="CloudPulse_Cost_Report.pdf"'}
     )
+
+
+# =========================================================================
+# 5. ENTERPRISE HYPERSCALE: WORKLOAD TREE & POLICY GUARDRAILS
+# =========================================================================
+
+@router.get("/api/v2/workloads/tree")
+async def get_workload_tree(org_name: str = "Enterprise Cloud Fleet"):
+    inventory = resolve_active_inventory()
+    tree = workload_hierarchy_engine.build_tree_from_inventory(inventory, org_name=org_name)
+    return tree
+
+
+@router.get("/api/v2/workloads/cur")
+async def get_cur_workloads():
+    workloads = cur_ingestion_engine.query_workloads_from_cur()
+    return {
+        "status": "success",
+        "workload_count": len(workloads),
+        "workloads": workloads
+    }
+
+
+@router.post("/api/v2/cur/sync")
+async def sync_cur_dataset(payload: Optional[dict] = None):
+    payload = payload or {}
+    path = payload.get("parquet_path")
+    res = cur_ingestion_engine.ingest_cur_parquet(path or "backend/data/cur/sample_cur_2_0.parquet")
+    return res
+
+
+@router.get("/api/v2/policies")
+async def list_enterprise_policies():
+    return {
+        "count": len(policy_guardrails_engine.list_policies()),
+        "policies": policy_guardrails_engine.list_policies()
+    }
+
+
+@router.post("/api/v2/policies/evaluate")
+async def evaluate_enterprise_policies():
+    inventory = resolve_active_inventory()
+    eval_res = policy_guardrails_engine.evaluate_fleet(inventory)
+    return eval_res
+
+
+@router.post("/api/v2/policies/{policy_id}/toggle")
+async def toggle_enterprise_policy(policy_id: str, payload: dict):
+    enabled = bool(payload.get("is_enabled", True))
+    res = policy_guardrails_engine.toggle_policy(policy_id, enabled)
+    if not res:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return {"status": "success", "policy": res}
 
 
 # Standalone Microservice FastAPI App definition
