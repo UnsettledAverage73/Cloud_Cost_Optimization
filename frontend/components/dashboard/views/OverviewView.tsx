@@ -47,6 +47,8 @@ export function OverviewView({
   const [povOpen, setPovOpen] = useState(false)
   const [povData, setPovData] = useState<any>(null)
   const [povLoading, setPovLoading] = useState(false)
+  const [selectedReportType, setSelectedReportType] = useState<string>('executive')
+  const [reportCatalog, setReportCatalog] = useState<any[]>([])
 
   const totalSpend = summary?.monthly_spend ?? 0
   const activeNodes = summary?.running_nodes ?? 0
@@ -60,8 +62,15 @@ export function OverviewView({
     const fetchPov = async () => {
       setPovLoading(true)
       try {
-        const res = await fetch(apiUrl(`/api/v2/analytics/pov/summary?currency=${currency}&rate=84.0`))
-        if (res.ok && !cancelled) setPovData(await res.json())
+        const [povRes, catRes] = await Promise.all([
+          fetch(apiUrl(`/api/v2/analytics/pov/summary?currency=${currency}&rate=84.0`)),
+          fetch(apiUrl('/api/v2/reports/catalog'))
+        ])
+        if (povRes.ok && !cancelled) setPovData(await povRes.json())
+        if (catRes.ok && !cancelled) {
+          const d = await catRes.json()
+          if (Array.isArray(d?.catalog)) setReportCatalog(d.catalog)
+        }
       } catch (e) {
         console.error('PoV load error:', e)
       } finally {
@@ -307,11 +316,48 @@ export function OverviewView({
               </div>
             </div>
 
+            {/* Persona-Specific Audit Dossiers Selection */}
+            <div className="space-y-2 pt-1">
+              <span className="text-xs font-bold text-foreground">Select Report Persona & Dossier Format:</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(reportCatalog.length > 0 ? reportCatalog : [
+                  { id: 'executive', name: 'Executive CFO Board Dossier', description: 'Financial run-rate, waste %, dual currency, and commitment arbitrage.', target_audience: 'CFO, Finance VP' },
+                  { id: 'engineering', name: 'Engineering Rightsizing Matrix', description: 'Node-level CPU/RAM, ASGs, downsize recommendations, and Graviton roadmap.', target_audience: 'VP Eng, DevOps Leads' },
+                  { id: 'security_hygiene', name: 'FinOps Waste & Guardrails Audit', description: 'Zombie EBS volumes, unattached EIPs, and Terraform HCL remediation.', target_audience: 'SecOps, Infrastructure' },
+                  { id: 'telemetry_snapshot', name: 'Real-Time Telemetry & SLA Snapshot', description: 'Live CloudWatch metrics, timeseries curves, and SLA canary watchdog logs.', target_audience: 'SREs, Ops Responders' }
+                ]).map((cat: any) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedReportType(cat.id)}
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      selectedReportType === cat.id
+                        ? 'border-foreground bg-muted/50 ring-1 ring-foreground'
+                        : 'border-border bg-card hover:bg-muted/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-xs text-foreground">{cat.name}</span>
+                      {selectedReportType === cat.id && (
+                        <Badge className="bg-foreground text-background text-[9px] py-0 px-1">Selected</Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{cat.description}</p>
+                    <span className="text-[10px] text-muted-foreground block mt-1.5 font-mono">Audience: {cat.target_audience}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setPovOpen(false)}>Close</Button>
-              <a href={apiUrl(`/api/v2/analytics/pov/report.pdf?currency=${currency}&inline=true`)} target="_blank" rel="noopener noreferrer">
+              <a
+                href={apiUrl(`/api/v2/reports/pdf?report_type=${selectedReportType}&currency=${currency}`)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Button size="sm" className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-xs">
-                  <Download className="mr-1.5 size-3.5" />Download Executive PDF
+                  <Download className="mr-1.5 size-3.5" />Download {selectedReportType === 'executive' ? 'Executive CFO' : selectedReportType === 'engineering' ? 'Engineering' : selectedReportType === 'security_hygiene' ? 'Security & Waste' : 'Telemetry SLA'} PDF
                 </Button>
               </a>
               <a href={apiUrl('/api/v2/analytics/pov/report.html')} target="_blank" rel="noopener noreferrer">

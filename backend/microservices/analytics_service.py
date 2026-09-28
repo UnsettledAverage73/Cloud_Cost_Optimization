@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, APIRouter, HTTPException, status, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 _backend_dir = Path(__file__).resolve().parent.parent
@@ -39,6 +39,7 @@ try:
     from engines.workload_hierarchy_engine import workload_hierarchy_engine
     from engines.policy_guardrails_engine import policy_guardrails_engine
     from engines.commitment_optimizer import CommitmentOptimizer
+    from engines.pdf_dossier_engine import pdf_dossier_engine
     from core.state import resolve_active_inventory
     from collectors.multicloud_connector import multicloud_orchestrator
     from database.connection import SyncSessionLocal
@@ -63,6 +64,7 @@ except ImportError:
     from backend.engines.workload_hierarchy_engine import workload_hierarchy_engine
     from backend.engines.policy_guardrails_engine import policy_guardrails_engine
     from backend.engines.commitment_optimizer import CommitmentOptimizer
+    from backend.engines.pdf_dossier_engine import pdf_dossier_engine
     from backend.core.state import resolve_active_inventory
     from backend.collectors.multicloud_connector import multicloud_orchestrator
     from backend.database.connection import SyncSessionLocal
@@ -429,39 +431,82 @@ async def get_pov_html_report(currency: str = "INR", rate: float = 84.0, account
     return HTMLResponse(content=html_content, status_code=200)
 
 
+@router.get("/api/v2/reports/catalog")
+async def get_report_catalog():
+    """Returns metadata for the 4 enterprise persona audit dossiers."""
+    return {
+        "status": "success",
+        "engine": "In-Process Native Vector Streaming (ReportLab Platypus)",
+        "catalog": pdf_dossier_engine.REPORT_CATALOG
+    }
+
+
+@router.get("/api/v2/reports/pdf")
+async def get_enterprise_pdf_dossier(
+    report_type: str = "executive",
+    account_id: Optional[str] = None,
+    currency: str = "USD",
+    instance_id: Optional[str] = None,
+    inline: bool = False
+):
+    """
+    Generates a publication-grade, monochrome vector PDF dossier in <50ms.
+    Supported report_type: executive | engineering | security_hygiene | telemetry_snapshot
+    """
+    import time
+    t0 = time.perf_counter()
+    inventory = resolve_active_inventory()
+    acc_id = account_id or inventory.get("metadata", {}).get("account_id", "123456789012")
+    acc_name = inventory.get("metadata", {}).get("account_name", "Enterprise-Core-AWS")
+
+    stream = pdf_dossier_engine.build_pdf_stream(
+        report_type=report_type,
+        inventory=inventory,
+        account_id=acc_id,
+        account_name=acc_name,
+        currency=currency,
+        instance_id=instance_id
+    )
+    latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+    disposition = "inline" if inline else "attachment"
+    filename = f"CloudPulse_{report_type}_{acc_id}.pdf"
+
+    return StreamingResponse(
+        stream,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "X-Render-Latency-Ms": str(latency_ms),
+            "X-Report-Type": report_type,
+            "X-Account-Id": acc_id
+        }
+    )
+
+
 @router.get("/api/v2/analytics/pov/report.pdf")
 @router.get("/api/v1/reports/inventory-cost.pdf")
 async def get_pov_pdf_report(
-    currency: str = "INR",
+    currency: str = "USD",
     rate: float = 84.0,
     account_name: str = "Enterprise Cloud Fleet",
     inline: bool = True
 ):
-    try:
-        from services.currency_converter import currency_converter
-        from services.pov_reporter import PoVReporter
-    except ImportError:
-        from backend.services.currency_converter import currency_converter
-        from backend.services.pov_reporter import PoVReporter
-
-    currency_converter.usd_to_inr_rate = rate
-    reporter = PoVReporter(currency=currency, usd_to_inr_rate=rate)
-
     inventory = resolve_active_inventory()
-    focus_records = FOCUSNormalizer.convert_inventory_to_focus(inventory)
-    anomalies = anomaly_detector.scan_inventory_and_focus(inventory, focus_records)
+    acc_id = inventory.get("metadata", {}).get("account_id", "123456789012")
 
-    pdf_bytes = reporter.generate_pdf_report(
+    stream = pdf_dossier_engine.build_pdf_stream(
+        report_type="executive",
         inventory=inventory,
-        anomalies=anomalies,
-        account_name=account_name
+        account_id=acc_id,
+        account_name=account_name,
+        currency=currency
     )
-
     disposition = "inline" if inline else "attachment"
-    return Response(
-        content=pdf_bytes,
+    return StreamingResponse(
+        stream,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'{disposition}; filename="CloudPulse_Cost_Report.pdf"'}
+        headers={"Content-Disposition": f'{disposition}; filename="CloudPulse_Executive_Cost_Report.pdf"'}
     )
 
 
