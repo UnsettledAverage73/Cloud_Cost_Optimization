@@ -66,9 +66,9 @@ export function CliInstallModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-border bg-card sm:max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl p-0 gap-0">
+      <DialogContent className="border-border bg-card sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] flex flex-col shadow-2xl p-0 gap-0 overflow-hidden">
         {/* Header Banner */}
-        <div className="border-b border-border p-6 bg-gradient-to-r from-sky-500/10 via-cyan-500/5 to-transparent">
+        <div className="border-b border-border p-6 bg-gradient-to-r from-sky-500/10 via-cyan-500/5 to-transparent shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm">
               <Terminal className="size-5" />
@@ -87,7 +87,7 @@ export function CliInstallModal({
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="overflow-y-auto p-6 space-y-6 flex-1">
           {/* OS Auto-Detection Pill */}
           <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3.5 py-2 text-xs">
             <div className="flex items-center gap-2">
@@ -288,7 +288,7 @@ export function CliInstallModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-muted/30 text-xs">
+        <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-muted/30 text-xs shrink-0">
           <div className="text-muted-foreground flex items-center gap-1.5">
             <Sparkles className="size-3.5 text-sky-600 dark:text-sky-400" />
             Zero dependencies required · Uses standard Python 3.8+

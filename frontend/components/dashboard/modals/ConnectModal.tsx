@@ -142,12 +142,12 @@ export function ConnectModal({ open, onOpenChange, onSuccess, initialProfile, ap
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-border bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
-        <DialogHeader>
+      <DialogContent className="border-border bg-card sm:max-w-xl w-[95vw] max-h-[90vh] flex flex-col p-0 gap-0 shadow-2xl overflow-hidden">
+        <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
           <DialogTitle>Connect a cloud account</DialogTitle>
           <DialogDescription>Give CloudPulse read-only access to start syncing your infrastructure.</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4 pt-2">
+        <div className="overflow-y-auto p-6 space-y-4 flex-1">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm">
               Cloud provider
@@ -214,7 +214,9 @@ export function ConnectModal({ open, onOpenChange, onSuccess, initialProfile, ap
               {success}
             </div>
           )}
-          <Button onClick={connect} disabled={loading} className="mt-2 bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold shadow-xs">
+        </div>
+        <div className="p-4 px-6 border-t border-border bg-muted/20 shrink-0">
+          <Button onClick={connect} disabled={loading} className="w-full bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-300 font-semibold shadow-xs">
             {loading ? <><RefreshCw className="animate-spin mr-1.5 size-4" />Testing connection...</> : 'Connect Account'}
           </Button>
         </div>

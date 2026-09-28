@@ -293,7 +293,7 @@ export function CommandPaletteModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 border-border bg-card backdrop-blur-xl sm:max-w-xl overflow-hidden shadow-2xl">
+      <DialogContent className="p-0 border-border bg-card backdrop-blur-xl sm:max-w-xl w-[95vw] overflow-hidden shadow-2xl">
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <Search className="size-4 text-sky-600 dark:text-sky-400 shrink-0" />
           <input

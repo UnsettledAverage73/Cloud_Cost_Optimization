@@ -433,7 +433,7 @@ export function SecurityView({
 
       {/* Revocation Safety Confirmation Dialog */}
       <Dialog open={revokeModalOpen} onOpenChange={setRevokeModalOpen}>
-        <DialogContent className="border-border bg-card sm:max-w-md shadow-2xl">
+        <DialogContent className="border-border bg-card sm:max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <AlertTriangle className="size-5 text-foreground shrink-0" />

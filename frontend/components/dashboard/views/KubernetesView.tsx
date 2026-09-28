@@ -463,8 +463,8 @@ export function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' |
       </Card>
 
       <Dialog open={!!activeYamlDiff} onOpenChange={() => setActiveYamlDiff(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-white/10 bg-slate-950 text-foreground">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 border-white/10 bg-slate-950 text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-white/10 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base">
               <FileCode className="size-4 text-cyan-400" />
               1-Click Kubernetes Rightsizing YAML Patch
@@ -473,28 +473,30 @@ export function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' |
               Review the production YAML resource request diff generated against real-world P95 utilization.
             </DialogDescription>
           </DialogHeader>
-          <div className="relative mt-2">
-            <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/60 p-4 font-mono text-xs text-emerald-300">
-              {activeYamlDiff}
-            </pre>
-            <Button
-              size="sm"
-              variant="outline"
-              className="absolute right-3 top-3 border-white/10 bg-white/5 text-xs"
-              onClick={() => {
-                if (activeYamlDiff) {
-                  navigator.clipboard.writeText(activeYamlDiff);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }
-              }}
-            >
-              {copied ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
-              {copied ? 'Copied' : 'Copy Patch'}
-            </Button>
+          <div className="overflow-y-auto px-6 py-4 flex-1">
+            <div className="relative">
+              <pre className="max-h-96 overflow-auto rounded-lg border border-white/10 bg-black/60 p-4 font-mono text-xs text-emerald-300">
+                {activeYamlDiff}
+              </pre>
+              <Button
+                size="sm"
+                variant="outline"
+                className="absolute right-3 top-3 border-white/10 bg-white/5 text-xs hover:bg-white/10"
+                onClick={() => {
+                  if (activeYamlDiff) {
+                    navigator.clipboard.writeText(activeYamlDiff);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
+              >
+                {copied ? <Check className="mr-1 size-3 text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+                {copied ? 'Copied' : 'Copy Patch'}
+              </Button>
+            </div>
           </div>
-          <div className="flex justify-end pt-2">
-            <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300" onClick={() => setActiveYamlDiff(null)}>
+          <div className="px-6 py-3.5 border-t border-white/10 bg-white/5 shrink-0 flex justify-end">
+            <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold" onClick={() => setActiveYamlDiff(null)}>
               Done
             </Button>
           </div>
@@ -503,7 +505,7 @@ export function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' |
 
       {/* Configure OpenCost Telemetry Endpoint Dialog */}
       <Dialog open={showConfigModal} onOpenChange={setShowConfigModal}>
-        <DialogContent className="border-white/10 bg-slate-950 text-foreground max-w-lg">
+        <DialogContent className="border-white/10 bg-slate-950 text-foreground sm:max-w-xl w-[95vw] max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Settings className="size-4 text-cyan-400" />
@@ -538,7 +540,7 @@ export function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' |
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
             <Button variant="ghost" size="sm" onClick={() => setShowConfigModal(false)}>
               Cancel
             </Button>
@@ -546,7 +548,7 @@ export function KubernetesView({ currency = 'USD', apiUrl }: { currency: 'USD' |
               size="sm"
               disabled={configSaving}
               onClick={handleSaveConfig}
-              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold"
             >
               {configSaving ? 'Connecting...' : 'Connect & Sync'}
             </Button>

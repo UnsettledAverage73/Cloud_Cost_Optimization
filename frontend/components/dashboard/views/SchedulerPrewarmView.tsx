@@ -741,7 +741,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
       {/* CREATE SCHEDULE MODAL */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="border-border bg-background text-foreground max-w-md">
+        <DialogContent className="border-border bg-background text-foreground sm:max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold flex items-center gap-2">
               <Zap className="size-4 text-foreground" />
@@ -892,7 +892,7 @@ export function SchedulerPrewarmView({ currency = 'USD', apiUrl, nodes = [] }: a
 
       {/* MANUAL TRIGGER MODAL */}
       <Dialog open={triggerModalOpen} onOpenChange={setTriggerModalOpen}>
-        <DialogContent className="border-border bg-background text-foreground max-w-md">
+        <DialogContent className="border-border bg-background text-foreground sm:max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold flex items-center gap-2">
               <ShieldCheck className="size-4 text-foreground" />

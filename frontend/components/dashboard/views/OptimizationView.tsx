@@ -452,8 +452,8 @@ export function OptimizationView({
 
       {/* GitOps PR Synthesis Modal */}
       <Dialog open={gitopsOpen} onOpenChange={setGitopsOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border border-border bg-card text-foreground shadow-2xl">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 border border-border bg-card text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <GitBranch className="size-4 text-sky-600 dark:text-sky-400" />
               Autonomous GitOps Pull Request
@@ -463,56 +463,58 @@ export function OptimizationView({
             </DialogDescription>
           </DialogHeader>
           {gitopsLoading ? (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
+            <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
               <Loader2 className="size-8 animate-spin text-sky-600 dark:text-sky-400" />
               <span className="text-xs text-muted-foreground font-medium">Synthesizing Terraform HCL diff & creating Git branch...</span>
             </div>
           ) : gitopsPackage ? (
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
-                  <span className="text-[11px] font-medium text-muted-foreground">Branch</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-sky-700 dark:text-sky-300 truncate">
-                    {gitopsPackage.branch_name}
+            <>
+              <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+                    <span className="text-[11px] font-medium text-muted-foreground">Branch</span>
+                    <div className="mt-1 font-mono text-xs font-semibold text-sky-700 dark:text-sky-300 truncate">
+                      {gitopsPackage.branch_name}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
+                    <span className="text-[11px] font-medium text-muted-foreground">Repository</span>
+                    <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                      {gitopsPackage.repo_name}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 shadow-xs">
+                    <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Net Monthly Savings</span>
+                    <div className="mt-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 font-mono">
+                      {formatCurrency(gitopsPackage.total_monthly_savings || gitopsPackage.monthly_savings, currency)}/mo
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-xl border border-border bg-muted/40 p-3 shadow-xs">
-                  <span className="text-[11px] font-medium text-muted-foreground">Repository</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
-                    {gitopsPackage.repo_name}
+
+                <div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                    <span className="flex items-center gap-1 font-medium"><FileCode className="size-3.5 text-sky-600 dark:text-sky-400" /> Terraform HCL Diff</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-[11px]"
+                      onClick={() => {
+                        navigator.clipboard.writeText(gitopsPackage.diff || '')
+                        setGitopsCopied(true)
+                        setTimeout(() => setGitopsCopied(false), 2000)
+                      }}
+                    >
+                      {gitopsCopied ? <Check className="mr-1 size-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="mr-1 size-3" />}
+                      {gitopsCopied ? 'Copied' : 'Copy Diff'}
+                    </Button>
                   </div>
-                </div>
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 shadow-xs">
-                  <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Net Monthly Savings</span>
-                  <div className="mt-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 font-mono">
-                    {formatCurrency(gitopsPackage.total_monthly_savings || gitopsPackage.monthly_savings, currency)}/mo
-                  </div>
+                  <pre className="max-h-72 overflow-auto rounded-xl border border-border bg-slate-950 p-3.5 font-mono text-xs text-emerald-400 shadow-inner">
+                    {gitopsPackage.diff || '# No HCL diff required'}
+                  </pre>
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                  <span className="flex items-center gap-1 font-medium"><FileCode className="size-3.5 text-sky-600 dark:text-sky-400" /> Terraform HCL Diff</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px]"
-                    onClick={() => {
-                      navigator.clipboard.writeText(gitopsPackage.diff || '')
-                      setGitopsCopied(true)
-                      setTimeout(() => setGitopsCopied(false), 2000)
-                    }}
-                  >
-                    {gitopsCopied ? <Check className="mr-1 size-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="mr-1 size-3" />}
-                    {gitopsCopied ? 'Copied' : 'Copy Diff'}
-                  </Button>
-                </div>
-                <pre className="max-h-60 overflow-auto rounded-xl border border-border bg-slate-950 p-3.5 font-mono text-xs text-emerald-400 shadow-inner">
-                  {gitopsPackage.diff || '# No HCL diff required'}
-                </pre>
-              </div>
-
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+              <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
                 <span className="text-xs text-muted-foreground">
                   Target: <span className="font-mono text-foreground font-semibold">{gitopsPackage.target_branch || 'main'}</span>
                 </span>
@@ -529,9 +531,9 @@ export function OptimizationView({
                   </a>
                 </div>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="py-6 text-center text-xs text-muted-foreground">
+            <div className="py-12 text-center text-xs text-muted-foreground flex-1">
               Failed to generate GitOps package.
             </div>
           )}
@@ -539,8 +541,8 @@ export function OptimizationView({
       </Dialog>
 
       <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
-        <DialogContent className="border border-border bg-card text-foreground sm:max-w-md max-h-[85vh] overflow-y-auto shadow-2xl">
-          <DialogHeader>
+        <DialogContent className="border border-border bg-card text-foreground sm:max-w-lg w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Bell className="size-4 text-sky-600 dark:text-sky-400" />
               Broadcast FinOps Fleet Digest
@@ -549,8 +551,8 @@ export function OptimizationView({
               Dispatch the real-time cost optimization digest, health metrics, and 1-click GitOps buttons to your team channel.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs space-y-1.5 shadow-xs">
+          <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+            <div className="rounded-xl border border-border bg-muted/40 p-3.5 text-xs space-y-1.5 shadow-xs">
               <div className="font-semibold text-foreground">Digest Payload Preview:</div>
               <div className="flex justify-between text-muted-foreground"><span>Optimizations:</span><b className="text-foreground">{items.length} opportunities</b></div>
               <div className="flex justify-between text-muted-foreground"><span>Recoverable Savings:</span><b className="text-emerald-700 dark:text-emerald-300 font-mono font-bold">{formatCurrency(items.reduce((s: number, i: any) => s + Number(i.savings ?? 0), 0), currency)}/mo</b></div>
@@ -582,39 +584,39 @@ export function OptimizationView({
                 {broadcastResult}
               </div>
             )}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" size="sm" onClick={() => setBroadcastOpen(false)}>Cancel</Button>
-              <Button
-                size="sm"
-                className="bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-xs"
-                disabled={broadcasting}
-                onClick={async () => {
-                  setBroadcasting(true)
-                  setBroadcastResult(null)
-                  try {
-                    const ep = broadcastTarget === 'slack' ? '/api/v2/notifications/slack/batch' : '/api/v2/notifications/teams/batch'
-                    const res = await fetch(apiUrl(ep), {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ currency, rate: 84.0, channel: 'all-average' }),
-                    })
-                    const data = await res.json()
-                    if (data.dispatched) {
-                      setBroadcastResult(`✅ Broadcast delivered successfully to ${broadcastTarget === 'slack' ? 'Slack #all-average' : 'Microsoft Teams'}! Check your channel.`)
-                    } else {
-                      setBroadcastResult(`⚠️ Broadcast generated, but delivery failed. Please verify Slack credentials in Settings.`)
-                    }
-                  } catch (e: any) {
-                    setBroadcastResult(`❌ Failed to broadcast: ${e.message || e}`)
-                  } finally {
-                    setBroadcasting(false)
+          </div>
+          <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setBroadcastOpen(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              className="bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-xs"
+              disabled={broadcasting}
+              onClick={async () => {
+                setBroadcasting(true)
+                setBroadcastResult(null)
+                try {
+                  const ep = broadcastTarget === 'slack' ? '/api/v2/notifications/slack/batch' : '/api/v2/notifications/teams/batch'
+                  const res = await fetch(apiUrl(ep), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currency, rate: 84.0, channel: 'all-average' }),
+                  })
+                  const data = await res.json()
+                  if (data.dispatched) {
+                    setBroadcastResult(`✅ Broadcast delivered successfully to ${broadcastTarget === 'slack' ? 'Slack #all-average' : 'Microsoft Teams'}! Check your channel.`)
+                  } else {
+                    setBroadcastResult(`⚠️ Broadcast generated, but delivery failed. Please verify Slack credentials in Settings.`)
                   }
-                }}
-              >
-                {broadcasting ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Send className="mr-1 size-3.5" />}
-                Send Broadcast
-              </Button>
-            </div>
+                } catch (e: any) {
+                  setBroadcastResult(`❌ Failed to broadcast: ${e.message || e}`)
+                } finally {
+                  setBroadcasting(false)
+                }
+              }}
+            >
+              {broadcasting ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Send className="mr-1 size-3.5" />}
+              Send Broadcast
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

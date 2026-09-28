@@ -574,7 +574,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Manual Rollback Trigger Dialog */}
       <Dialog open={!!rollbackWatch} onOpenChange={() => setRollbackWatch(null)}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
+        <DialogContent className="sm:max-w-lg w-[95vw] max-h-[88vh] overflow-y-auto border-border bg-background text-foreground p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
               <RotateCcw className="size-4" /> Trigger Safe Rollback PR
@@ -610,8 +610,8 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Rollback Details Modal */}
       <Dialog open={!!rollbackPackage} onOpenChange={() => setRollbackPackage(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 border-border bg-background text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
               <RotateCcw className="size-4" /> Automated Safe Revert Pull Request Ready
             </DialogTitle>
@@ -620,30 +620,32 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
             </DialogDescription>
           </DialogHeader>
           {rollbackPackage && (
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-lg border border-border bg-muted p-3">
-                  <span className="text-[11px] text-muted-foreground">Rollback Branch</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
-                    {rollbackPackage.branch_name}
+            <>
+              <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <span className="text-[11px] text-muted-foreground">Rollback Branch</span>
+                    <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                      {rollbackPackage.branch_name}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <span className="text-[11px] text-muted-foreground">Restored Configuration</span>
+                    <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                      {rollbackPackage.restored_config?.instance_type || 'Original Spec'}
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-lg border border-border bg-muted p-3">
-                  <span className="text-[11px] text-muted-foreground">Restored Configuration</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
-                    {rollbackPackage.restored_config?.instance_type || 'Original Spec'}
-                  </div>
+
+                <div>
+                  <span className="text-xs text-muted-foreground block mb-1.5 font-medium">Terraform Git Revert Diff:</span>
+                  <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-muted p-3.5 font-mono text-xs text-foreground">
+                    {rollbackPackage.revert_diff || rollbackPackage.diff || '# Revert diff generated'}
+                  </pre>
                 </div>
               </div>
 
-              <div>
-                <span className="text-xs text-muted-foreground block mb-1.5 font-medium">Terraform Git Revert Diff:</span>
-                <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-muted p-3.5 font-mono text-xs text-foreground">
-                  {rollbackPackage.revert_diff || rollbackPackage.diff || '# Revert diff generated'}
-                </pre>
-              </div>
-
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+              <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
                 <span className="text-xs text-muted-foreground">
                   Target: <span className="font-mono text-foreground">main</span>
                 </span>
@@ -660,15 +662,15 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                   </a>
                 </div>
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
 
       {/* Batch GitOps PR Modal */}
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-border bg-background text-foreground">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 border-border bg-background text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
               <GitBranch className="size-4" /> Multi-Resource Batch GitOps Pull Request
             </DialogTitle>
@@ -677,56 +679,58 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
             </DialogDescription>
           </DialogHeader>
           {batchGenerating ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-3">
+            <div className="py-16 flex flex-col items-center justify-center gap-3 flex-1">
               <Loader2 className="size-8 animate-spin text-foreground" />
               <span className="text-xs text-muted-foreground">Synthesizing batch Terraform changes across all 5 vectors...</span>
             </div>
           ) : batchResult ? (
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-border bg-muted p-3">
-                  <span className="text-[11px] text-muted-foreground">Branch</span>
-                  <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
-                    {batchResult.branch_name}
+            <>
+              <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <span className="text-[11px] text-muted-foreground">Branch</span>
+                    <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                      {batchResult.branch_name}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <span className="text-[11px] text-muted-foreground">Monthly Net Savings</span>
+                    <div className="mt-1 text-xs font-bold text-foreground">
+                      {formatCurrency(batchResult.total_monthly_savings, currency)}/mo
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <span className="text-[11px] text-muted-foreground">Annual Run-Rate ROI</span>
+                    <div className="mt-1 text-xs font-bold text-foreground">
+                      {formatCurrency(batchResult.total_annual_savings, currency)}/yr
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-lg border border-border bg-muted p-3">
-                  <span className="text-[11px] text-muted-foreground">Monthly Net Savings</span>
-                  <div className="mt-1 text-xs font-bold text-foreground">
-                    {formatCurrency(batchResult.total_monthly_savings, currency)}/mo
+
+                <div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                    <span className="flex items-center gap-1"><FileCode className="size-3.5 text-foreground" /> Batch Terraform HCL Diff</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-[11px]"
+                      onClick={() => {
+                        navigator.clipboard.writeText(batchResult.diff || '');
+                        setCopiedBatch(true);
+                        setTimeout(() => setCopiedBatch(false), 2000);
+                      }}
+                    >
+                      {copiedBatch ? <Check className="mr-1 size-3 text-foreground" /> : <Copy className="mr-1 size-3" />}
+                      {copiedBatch ? 'Copied' : 'Copy Diff'}
+                    </Button>
                   </div>
-                </div>
-                <div className="rounded-lg border border-border bg-muted p-3">
-                  <span className="text-[11px] text-muted-foreground">Annual Run-Rate ROI</span>
-                  <div className="mt-1 text-xs font-bold text-foreground">
-                    {formatCurrency(batchResult.total_annual_savings, currency)}/yr
-                  </div>
+                  <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-muted p-3.5 font-mono text-xs text-foreground">
+                    {batchResult.diff || '# Batch diff synthesized'}
+                  </pre>
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                  <span className="flex items-center gap-1"><FileCode className="size-3.5 text-foreground" /> Batch Terraform HCL Diff</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px]"
-                    onClick={() => {
-                      navigator.clipboard.writeText(batchResult.diff || '');
-                      setCopiedBatch(true);
-                      setTimeout(() => setCopiedBatch(false), 2000);
-                    }}
-                  >
-                    {copiedBatch ? <Check className="mr-1 size-3 text-foreground" /> : <Copy className="mr-1 size-3" />}
-                    {copiedBatch ? 'Copied' : 'Copy Diff'}
-                  </Button>
-                </div>
-                <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-muted p-3.5 font-mono text-xs text-foreground">
-                  {batchResult.diff || '# Batch diff synthesized'}
-                </pre>
-              </div>
-
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+              <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
                 <span className="text-xs text-muted-foreground">
                   Target: <span className="font-mono text-foreground">{batchResult.target_branch || 'main'}</span>
                 </span>
@@ -743,9 +747,9 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
                   </a>
                 </div>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="py-6 text-center text-xs text-muted-foreground">
+            <div className="py-12 text-center text-xs text-muted-foreground flex-1">
               Failed to generate batch GitOps package.
             </div>
           )}
@@ -754,7 +758,7 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
       {/* Enroll SLA Watch Modal */}
       <Dialog open={enrollModalOpen} onOpenChange={setEnrollModalOpen}>
-        <DialogContent className="border-border bg-background text-foreground max-w-md">
+        <DialogContent className="border-border bg-background text-foreground sm:max-w-lg w-[95vw] max-h-[88vh] overflow-y-auto p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
               <Activity className="size-4 text-foreground" />

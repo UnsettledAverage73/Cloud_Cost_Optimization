@@ -149,7 +149,7 @@ export function AgentDeploymentModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl border-white/10 bg-slate-950/95 text-foreground backdrop-blur-xl shadow-2xl p-0 overflow-hidden sm:rounded-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] border-white/10 bg-slate-950/95 text-foreground backdrop-blur-xl shadow-2xl p-0 overflow-hidden sm:rounded-2xl max-h-[90vh] flex flex-col">
         {/* Header with Glowing Accent */}
         <div className="relative border-b border-white/10 bg-gradient-to-r from-cyan-950/40 via-purple-950/20 to-transparent p-5">
           <div className="flex items-center gap-3">

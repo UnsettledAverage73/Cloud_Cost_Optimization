@@ -1025,7 +1025,7 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
 
       {/* Enroll Account Modal */}
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
-        <DialogContent className="border-border bg-background sm:max-w-md text-foreground">
+        <DialogContent className="border-border bg-background sm:max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto p-6 text-foreground shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">Enroll AWS Account in Fleet</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -1096,8 +1096,8 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
 
       {/* 1-Click Remediation PR Modal */}
       <Dialog open={remediateModalOpen} onOpenChange={setRemediateModalOpen}>
-        <DialogContent className="border-border bg-background sm:max-w-xl text-foreground">
-          <DialogHeader>
+        <DialogContent className="border-border bg-background sm:max-w-2xl lg:max-w-3xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
             <DialogTitle className="text-sm font-semibold flex items-center gap-2">
               <GitPullRequest className="size-4" /> Autonomous FinOps GitOps PR Generated
             </DialogTitle>
@@ -1107,49 +1107,51 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
           </DialogHeader>
 
           {remediationData && (
-            <div className="space-y-4 pt-2 text-xs">
-              <div className="grid grid-cols-2 gap-2 p-3 rounded border border-border bg-muted/20">
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">GitOps Target Branch</span>
-                  <span className="font-mono font-semibold text-foreground truncate block">{remediationData.branch_name}</span>
+            <>
+              <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl border border-border bg-muted/20">
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">GitOps Target Branch</span>
+                    <span className="font-mono font-semibold text-foreground truncate block">{remediationData.branch_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Estimated Monthly Recovery</span>
+                    <span className="font-semibold text-foreground">{formatCurrency(remediationData.estimated_monthly_savings, currency)}/mo</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">SLA Canary Watchdog</span>
+                    <span className="font-mono text-foreground">{remediationData.canary_watchdog_id} (60m Window)</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Policy Rule</span>
+                    <span className="font-semibold text-foreground">{remediationData.policy_name}</span>
+                  </div>
                 </div>
+
                 <div>
-                  <span className="text-muted-foreground block text-[11px]">Estimated Monthly Recovery</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(remediationData.estimated_monthly_savings, currency)}/mo</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">SLA Canary Watchdog</span>
-                  <span className="font-mono text-foreground">{remediationData.canary_watchdog_id} (60m Window)</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Policy Rule</span>
-                  <span className="font-semibold text-foreground">{remediationData.policy_name}</span>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-semibold text-xs text-foreground">Generated Terraform / OpenTofu HCL</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[11px] border-border"
+                      onClick={() => {
+                        navigator.clipboard.writeText(remediationData.terraform_hcl);
+                        setCopiedTf(true);
+                        setTimeout(() => setCopiedTf(false), 2000);
+                      }}
+                    >
+                      {copiedTf ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
+                      {copiedTf ? 'Copied HCL' : 'Copy HCL'}
+                    </Button>
+                  </div>
+                  <pre className="p-3.5 rounded-xl bg-muted/40 border border-border font-mono text-[11px] text-foreground max-h-64 overflow-y-auto whitespace-pre">
+                    {remediationData.terraform_hcl}
+                  </pre>
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-semibold text-xs text-foreground">Generated Terraform / OpenTofu HCL</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 text-[11px] border-border"
-                    onClick={() => {
-                      navigator.clipboard.writeText(remediationData.terraform_hcl);
-                      setCopiedTf(true);
-                      setTimeout(() => setCopiedTf(false), 2000);
-                    }}
-                  >
-                    {copiedTf ? <Check className="size-3 mr-1" /> : <Copy className="size-3 mr-1" />}
-                    {copiedTf ? 'Copied HCL' : 'Copy HCL'}
-                  </Button>
-                </div>
-                <pre className="p-3 rounded bg-muted/40 border border-border font-mono text-[11px] text-foreground max-h-56 overflow-y-auto whitespace-pre">
-                  {remediationData.terraform_hcl}
-                </pre>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex items-center justify-end gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -1160,13 +1162,13 @@ export function FleetView({ currency = 'USD', apiUrl }: { currency: 'USD' | 'INR
                 </Button>
                 <Button
                   size="sm"
-                  className="bg-primary text-primary-foreground text-xs"
+                  className="bg-primary text-primary-foreground text-xs font-medium"
                   onClick={() => setRemediateModalOpen(false)}
                 >
                   Merge via CI/CD GitOps
                 </Button>
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
