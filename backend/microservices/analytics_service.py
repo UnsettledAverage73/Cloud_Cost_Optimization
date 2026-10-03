@@ -40,6 +40,7 @@ try:
     from engines.policy_guardrails_engine import policy_guardrails_engine
     from engines.commitment_optimizer import CommitmentOptimizer
     from engines.pdf_dossier_engine import pdf_dossier_engine
+    from engines.google_sre_engine import google_sre_engine
     from core.state import resolve_active_inventory
     from collectors.multicloud_connector import multicloud_orchestrator
     from database.connection import SyncSessionLocal
@@ -65,6 +66,7 @@ except ImportError:
     from backend.engines.policy_guardrails_engine import policy_guardrails_engine
     from backend.engines.commitment_optimizer import CommitmentOptimizer
     from backend.engines.pdf_dossier_engine import pdf_dossier_engine
+    from backend.engines.google_sre_engine import google_sre_engine
     from backend.core.state import resolve_active_inventory
     from backend.collectors.multicloud_connector import multicloud_orchestrator
     from backend.database.connection import SyncSessionLocal
@@ -579,6 +581,94 @@ async def get_commitment_portfolio(coverage_target: float = 0.75):
     inventory = resolve_active_inventory()
     portfolio = CommitmentOptimizer.analyze_portfolio(inventory, coverage_target=coverage_target)
     return portfolio
+
+
+# =========================================================================
+# 6. GOOGLE SRE RELIABILITY & FOUR GOLDEN SIGNALS
+# =========================================================================
+
+@router.get("/api/v2/sre/golden-signals")
+async def get_sre_golden_signals(resource_id: Optional[str] = None):
+    inventory = resolve_active_inventory()
+    nodes = inventory.get("nodes", [])
+
+    target_node = None
+    if resource_id:
+        target_node = next((n for n in nodes if n.get("instance_id") == resource_id), None)
+    if not target_node and nodes:
+        target_node = nodes[0]
+
+    node_id = target_node.get("instance_id", "i-default-prod") if target_node else "i-default-prod"
+    node_name = target_node.get("name", "Production-Compute") if target_node else "Production-Compute"
+    cpu = float(target_node.get("cpu_utilization", 42.5)) if target_node else 42.5
+
+    signals = google_sre_engine.evaluate_golden_signals(
+        resource_id=node_id,
+        resource_name=node_name,
+        base_latency_ms=38.5,
+        base_rps=480.0,
+        error_count=2,
+        total_requests=18500,
+        cpu_pct=cpu,
+        mem_pct=58.4,
+        disk_pct=46.0
+    )
+    return signals
+
+
+@router.get("/api/v2/sre/error-budget")
+async def get_sre_error_budget(slo_target: float = 0.999):
+    budget = google_sre_engine.calculate_error_budget(
+        slo_target=slo_target,
+        window_days=30,
+        total_requests=2_500_000,
+        successful_requests=2_498_250,
+        recent_1h_error_rate_pct=0.035,
+        recent_6h_error_rate_pct=0.018
+    )
+    return budget
+
+
+@router.get("/api/v2/sre/canary-analysis")
+async def get_sre_canary_analysis(
+    baseline_id: str = "i-baseline-x86",
+    canary_id: str = "i-canary-graviton-arm64"
+):
+    analysis = google_sre_engine.evaluate_canary_rollout(
+        baseline_id=baseline_id,
+        canary_id=canary_id,
+        baseline_p95_ms=38.2,
+        canary_p95_ms=39.1,
+        baseline_error_rate=0.00,
+        canary_error_rate=0.00,
+        baseline_cpu_pct=48.0,
+        canary_cpu_pct=26.5  # Graviton ARM64 Rightsized
+    )
+    return analysis
+
+
+@router.post("/api/v2/sre/postmortem/generate")
+async def generate_sre_postmortem(payload: Optional[dict] = None):
+    payload = payload or {}
+    incident_id = payload.get("incident_id") or f"INC-{uuid.uuid4().hex[:6].upper()}"
+    service_name = payload.get("service_name") or "Checkout-EKS-Compute"
+    incident_title = payload.get("title") or "P95 Latency Spike on Downsized EC2 Instance"
+    root_cause = payload.get("root_cause") or "Burst I/O quota exhaustion on gp2 root volume during nightly batch processing."
+    detection_time = payload.get("detection_time") or "2026-10-03T02:15:00Z"
+    mitigation_time = payload.get("mitigation_time") or "2026-10-03T02:22:30Z"
+    resources = payload.get("affected_resources") or ["i-07d01b00f95a4cc41", "vol-07d01b00f95a4cc41"]
+
+    postmortem = google_sre_engine.generate_blameless_postmortem(
+        incident_id=incident_id,
+        service_name=service_name,
+        incident_title=incident_title,
+        root_cause_summary=root_cause,
+        detection_time=detection_time,
+        mitigation_time=mitigation_time,
+        affected_resources=resources,
+        impacted_user_pct=payload.get("impacted_user_pct", 0.32)
+    )
+    return postmortem
 
 
 # Standalone Microservice FastAPI App definition

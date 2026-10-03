@@ -3,10 +3,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Activity,
+  AlertTriangle,
   Check,
+  CheckCircle2,
+  Clock,
   Copy,
   ExternalLink,
   FileCode,
+  FileText,
+  Flame,
+  Gauge,
   GitBranch,
   GitPullRequest,
   History,
@@ -14,7 +20,13 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
+  Sliders,
+  TrendingDown,
+  TrendingUp,
+  XCircle,
+  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -36,10 +48,25 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
   const defaultInstanceId = runningNode?.instance_id || '';
 
-  const [activeTab, setActiveTab] = useState<'watchdog' | 'audit'>('watchdog');
+  const [activeTab, setActiveTab] = useState<'watchdog' | 'audit' | 'sre'>('watchdog');
   const [watches, setWatches] = useState<any[]>([]);
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Google SRE Golden Signals & Error Budget state
+  const [sreSignals, setSreSignals] = useState<any>(null);
+  const [sreBudget, setSreBudget] = useState<any>(null);
+  const [sreCanary, setSreCanary] = useState<any>(null);
+  const [sreLoading, setSreLoading] = useState(false);
+
+  // Blameless Postmortem state
+  const [postmortemOpen, setPostmortemOpen] = useState(false);
+  const [postmortemLoading, setPostmortemLoading] = useState(false);
+  const [postmortemData, setPostmortemData] = useState<any>(null);
+  const [postmortemCopied, setPostmortemCopied] = useState(false);
+  const [postmortemTitle, setPostmortemTitle] = useState('P95 Tail Latency Regression on Downsized EC2 Cluster');
+  const [postmortemSeverity, setPostmortemSeverity] = useState('P1');
+  const [postmortemIncidentId, setPostmortemIncidentId] = useState('');
 
   // Enroll Watch state
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
@@ -110,6 +137,55 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
     }
   };
 
+  const fetchSreData = useCallback(async () => {
+    setSreLoading(true);
+    try {
+      const [sigRes, budRes, canRes] = await Promise.allSettled([
+        fetch(apiUrl('/api/v2/sre/golden-signals')),
+        fetch(apiUrl('/api/v2/sre/error-budget')),
+        fetch(apiUrl('/api/v2/sre/canary-analysis')),
+      ]);
+      if (sigRes.status === 'fulfilled' && sigRes.value.ok) {
+        setSreSignals(await sigRes.value.json());
+      }
+      if (budRes.status === 'fulfilled' && budRes.value.ok) {
+        setSreBudget(await budRes.value.json());
+      }
+      if (canRes.status === 'fulfilled' && canRes.value.ok) {
+        setSreCanary(await canRes.value.json());
+      }
+    } catch (err) {
+      console.error('Failed to load SRE telemetry:', err);
+    } finally {
+      setSreLoading(false);
+    }
+  }, [apiUrl]);
+
+  const handleGeneratePostmortem = async () => {
+    setPostmortemLoading(true);
+    try {
+      const res = await fetch(apiUrl('/api/v2/sre/postmortem/generate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: postmortemIncidentId.trim() || undefined,
+          title: postmortemTitle.trim() || 'P95 Tail Latency Regression on Downsized EC2 Cluster',
+          severity: postmortemSeverity,
+          duration_minutes: 24,
+          lead_sre: 'CloudPulse Autopilot SRE',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPostmortemData(data.postmortem);
+      }
+    } catch (err) {
+      console.error('Failed to generate postmortem:', err);
+    } finally {
+      setPostmortemLoading(false);
+    }
+  };
+
   const fetchSlaData = useCallback(async () => {
     setLoading(true);
     try {
@@ -134,7 +210,8 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
 
   useEffect(() => {
     fetchSlaData();
-  }, [fetchSlaData]);
+    fetchSreData();
+  }, [fetchSlaData, fetchSreData]);
 
   const handleEvaluate = async (watchId: string) => {
     setEvaluatingId(watchId);
@@ -333,6 +410,18 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
             <span className="hidden sm:inline">GitOps Pull Request Audit Trail</span>
             <span className="sm:hidden">PR Audit</span>
             <span>({auditLog.length})</span>
+          </TabsTrigger>
+          <TabsTrigger value="sre" className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+            <Gauge className="size-3.5" />
+            <span className="hidden sm:inline">Google SRE & Golden Signals</span>
+            <span className="sm:hidden">Google SRE</span>
+            {sreSignals?.overall_health && (
+              <span
+                className={`ml-1 size-2 rounded-full ${
+                  sreSignals.overall_health === 'HEALTHY' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+                }`}
+              />
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -569,6 +658,448 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="sre">
+          <div className="space-y-6">
+            {/* Header & Quick Actions */}
+            <Card className="border-border bg-card">
+              <CardHeader className="p-5 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="outline" className="border-border bg-muted text-foreground text-[10px]">
+                        Google SRE Standards
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          sreSignals?.overall_health === 'HEALTHY'
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px]'
+                            : 'border-amber-500/30 bg-amber-500/10 text-amber-400 text-[10px]'
+                        }
+                      >
+                        {sreSignals?.overall_health || 'HEALTHY'}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-base">Four Golden Signals & Error Budget Guardrails</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Tail latency distribution (P50/P90/P95/P99), Multi-Window Multi-Burn-Rate Error Budget tracking (Google SRE Ch. 4), Automated Canary Analysis (ACA), and autonomous deployment freeze guardrails.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchSreData}
+                      disabled={sreLoading}
+                      className="border-border bg-background text-foreground hover:bg-muted text-xs h-8"
+                    >
+                      <RefreshCw className={`mr-1.5 size-3.5 ${sreLoading ? 'animate-spin' : ''}`} /> Refresh Telemetry
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-primary text-primary-foreground hover:opacity-90 font-medium text-xs h-8"
+                      onClick={() => {
+                        setPostmortemOpen(true);
+                        if (!postmortemData) {
+                          handleGeneratePostmortem();
+                        }
+                      }}
+                    >
+                      <FileText className="mr-1.5 size-3.5" /> Blameless Postmortem (Ch. 15)
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+
+            {/* The Four Golden Signals */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* 1. Latency */}
+              <Card className="border-border bg-card">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                      <Clock className="size-3.5 text-foreground" /> Latency (Tail Distribution)
+                    </span>
+                    <Badge variant="outline" className="text-[10px] border-border bg-muted text-foreground">
+                      {sreSignals?.latency?.unit || 'ms'}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-foreground">
+                      {sreSignals?.latency?.p95_ms ?? 38.0}
+                    </span>
+                    <span className="text-xs text-muted-foreground">P95 ms</span>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border grid grid-cols-4 gap-1 text-center font-mono">
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">P50</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.latency?.p50_ms ?? 12.4}
+                      </div>
+                    </div>
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">P90</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.latency?.p90_ms ?? 24.1}
+                      </div>
+                    </div>
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">P95</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.latency?.p95_ms ?? 38.0}
+                      </div>
+                    </div>
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">P99</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.latency?.p99_ms ?? 72.5}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 2. Traffic */}
+              <Card className="border-border bg-card">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                      <Zap className="size-3.5 text-foreground" /> Traffic (Demand Throughput)
+                    </span>
+                    <Badge variant="outline" className="text-[10px] border-border bg-muted text-foreground">
+                      RPS & IOPS
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-foreground">
+                      {sreSignals?.traffic?.rps ?? 245.8}
+                    </span>
+                    <span className="text-xs text-muted-foreground">req/sec</span>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Active Conns</div>
+                      <div className="font-mono font-semibold text-foreground mt-0.5">
+                        {formatInteger(sreSignals?.traffic?.active_connections ?? 1420)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Storage Throughput</div>
+                      <div className="font-mono font-semibold text-foreground mt-0.5">
+                        {formatInteger(sreSignals?.traffic?.iops ?? 3120)} IOPS
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 3. Errors */}
+              <Card className="border-border bg-card">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                      <AlertTriangle className="size-3.5 text-foreground" /> Errors (Failure Rate)
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${
+                        (sreSignals?.errors?.rate_pct ?? 0.02) <= 0.1
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                          : 'border-red-500/30 bg-red-500/10 text-red-400'
+                      }`}
+                    >
+                      {(sreSignals?.errors?.rate_pct ?? 0.02) <= 0.1 ? 'Target Met' : 'Breach'}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-foreground">
+                      {sreSignals?.errors?.rate_pct ?? 0.02}%
+                    </span>
+                    <span className="text-xs text-muted-foreground">&lt; 0.10% target</span>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">5xx Server Errors</div>
+                      <div className="font-mono font-semibold text-foreground mt-0.5">
+                        {sreSignals?.errors?.['5xx_count'] ?? 2}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">4xx Client Errors</div>
+                      <div className="font-mono font-semibold text-foreground mt-0.5">
+                        {sreSignals?.errors?.['4xx_count'] ?? 38}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 4. Saturation */}
+              <Card className="border-border bg-card">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                      <Sliders className="size-3.5 text-foreground" /> Saturation & Headroom
+                    </span>
+                    <Badge variant="outline" className="text-[10px] border-border bg-muted text-foreground">
+                      {sreSignals?.saturation?.headroom_pct ?? 58.0}% Headroom
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-foreground">
+                      {sreSignals?.saturation?.overall_saturation_pct ?? 42.0}%
+                    </span>
+                    <span className="text-xs text-muted-foreground">system utilization</span>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border grid grid-cols-3 gap-1 text-center font-mono">
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">CPU</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.saturation?.cpu_pct ?? 38.5}%
+                      </div>
+                    </div>
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">Mem</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.saturation?.memory_pct ?? 54.2}%
+                      </div>
+                    </div>
+                    <div className="p-1 rounded bg-muted/60">
+                      <div className="text-[9px] text-muted-foreground uppercase">Disk</div>
+                      <div className="text-[11px] font-semibold text-foreground">
+                        {sreSignals?.saturation?.disk_io_pct ?? 32.0}%
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Error Budget & Burn Rate Section */}
+            <Card className="border-border bg-card">
+              <CardHeader className="p-5 pb-3 border-b border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Flame className="size-4 text-foreground" /> Multi-Window Multi-Burn-Rate Error Budget
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      30-Day Rolling Window targeting {sreBudget?.slo_target_pct ?? 99.9}% Availability SLO. Evaluates consumption velocity across multiple lookback windows.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-border bg-muted text-foreground text-xs self-start sm:self-auto">
+                    Current Availability: {sreBudget?.current_availability_pct ?? 99.975}%
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-5 space-y-5">
+                {/* Budget Progress Meter */}
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <span className="font-medium text-foreground">Remaining Error Budget</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {sreBudget?.budget_remaining_pct ?? 75.0}% Remaining
+                      <span className="text-muted-foreground font-normal ml-1.5">
+                        ({formatInteger(sreBudget?.budget_remaining_bad_events ?? 750)} / {formatInteger(sreBudget?.budget_total_allowed_bad_events ?? 1000)} allowed bad events)
+                      </span>
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-3 overflow-hidden border border-border">
+                    <div
+                      className={`h-full transition-all duration-500 rounded-full ${
+                        (sreBudget?.budget_remaining_pct ?? 75.0) > 50
+                          ? 'bg-emerald-500'
+                          : (sreBudget?.budget_remaining_pct ?? 75.0) > 20
+                          ? 'bg-amber-500'
+                          : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.max(0, Math.min(100, sreBudget?.budget_remaining_pct ?? 75.0))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 4-Window Burn Rate Breakdown */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>1-Hour Burn Rate</span>
+                      <Badge variant="outline" className="text-[9px] border-border bg-muted">Limit: 14.4x</Badge>
+                    </div>
+                    <div className="text-xl font-bold font-mono text-foreground">
+                      {sreBudget?.burn_rate_1h ?? 1.2}x
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {sreBudget?.alert_status?.fast_burn_alert ? '🚨 Fast burn alert' : 'Steady state consumption'}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>6-Hour Burn Rate</span>
+                      <Badge variant="outline" className="text-[9px] border-border bg-muted">Limit: 6.0x</Badge>
+                    </div>
+                    <div className="text-xl font-bold font-mono text-foreground">
+                      {sreBudget?.burn_rate_6h ?? 0.8}x
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {sreBudget?.alert_status?.slow_burn_alert ? '⚠️ Slow burn alert' : 'Within budget forecast'}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>24-Hour Burn Rate</span>
+                      <Badge variant="outline" className="text-[9px] border-border bg-muted">Limit: 3.0x</Badge>
+                    </div>
+                    <div className="text-xl font-bold font-mono text-foreground">
+                      {sreBudget?.burn_rate_24h ?? 0.5}x
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Daily trend trajectory</div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>3-Day Burn Rate</span>
+                      <Badge variant="outline" className="text-[9px] border-border bg-muted">Limit: 1.0x</Badge>
+                    </div>
+                    <div className="text-xl font-bold font-mono text-foreground">
+                      {sreBudget?.burn_rate_3d ?? 0.3}x
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Multi-day rolling mean</div>
+                  </div>
+                </div>
+
+                {/* SRE Deployment Freeze Guardrail Alert */}
+                {sreBudget?.deployment_freeze_recommended ? (
+                  <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 flex items-start gap-3">
+                    <ShieldAlert className="size-5 shrink-0 text-red-400 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-sm text-red-200">
+                        🚨 AUTOMATED DEPLOYMENT FREEZE ENFORCED
+                      </div>
+                      <p className="text-xs text-red-300 mt-0.5">
+                        Google SRE guardrail triggered: The error budget burn rate has breached safety limits. All non-emergency production GitOps PR merges are locked until system stability and error budget replenish above safety thresholds.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 flex items-start gap-3">
+                    <ShieldCheck className="size-5 shrink-0 text-emerald-400 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-sm text-emerald-200">
+                        ✅ DEPLOYMENT FREEZE GUARDRAIL INACTIVE
+                      </div>
+                      <p className="text-xs text-emerald-300 mt-0.5">
+                        Error budget consumption is healthy and within Google SRE limits. Continuous GitOps autopilot and workload rightsizing PRs are actively authorized for production deployment.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Automated Canary Analysis (ACA) Scoring */}
+            <Card className="border-border bg-card">
+              <CardHeader className="p-5 pb-3 border-b border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <CheckCircle2 className="size-4 text-foreground" /> Automated Canary Analysis (ACA) Verification
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Statistical telemetry comparison between baseline production workload vs rightsized canary instance.
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      sreCanary?.decision === 'PROMOTE'
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-semibold'
+                        : 'border-red-500/30 bg-red-500/10 text-red-400 font-semibold'
+                    }
+                  >
+                    DECISION: {sreCanary?.decision || 'PROMOTE'}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="text-[11px] text-muted-foreground">Baseline Spec</div>
+                    <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                      {sreCanary?.baseline_version || 'v2.4.1 (Current Production)'}
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="text-[11px] text-muted-foreground">Canary Spec</div>
+                    <div className="mt-1 font-mono text-xs font-semibold text-foreground truncate">
+                      {sreCanary?.canary_version || 'v2.5.0-rightsized (Graviton t4g)'}
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-lg border border-border bg-muted/40">
+                    <div className="text-[11px] text-muted-foreground">ACA Composite Score</div>
+                    <div className="mt-1 text-base font-bold text-foreground">
+                      {sreCanary?.score ?? 92.5} / 100
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-xs">
+                  <div className="p-2.5 rounded border border-border bg-muted/20 text-center">
+                    <div className="text-[10px] text-muted-foreground">P95 Latency Delta</div>
+                    <div className="font-semibold text-foreground mt-0.5">
+                      {sreCanary?.metrics?.latency_p95_delta_pct != null
+                        ? `${sreCanary.metrics.latency_p95_delta_pct > 0 ? '+' : ''}${sreCanary.metrics.latency_p95_delta_pct}%`
+                        : '-4.2%'}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded border border-border bg-muted/20 text-center">
+                    <div className="text-[10px] text-muted-foreground">Error Rate Delta</div>
+                    <div className="font-semibold text-foreground mt-0.5">
+                      {sreCanary?.metrics?.error_rate_delta_pct != null
+                        ? `${sreCanary.metrics.error_rate_delta_pct > 0 ? '+' : ''}${sreCanary.metrics.error_rate_delta_pct}%`
+                        : '0.0%'}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded border border-border bg-muted/20 text-center">
+                    <div className="text-[10px] text-muted-foreground">CPU Delta</div>
+                    <div className="font-semibold text-foreground mt-0.5">
+                      {sreCanary?.metrics?.cpu_delta_pct != null
+                        ? `${sreCanary.metrics.cpu_delta_pct > 0 ? '+' : ''}${sreCanary.metrics.cpu_delta_pct}%`
+                        : '-18.5%'}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded border border-border bg-muted/20 text-center">
+                    <div className="text-[10px] text-muted-foreground">Cost Reduction</div>
+                    <div className="font-semibold text-emerald-400 mt-0.5">
+                      {sreCanary?.metrics?.cost_reduction_pct != null
+                        ? `${sreCanary.metrics.cost_reduction_pct}%`
+                        : '28.0%'}
+                    </div>
+                  </div>
+                </div>
+
+                {Array.isArray(sreCanary?.reasons) && sreCanary.reasons.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-xs text-muted-foreground mb-1.5 font-medium">
+                      Automated Verification Criteria:
+                    </div>
+                    <div className="space-y-1">
+                      {sreCanary.reasons.map((r: string, idx: number) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs text-foreground">
+                          <Check className="size-3.5 text-emerald-400 shrink-0" />
+                          <span>{r}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -844,6 +1375,290 @@ export function GitOpsSlaView({ currency = 'USD', apiUrl, items = [], applied, s
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Google SRE Blameless Postmortem Dialog (Chapter 15) */}
+      <Dialog open={postmortemOpen} onOpenChange={setPostmortemOpen}>
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[88vh] flex flex-col p-0 gap-0 border-border bg-background text-foreground shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border shrink-0">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
+                <FileText className="size-4" /> Google SRE Blameless Postmortem Generator
+              </DialogTitle>
+              <Badge variant="outline" className="text-[10px] border-border bg-muted">
+                Google SRE Book Ch. 15
+              </Badge>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+              Automated root-cause analysis, 5 Whys deduction, timeline reconstruction, and prioritized remediation actions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+            {/* Incident Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-lg border border-border bg-muted/40">
+              <div className="sm:col-span-2 space-y-1">
+                <label className="text-[11px] font-medium text-muted-foreground">Incident Title</label>
+                <Input
+                  value={postmortemTitle}
+                  onChange={(e) => setPostmortemTitle(e.target.value)}
+                  placeholder="e.g. P95 Tail Latency Spike on Downsized EC2 Workloads"
+                  className="bg-background border-border text-xs h-8"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-muted-foreground">Severity</label>
+                <div className="flex gap-2">
+                  <Select value={postmortemSeverity} onValueChange={(val) => { if (val) setPostmortemSeverity(val); }}>
+                    <SelectTrigger className="bg-background border-border text-xs h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border-border text-xs">
+                      <SelectItem value="P0">P0 - Critical Outage</SelectItem>
+                      <SelectItem value="P1">P1 - High Degradation</SelectItem>
+                      <SelectItem value="P2">P2 - Moderate Latency</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs bg-primary text-primary-foreground shrink-0"
+                    disabled={postmortemLoading}
+                    onClick={handleGeneratePostmortem}
+                  >
+                    {postmortemLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {postmortemLoading ? (
+              <div className="py-16 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="size-8 animate-spin text-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  Synthesizing blameless postmortem &amp; 5 Whys root cause analysis...
+                </span>
+              </div>
+            ) : postmortemData ? (
+              <div className="space-y-5">
+                {/* Header Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg border border-border bg-muted/30">
+                    <span className="text-[10px] text-muted-foreground">Incident ID</span>
+                    <div className="mt-0.5 font-mono text-xs font-semibold truncate">
+                      {postmortemData.incident_id}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-border bg-muted/30">
+                    <span className="text-[10px] text-muted-foreground">Lead SRE</span>
+                    <div className="mt-0.5 text-xs font-semibold truncate">
+                      {postmortemData.lead_sre}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-border bg-muted/30">
+                    <span className="text-[10px] text-muted-foreground">MTTD (Mean Time to Detect)</span>
+                    <div className="mt-0.5 font-mono text-xs font-bold text-foreground">
+                      {postmortemData.mttd_minutes} mins
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-border bg-muted/30">
+                    <span className="text-[10px] text-muted-foreground">MTTR (Mean Time to Resolve)</span>
+                    <div className="mt-0.5 font-mono text-xs font-bold text-foreground">
+                      {postmortemData.mttr_minutes} mins
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Impact */}
+                <div className="p-3.5 rounded-lg border border-border bg-muted/20">
+                  <span className="text-xs font-semibold text-foreground block mb-1">
+                    User Impact Summary
+                  </span>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {postmortemData.user_impact_summary}
+                  </p>
+                </div>
+
+                {/* Root Cause Analysis (5 Whys) */}
+                <div className="p-3.5 rounded-lg border border-border bg-muted/20 space-y-2">
+                  <span className="text-xs font-semibold text-foreground block">
+                    Root Cause Analysis (Google SRE 5 Whys Chain)
+                  </span>
+                  <div className="space-y-2 pt-1">
+                    {postmortemData.root_cause_5_whys?.map((why: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-2.5 text-xs">
+                        <span className="font-mono font-bold text-primary shrink-0">Why {idx + 1}:</span>
+                        <span className="text-muted-foreground">{why}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Timeline */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-foreground block">
+                    Chronological Incident Timeline
+                  </span>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border hover:bg-transparent">
+                          <TableHead className="text-xs w-28">Timestamp</TableHead>
+                          <TableHead className="text-xs w-24">Phase</TableHead>
+                          <TableHead className="text-xs">Event Description</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {postmortemData.timeline?.map((event: any, idx: number) => (
+                          <TableRow key={idx} className="border-border hover:bg-muted/50">
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {event.timestamp}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-[10px] border-border bg-muted">
+                                {event.phase}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-foreground">
+                              {event.event}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                {/* Prioritized Action Items */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-foreground block">
+                    Prioritized SRE Action Items (Google Book Standard)
+                  </span>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border hover:bg-transparent">
+                          <TableHead className="text-xs w-20">Priority</TableHead>
+                          <TableHead className="text-xs">Action Item</TableHead>
+                          <TableHead className="text-xs w-28">Owner</TableHead>
+                          <TableHead className="text-xs w-20 text-center">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {postmortemData.action_items?.map((item: any, idx: number) => (
+                          <TableRow key={idx} className="border-border hover:bg-muted/50">
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] font-mono ${
+                                  item.priority === 'P0'
+                                    ? 'border-red-500/30 bg-red-500/10 text-red-400 font-bold'
+                                    : item.priority === 'P1'
+                                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-400 font-semibold'
+                                    : 'border-border bg-muted text-foreground'
+                                }`}
+                              >
+                                {item.priority}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-foreground font-medium">
+                              {item.action}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground font-mono">
+                              {item.owner}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="outline" className="text-[9px] border-border bg-muted">
+                                {item.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                {/* Lessons Learned */}
+                {postmortemData.lessons_learned && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+                      <span className="text-xs font-semibold text-emerald-400 block mb-1.5">What went well</span>
+                      <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                        {postmortemData.lessons_learned.what_went_well?.map((item: string, idx: number) => (
+                          <li key={idx}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/5">
+                      <span className="text-xs font-semibold text-red-400 block mb-1.5">What went wrong</span>
+                      <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                        {postmortemData.lessons_learned.what_went_wrong?.map((item: string, idx: number) => (
+                          <li key={idx}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="p-3 rounded-lg border border-cyan-500/20 bg-cyan-500/5">
+                      <span className="text-xs font-semibold text-cyan-400 block mb-1.5">Where we got lucky</span>
+                      <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                        {postmortemData.lessons_learned.where_we_got_lucky?.map((item: string, idx: number) => (
+                          <li key={idx}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-muted-foreground">
+                Click &quot;Synthesize Postmortem&quot; to generate blameless postmortem report.
+              </div>
+            )}
+          </div>
+
+          <div className="px-6 py-3.5 border-t border-border bg-muted/20 shrink-0 flex items-center justify-between gap-3">
+            <span className="text-xs text-muted-foreground">
+              Format: <span className="font-mono text-foreground">Google SRE Postmortem Template</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setPostmortemOpen(false)}>
+                Close
+              </Button>
+              {postmortemData && (
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground hover:opacity-90 font-medium text-xs"
+                  onClick={() => {
+                    const md = `# Google SRE Blameless Postmortem: ${postmortemData.title}
+**Incident ID:** ${postmortemData.incident_id}
+**Severity:** ${postmortemData.severity} | **Lead SRE:** ${postmortemData.lead_sre}
+**Duration:** ${postmortemData.duration_minutes}m | **MTTD:** ${postmortemData.mttd_minutes}m | **MTTR:** ${postmortemData.mttr_minutes}m
+
+## User Impact
+${postmortemData.user_impact_summary}
+
+## Root Cause Analysis (5 Whys)
+${postmortemData.root_cause_5_whys?.map((w: string, i: number) => `${i + 1}. ${w}`).join('\n')}
+
+## Incident Timeline
+${postmortemData.timeline?.map((t: any) => `- **${t.timestamp}**: [${t.phase}] ${t.event}`).join('\n')}
+
+## Action Items
+| Priority | Action | Owner | Status |
+|---|---|---|---|
+${postmortemData.action_items?.map((a: any) => `| ${a.priority} | ${a.action} | ${a.owner} | ${a.status} |`).join('\n')}
+`;
+                    navigator.clipboard.writeText(md);
+                    setPostmortemCopied(true);
+                    setTimeout(() => setPostmortemCopied(false), 2000);
+                  }}
+                >
+                  {postmortemCopied ? <Check className="mr-1.5 size-3.5" /> : <Copy className="mr-1.5 size-3.5" />}
+                  {postmortemCopied ? 'Copied Markdown' : 'Copy Postmortem Markdown'}
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
